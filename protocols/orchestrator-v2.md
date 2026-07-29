@@ -1,0 +1,167 @@
+# Orchestrator Protocol v2
+
+## Authority and evidence
+
+Normative order:
+1. Platform permissions and safety constraints.
+2. Latest explicit user instruction; scoped corrections supersede conflicting earlier requests.
+3. Repository instructions.
+4. Senior-audited design for the current request set.
+
+Evidence order:
+1. Current observed repository state and immutable artifacts.
+2. Canonical plan state.
+3. Agent summaries.
+4. Prototypes as guidance.
+
+An unresolved normative conflict returns `BLOCKED`. An identity mismatch returns `STALE` without state transition.
+
+## Workflow root
+
+Use one stable workflow ID per user outcome. Follow-ups reuse it. Artifacts live under `<workspace>/.orchestrator/tasks/<workflow-id>/`:
+
+```text
+manifest.json
+requests/R###.md
+contract.md
+baseline/
+recon/index.md
+recon/repository.md
+recon/prototypes.md
+plan/master.md
+plan/structure.json
+plan/audit.md
+plan/dispatch/
+stages/
+snapshots/
+validation/
+reviews/mini/
+reviews/final/
+```
+
+Initialization captures complete pre-setup status, tracked/staged patch, untracked hashes, branch/HEAD, repository identity, and `BASE_PRODUCT_SNAPSHOT_ID` before mutation. Persist this baseline under the new workflow root first. In a Git workspace, then add only the exact `/.orchestrator/` rule to workspace `.gitignore` when missing and verify the root is ignored. Classify the `.gitignore` edit as an intentional user-authorized workflow-setup product change, include it in current product identity, plan traceability, inventory, and final patch. Non-Git workspaces skip ignore setup. Exclude only `.orchestrator/**` from product scope, snapshots, patches, staging, and review.
+
+`manifest.json` is an immutable bootstrap index: protocol version, workflow ID, workspace/Git roots, artifact root, baseline paths, first request path, and initialization result. Runtime state lives in `plan/master.md`.
+
+Each user task or correction gets a new immutable request file. Preserve APIs, CLI, schemas, acceptance, exact errors, commands, and constraints. Replace credential values with `[REDACTED_SECRET]`. `contract.md` normalizes the active request set and records supersession links; request text remains authoritative.
+
+## Identity
+
+Ordering counters:
+- `PLAN_REVISION`: canonical plan-state change;
+- `STRUCTURE_REVISION`: structural design change;
+- `WAVE_REVISION`: dispatched snapshot change.
+
+Content IDs:
+- `REQUEST_SET_ID`: ordered immutable request files plus supersession map;
+- `PLAN_STRUCTURE_ID`: canonical schema-versioned `plan/structure.json` hash covering goal, acceptance, constraints, exclusions, decisions, stages, dependencies, waves, barriers, reads/writes, consistency boundaries, prototype requirements/novelty, validation, review profiles, pass conditions, and senior-approved structural deviations;
+- `BASE_PRODUCT_SNAPSHOT_ID`: immutable pre-setup product baseline;
+- `PRODUCT_SNAPSHOT_ID`: sorted path/type/mode/content/deletion/intended-untracked manifest hash, excluding workflow artifacts;
+- `EVIDENCE_BUNDLE_ID`: baseline classification, commands, toolchain, results, artifacts, and pre/post product IDs;
+- `REVIEW_SCOPE_ID`: baseline, delta/cumulative patch, inventory, prototypes, accepted implementation variances, prior findings, acceptance, lane assignments, and their hashes;
+- `REVIEW_INPUT_ID`: request set, plan structure, product snapshot, evidence bundle, and review scope IDs;
+- `LANE_INPUT_ID`: lens-specific path, dependency, contract, prototype, prior-finding, and evidence hashes;
+- `MINI_REVIEW_BUNDLE_ID`: current lane verdict files plus aggregate hash;
+- `FINAL_REVIEW_INPUT_ID`: review input plus mini-review bundle IDs.
+
+Compute IDs as lowercase SHA-256 of UTF-8 canonical JSON: schema/version domain tag, sorted object keys, preserved array order, no insignificant whitespace, and explicit relative paths. An artifact containing its own ID excludes that ID field from hashed payload. `MINI_REVIEW_BUNDLE_ID` hashes lane files plus aggregate payload with `MINI_REVIEW_BUNDLE_ID` and `FINAL_REVIEW_INPUT_ID` removed.
+
+Authoring agents write canonical unhashed inputs. Designated ID producers: bootstrap computes `REQUEST_SET_ID` and initialization base/current product IDs; validator `IDENTITY` computes plan, later product, evidence, review-scope, and review-input IDs; aggregator computes mini-review bundle and final-review-input IDs from validator-bound inputs. Each producer writes canonicalization/hash evidence. Planner agents consume produced IDs; they do not synthesize cryptographic hashes.
+
+Status-only plan updates preserve content IDs. Changed content recomputes affected IDs before further execution or review.
+
+## Baseline and request changes
+
+Baseline capture precedes product mutation. Read-only recon may then identify candidate behavior and prototypes. Baseline validation classifies:
+- `GREEN`: required unaffected behavior passes;
+- `EXPECTED_RED`: failure precisely demonstrates requested defect and unrelated required checks pass;
+- `BLOCKED`: unrelated failures or attribution gaps prevent reliable work.
+
+Run direct affected/prototype tests and affected project validation. Run full baseline when requested, required by acceptance, or justified by security, concurrency, persistence, migration, runner, or repository-wide contract risk. Record `NOT_REQUIRED` with rationale otherwise.
+
+A follow-up request appends the ledger, recomputes `REQUEST_SET_ID`, freezes new dispatch, and marks active dispatch stale. Inventory actual changes, then invoke senior replan against the whole request set. Reuse accepted evidence only when its content and contract scope remain valid.
+
+## Verifiable planning units
+
+Every dispatched implementation stage is one independently observable, buildable, testable consistency boundary with acceptance IDs, dependencies, workspace path, exclusive product writes, exact artifact writes, direct integrations/state, prototype requirement, validation, review profile, and pass condition.
+
+Inseparable non-buildable operations are ordered substeps inside one stage and one executor task. Intermediate broken state gets no handoff, review, snapshot checkpoint, or parallel exposure. Planning, authorization, investigation, baseline, artifact, and validation stages may remain separate when they have machine-verifiable results.
+
+Product-mutating stages execute sequentially in the shared worktree. Read-only validation and review tasks may run in parallel on one frozen snapshot.
+
+## Prototype gate
+
+Recon records bounded candidates. Before every dispatch, cheap planner refines exact current references against audited stage and product state:
+- primary implementation `path#symbol` or `none` for approved novelty;
+- primary test `path#symbol` or `none` for approved novelty;
+- optional integration reference;
+- one-line similarity;
+- two to four practices to apply;
+- target-specific differences;
+- source/dependency/config hashes and validation evidence.
+
+Use at most one primary and two supplemental references. Store references, not copied source/test bodies. User contract and audited design control behavior.
+
+States:
+- `PASS`: applicable references and current GREEN evidence;
+- `VALIDATION_REQUIRED`: exact validation manifest emitted;
+- `VALIDATION_FAILED`: requested validation failed; return evidence for senior decision;
+- `NOVEL_APPROVED`: senior recorded search coverage, rationale, design source, and exact test strategy;
+- `BLOCKED`: required reference, approval, or evidence absent.
+
+Only `PASS` or `NOVEL_APPROVED` permits implementation dispatch. One unchanged-input validation retry is allowed; repeated failure escalates senior or blocks.
+
+## Execution and validation
+
+Executor reads request, capsule, prototypes, and repository instructions; writes declared paths; reports ownership or contract contradiction before out-of-scope mutation. Behavior changes follow RED, minimal implementation, GREEN targeted checks, then affected checks. `RED_DEFERRED` needs exact reason and new/updated tests before review. Other artifacts use applicable validators.
+
+Review readiness requires complete inventory, current product snapshot, build/validator PASS, changed-symbol-to-test mapping, applicable new/updated tests, targeted/affected checks, requested/risk-required broad checks, diff check, and evidence bundle. Failure returns `review: NOT_RUN` and goes to validation repair.
+
+After mini PASS, validator `ACCEPT_STAGE` creates immutable snapshot checkpoints, not Git commits: manifest, previous-to-current delta including intended additions, validation index, review index, and coverage ledger. Repository history and user index remain unchanged.
+
+## Mini review
+
+Profiles:
+- `LOW`: one `combined-low` lane;
+- `STANDARD`: parallel `goal-scope`, `correctness-tests`, and `architecture-integration` lanes;
+- `HIGH_RISK`: STANDARD plus `security-recovery`.
+
+Every lane receives one `REVIEW_INPUT_ID`, its `LANE_INPUT_ID`, complete assigned scope, and unique output. Finding IDs are `<cycle>-<lens>-F###`.
+
+Aggregation first preserves the mechanical union with source review path/hash, then groups duplicate root causes without dropping or lowering findings. It records current lane IDs, reused unchanged PASS lanes, coverage, `MINI_REVIEW_BUNDLE_ID`, and `MINI_GATE: PASS|FAIL|BLOCKED|STALE`. A fresh lane must bind current `REVIEW_INPUT_ID`. A reusable PASS may retain its prior global review ID only when recomputed `LANE_INPUT_ID` is unchanged; aggregate records prior/current global IDs and explicitly rebinds that lane. Final cumulative review creates fresh lanes without reuse.
+
+Required findings are acceptance violations, reachable regressions, change-caused architecture/contract breaks, security/data/trust violations, missing required evidence, or unintended/missing scope. Optional findings do not trigger repair.
+
+Finding format:
+`<ID> | required|optional | critical|high|medium|low | <path#symbol|artifact|contract> | criterion: <ID> | evidence: <fact> | impact: <concrete> | fix: <bounded>`
+
+Two stage repair batches are allowed per unchanged root cause. Remaining required findings trigger senior root-cause replan when structural; otherwise `BLOCKED`.
+
+## Deviations
+
+Executor reports facts, never self-approves variance. Cheap planner may record an implementation variance contained within existing result, ownership, contracts, and acceptance; include it in review scope. Contract, consistency boundary, security/persistence design, stage/DAG/wave/barrier/profile, or cross-stage ownership impact requires senior replan and updated plan structure ID.
+
+## Final gate
+
+For each final product snapshot:
+1. Run combined required validation.
+2. Regenerate cumulative patch, inventory, evidence bundle, review scope, and review input IDs.
+3. Run fresh cumulative mini lanes and aggregation.
+4. Required mini findings get one consolidated repair batch; restart final gate at step 1 on repaired snapshot.
+5. `MINI_GATE: PASS` creates `FINAL_REVIEW_INPUT_ID`; run fresh Terra review.
+6. `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required Terra findings get one consolidated repair batch, then restart final gate at step 1.
+7. Terra PASS first runs validator `POST_REVIEW`. Unchanged product and mini bundle IDs then accompany PASS into canonical planner completion. Round 2 unresolved required findings block.
+
+Final combined validation gets one same-cause repair batch; recurring local failure blocks, structural failure escalates senior. Final mini review gets one consolidated repair batch; recurring local required findings block, structural findings escalate senior. New user input or materially different evidence resets the applicable cause-keyed budget.
+
+Final reviewers persist exact verdicts. Terra finding IDs are `T<round>-F###`.
+
+## Handoffs
+
+Use paths and IDs instead of dumps. Every task prompt supplies its exact mode, allowed writes, expected artifact, and compact report schema. Every response includes `PROTOCOL_VERSION: 2`.
+
+Executor:
+`EXECUTOR_REPORT | <stage> | PASS|FAIL|BLOCKED|DEVIATION|STALE | product: <paths|none> | snapshot: <ID|none> | validation: PASS|FAIL|BLOCKED | evidence: <path|none> | blocker: <none|exact>`
+
+Gate:
+`GATE_REPORT | <stage> | PASS|FAIL|BLOCKED|DEVIATION|STALE | readiness: PASS|FAIL|BLOCKED | review: PASS|FAIL|NOT_RUN | findings: <IDs|none> | snapshot: <ID> | evidence: <paths>`
