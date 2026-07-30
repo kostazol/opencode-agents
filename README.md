@@ -1,80 +1,101 @@
 # OpenCode Agents
 
-Private source repository for personal OpenCode agent prompts and shared orchestration protocols.
+Набор агентов и протоколов для OpenCode. Репозиторий ориентирован на управляемую разработку через Orchestrator v2: фиксация запроса, планирование, последовательная реализация, валидация и независимое ревью.
 
-## Contents
-
-- `agents/` — portable source prompts for Orchestrator v2 roles.
-- `protocols/` — shared protocols loaded by coordinated agents.
-- `AGENTS.md` — maintenance rules for humans and coding agents.
-- `CHANGELOG.md` — notable prompt and workflow changes.
-- `VERSION` — repository configuration version.
-
-Repository keeps only Orchestrator v2 agents: orchestrator, bootstrap, planners, executor, validator, mini-reviewer, aggregator, and final-reviewer.
-
-## Orchestrator v2
-
-Primary workflow:
+## Состав
 
 ```text
-orchestrator-caveman
-├── workflow-bootstrap-caveman
-├── planner-caveman
-├── planner-senior-caveman (Terra)
-├── executor-caveman
-├── validator-caveman
-├── mini-reviewer-caveman
-├── review-aggregator-caveman
-└── final-reviewer-caveman (Terra)
+orchestrator-00-main-caveman (UI: orchestrator)
+├── orchestrator-10-workflow-bootstrap-caveman
+├── orchestrator-20-planner-caveman
+├── orchestrator-30-planner-senior-caveman (Terra)
+├── orchestrator-40-executor-caveman
+├── orchestrator-50-validator-caveman
+├── orchestrator-60-mini-reviewer-caveman
+├── orchestrator-70-review-aggregator-caveman
+└── orchestrator-80-final-reviewer-caveman (Terra)
 ```
 
-Shared contract: `protocols/orchestrator-v2.md`.
+- `agents/` — исходные prompt-файлы агентов.
+- `protocols/` — общий протокол Orchestrator v2.
+- `AGENTS.md` — правила сопровождения репозитория.
+- `CHANGELOG.md` — история изменений.
+- `VERSION` — версия конфигурации.
 
-Core behavior:
+Все filenames используют общий `orchestrator-` prefix и номер порядка. OpenCode хранит agents в flat-папке, поэтому связанная группа остаётся рядом при сортировке и ручной работе с Markdown. Primary agent имеет UI name `orchestrator`.
 
-- one ignored `.orchestrator/tasks/<workflow-id>/` workspace per user outcome;
-- immutable request ledger and pre-mutation baseline;
-- repository and test prototypes stored as `path#symbol` references, never copied source bodies;
-- exact prototype revalidation before every implementation stage;
-- independently buildable and testable stage boundaries;
-- RED/GREEN and affected validation before review;
-- risk-based parallel mini-review lenses;
-- fresh cumulative mini review before independent Terra final review;
-- content-bound evidence IDs and bounded repair loops;
-- snapshot delta artifacts instead of temporary Git commits or resets.
+## Что делает Orchestrator v2
 
-## Model policy
+- сохраняет неизменяемый запрос и baseline до изменения продукта;
+- проводит разведку и проверяет prototype references перед каждой стадией;
+- выполняет product-mutating stages последовательно;
+- требует buildable/testable границы каждой стадии;
+- запускает targeted, affected и broad validation;
+- проводит независимые mini-review lanes;
+- передаёт финальный результат независимому Terra reviewer;
+- хранит планы, evidence, patches и логи в `.orchestrator/tasks/<workflow-id>/`;
+- не создаёт временные Git-коммиты и не изменяет историю или индекс.
 
-Only roles requiring deliberate senior independence pin a model:
+## Caveman skill — рекомендуется
 
-- `planner-senior-caveman`: `openai/gpt-5.6-terra`;
-- `final-reviewer-caveman`: `openai/gpt-5.6-terra`.
+[Caveman](https://github.com/JuliusBrussee/caveman) — официальный skill для коротких, но технически полных ответов. Его рекомендуется установить для экономии output-токенов и уменьшения лишнего текста.
 
-Other Orchestrator v2 agents omit `model` and inherit the active/default model. This keeps bootstrap, execution, validation, and mini review usable with Luna or another selected model. Legacy or unrelated agents may retain their own model policy.
-
-## Installation
-
-CLI installs and updates agent prompts plus shared protocols:
+Основной официальный installer:
 
 ```bash
-# Linux/macOS
-python3 opencode-agents.py install
-python3 opencode-agents.py update --prune-legacy
-python3 opencode-agents.py status
-
-# Windows
-py -3 opencode-agents.py install
-py -3 opencode-agents.py update --prune-legacy
-py -3 opencode-agents.py status
+npx -y github:JuliusBrussee/caveman -- --only opencode
 ```
 
-Run commands from repository root. Python CLI works on Windows, Linux, and macOS. `install` copies only missing files. `update` backs up changed files before replacement. `update --prune-legacy` removes only former repository agent names; unknown user prompts remain. Use `--dry-run` to preview updates, `--target DIR` to select another OpenCode config root, and `--backup-dir DIR` to control backup location. Unix users may use `./bin/opencode-agents` as convenience wrapper.
+Наш CLI не содержит копию Caveman. После своей установки он выводит эту команду и ссылку на официальный репозиторий. Если skill не установлен, внутренние workflow-агенты продолжают работу без него. Orchestrator не требует Caveman.
 
-Source prompts use portable protocol-path placeholders. CLI renders them to `<target>/protocols/orchestrator-v2.md` during installation and update, including matching OpenCode permissions.
+## Модельная политика
 
-Restart OpenCode after installation. Agent and protocol files are loaded at process start.
+Только роли, которым нужна независимость senior-уровня, используют фиксированную модель:
 
-Run CLI checks:
+- `orchestrator-30-planner-senior-caveman`: `openai/gpt-5.6-terra`;
+- `orchestrator-80-final-reviewer-caveman`: `openai/gpt-5.6-terra`.
+
+Остальные агенты наследуют выбранную модель OpenCode.
+
+## Установка
+
+Клонирование не требуется. CLI получает файлы через GitHub Contents/Git Trees API. Для private repository задайте `GITHUB_TOKEN`.
+
+### Linux и macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - install
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - update --prune-legacy
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - status
+```
+
+### Windows
+
+```powershell
+py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" install
+py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" update --prune-legacy
+py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" status
+```
+
+`install` добавляет отсутствующие файлы. `update` заменяет изменённые файлы и создаёт backup. `update --prune-legacy` удаляет только старые имена агентов, ранее поставлявшиеся этим репозиторием, включая имена до current `orchestrator-` grouping. Неизвестные пользовательские prompt-файлы не удаляются.
+
+Для другого fork или версии используйте `--repository owner/name` либо URL и `--ref branch-or-tag`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - install --repository owner/name --ref main
+```
+
+Полезные параметры:
+
+- `--dry-run` — показать изменения без записи;
+- `--target DIR` — выбрать другой OpenCode config root;
+- `--backup-dir DIR` — выбрать каталог backup.
+
+CLI также добавляет управляемый блок рекомендации Caveman в глобальный `AGENTS.md`, не затрагивая остальное содержимое файла.
+
+После установки перезапустите OpenCode: agent, protocol и instruction-файлы читаются при запуске процесса.
+
+## Проверка
 
 ```bash
 # Linux/macOS
@@ -84,16 +105,12 @@ python3 tests/test-cli.py
 py -3 tests/test-cli.py
 ```
 
-## Validation
-
-After installing changes:
+После установки конфигурации:
 
 ```bash
 opencode debug config >/dev/null
 ```
 
-For orchestration changes, also perform an independent cross-file review covering permissions, state transitions, evidence IDs, repair limits, and final-review handoffs.
+## Безопасность
 
-## Security
-
-This repository intentionally excludes `opencode.json`, authentication files, MCP environment files, session databases, tool output, and generated workflow artifacts. Never commit credentials, tokens, private keys, `.env` contents, or captured user repositories.
+Репозиторий не содержит `opencode.json`, credentials, auth/session databases, MCP tokens, `.env`, tool output или workflow artifacts пользователя. Не добавляйте секреты, private keys и содержимое пользовательских репозиториев.

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Fresh independent Terra reviewer that verifies final cumulative outcome, architecture, correctness, security, scope, and evidence for one immutable review input.
 mode: subagent
 hidden: true
@@ -27,7 +27,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve exact contracts, evidence, paths, symbols, IDs, limitations, and causal relationships.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact contracts, evidence, paths, symbols, IDs, limitations, and causal relationships.
 </session_setup>
 
 <role>

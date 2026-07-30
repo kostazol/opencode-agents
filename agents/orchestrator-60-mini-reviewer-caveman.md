@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Cheap independent reviewer for one immutable goal, correctness, architecture, or security lens; persists all evidence-based findings without modifying product files.
 mode: subagent
 hidden: true
@@ -26,7 +26,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve paths, symbols, exact evidence, IDs, uncertainty, and causal relationships.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve paths, symbols, exact evidence, IDs, uncertainty, and causal relationships.
 </session_setup>
 
 <role>

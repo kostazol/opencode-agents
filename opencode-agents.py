@@ -4,19 +4,34 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from datetime import datetime
+import json
 import os
 import shutil
 import stat
 import sys
 import tempfile
+from contextlib import contextmanager
 import uuid
 from pathlib import Path
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
+DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
+DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents", "protocols")
+GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
+GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
+GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
+
+
+def global_instructions(newline: str = "\n") -> bytes:
+    return f"{GLOBAL_INSTRUCTIONS_START}{newline}When `caveman` skill is installed, load it and use it for concise technically complete responses. If skill is unavailable, continue normally.{newline}{GLOBAL_INSTRUCTIONS_END}{newline}".encode()
 LEGACY_AGENT_FILES = (
     "Atlas - Plan Executor.md",
     "Hephaestus - Deep Agent.md",
@@ -36,8 +51,26 @@ LEGACY_AGENT_FILES = (
     "general.md",
     "md-planner.md",
     "orchestrator-caveman-hardcode.md",
+    "orchestrator-caveman.md",
+    "orchestrator-v2-00-orchestrator-caveman.md",
+    "orchestrator-v2-10-workflow-bootstrap-caveman.md",
+    "orchestrator-v2-20-planner-caveman.md",
+    "orchestrator-v2-30-planner-senior-caveman.md",
+    "orchestrator-v2-40-executor-caveman.md",
+    "orchestrator-v2-50-validator-caveman.md",
+    "orchestrator-v2-60-mini-reviewer-caveman.md",
+    "orchestrator-v2-70-review-aggregator-caveman.md",
+    "orchestrator-v2-80-final-reviewer-caveman.md",
     "plan.md",
     "planner-caveman-hardcode.md",
+    "executor-caveman.md",
+    "final-reviewer-caveman.md",
+    "mini-reviewer-caveman.md",
+    "planner-caveman.md",
+    "planner-senior-caveman.md",
+    "review-aggregator-caveman.md",
+    "validator-caveman.md",
+    "workflow-bootstrap-caveman.md",
 )
 
 
@@ -55,7 +88,10 @@ def default_target() -> Path:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Install and update OpenCode agents and protocols.")
     result.add_argument("command", choices=("install", "update", "status"))
-    result.add_argument("--source", type=Path, default=Path(__file__).resolve().parent)
+    result.add_argument("--source", type=Path, help="Use a local source directory instead of GitHub API.")
+    result.add_argument("--repository", default=None, help="GitHub repository URL or owner/name.")
+    result.add_argument("--ref", default=None, help="Git branch, tag, or commit to fetch from GitHub.")
+    result.add_argument("--github-api", default=DEFAULT_GITHUB_API, help=argparse.SUPPRESS)
     result.add_argument("--target", type=Path, default=default_target())
     result.add_argument("--backup-dir", type=Path)
     result.add_argument("--dry-run", action="store_true")
@@ -67,9 +103,142 @@ def source_files(source: Path, target: Path):
     for group in GROUPS:
         source_group = source / group
         if not source_group.is_dir():
+            if group == "skills":
+                continue
             raise RuntimeError(f"source missing {group}/: {source}")
         for source_file in sorted(source_group.glob("*.md")):
-            yield source_file, target / group / source_file.name
+            yield source_file, target / group / source_file.relative_to(source_group)
+
+
+def repository_name(repository: str) -> str:
+    value = repository.strip()
+    if "://" not in value:
+        value = f"https://github.com/{value}"
+    parsed = urlparse(value)
+    if parsed.scheme.lower() != "https" or parsed.netloc.lower() != "github.com":
+        raise RuntimeError(f"unsupported repository URL: {repository}")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 2:
+        raise RuntimeError(f"invalid GitHub repository: {repository}")
+    return f"{parts[0]}/{parts[1].removesuffix('.git')}"
+
+
+class SameHostRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        current = urlparse(req.full_url)
+        destination = urlparse(newurl)
+        if current.netloc.lower() != destination.netloc.lower() or destination.scheme.lower() != "https":
+            raise URLError("refusing unsafe GitHub API redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def github_json(url: str, token: Optional[str]) -> dict:
+    parsed = urlparse(url)
+    if parsed.scheme.lower() != "https":
+        raise RuntimeError("GitHub API URL must use HTTPS")
+    if token and parsed.netloc.lower() != "api.github.com":
+        raise RuntimeError("GITHUB_TOKEN may only be sent to api.github.com")
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "opencode-agents"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        opener = build_opener(SameHostRedirectHandler)
+        with opener.open(Request(url, headers=headers), timeout=30) as response:
+            return json.loads(response.read())
+    except HTTPError as error:
+        raise RuntimeError(f"GitHub API request failed ({error.code}): {url}") from error
+    except (URLError, TimeoutError) as error:
+        raise RuntimeError(f"GitHub API request failed: {url}: {error}") from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise RuntimeError(f"GitHub API returned invalid JSON: {url}") from error
+
+
+@contextmanager
+def prepared_source(source: Optional[Path], repository: Optional[str], ref: str, api_url: str):
+    if source is not None:
+        yield source.expanduser().resolve()
+        return
+    script_path = globals().get("__file__")
+    local_source = Path(script_path).resolve().parent if repository is None and ref is None and script_path and Path(script_path).is_file() else None
+    if local_source is not None:
+        yield local_source
+        return
+    remote = repository or DEFAULT_REPOSITORY
+    repo = repository_name(remote)
+    token = os.environ.get("GITHUB_TOKEN")
+    selected_ref = ref or github_json(f"{api_url.rstrip('/')}/repos/{repo}", token).get("default_branch")
+    if not selected_ref:
+        raise RuntimeError(f"GitHub repository has no default branch: {repo}")
+    tree_url = f"{api_url.rstrip('/')}/repos/{repo}/git/trees/{quote(selected_ref, safe='')}?recursive=1"
+    tree = github_json(tree_url, token)
+    if tree.get("truncated"):
+        raise RuntimeError("GitHub repository tree is truncated; use a narrower ref")
+    with tempfile.TemporaryDirectory(prefix="opencode-agents-") as temporary:
+        root = Path(temporary)
+        entries = [entry for entry in tree.get("tree", []) if entry.get("type") == "blob" and (entry.get("path") == "AGENTS.md" or any(entry.get("path", "").startswith(f"{group}/") for group in GROUPS))]
+        if not entries:
+            raise RuntimeError(f"GitHub repository contains no agent files: {repo}@{selected_ref}")
+        for entry in entries:
+            relative = Path(entry["path"])
+            if relative.is_absolute() or ".." in relative.parts:
+                raise RuntimeError(f"unsafe path from GitHub API: {entry['path']}")
+            content = github_json(f"{api_url.rstrip('/')}/repos/{repo}/git/blobs/{entry['sha']}", token)
+            try:
+                decoded = base64.b64decode(content["content"], validate=False)
+            except (KeyError, ValueError) as error:
+                raise RuntimeError(f"invalid blob response for {entry['path']}") from error
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(decoded)
+        yield root
+
+
+def global_instructions_path(target: Path) -> Path:
+    return target / GLOBAL_INSTRUCTIONS_FILE
+
+
+def source_metadata_file(source: Path) -> Path:
+    instructions = source / GLOBAL_INSTRUCTIONS_FILE
+    if instructions.exists():
+        return instructions
+    for group in GROUPS:
+        files = sorted((source / group).glob("*.md"))
+        if files:
+            return files[0]
+    raise RuntimeError(f"source contains no files for metadata: {source}")
+
+
+def print_caveman_next_step() -> None:
+    print("next: install official Caveman integration")
+    print("npx -y github:JuliusBrussee/caveman -- --only opencode")
+    print("https://github.com/JuliusBrussee/caveman")
+
+
+def rendered_global_instructions(target: Path) -> bytes:
+    path = global_instructions_path(target)
+    if not path.exists():
+        return global_instructions()
+    content = path.read_bytes()
+    newline = "\r\n" if b"\r\n" in content else "\n"
+    guidance = global_instructions(newline)
+    start = content.find(GLOBAL_INSTRUCTIONS_START.encode())
+    end_marker = GLOBAL_INSTRUCTIONS_END.encode()
+    if start < 0:
+        separator = b"" if not content or content.endswith((b"\n", b"\r")) else b"\n"
+        if separator and newline == "\r\n":
+            separator = b"\r\n"
+        return content + separator + guidance
+    end = content.find(end_marker, start)
+    if end < 0:
+        raise RuntimeError(f"global instructions contain incomplete caveman block: {path}")
+    end += len(end_marker)
+    if end < len(content) and content[end:end + 2] == b"\r\n":
+        end += 2
+    elif end < len(content) and content[end:end + 1] == b"\n":
+        end += 1
+    prefix = content[:start]
+    suffix = content[end:]
+    return prefix + guidance + suffix
 
 
 def rendered_content(source: Path, target: Path) -> bytes:
@@ -205,6 +374,10 @@ def validate_target(target: Path) -> None:
         validate_target_group(target / group)
 
 
+def validate_global_instructions(path: Path) -> None:
+    validate_target_file(path)
+
+
 def status(source: Path, target: Path) -> None:
     validate_target(target)
     counts = {"missing": 0, "changed": 0, "current": 0}
@@ -219,6 +392,16 @@ def status(source: Path, target: Path) -> None:
             state = "changed"
         counts[state] += 1
         print(f"{state} {relative}")
+    instructions = global_instructions_path(target)
+    validate_global_instructions(instructions)
+    if not instructions.exists():
+        state = "missing"
+    elif rendered_global_instructions(target) == instructions.read_bytes():
+        state = "current"
+    else:
+        state = "changed"
+    counts[state] += 1
+    print(f"{state} {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
     print("summary " + " ".join(f"{key}={counts[key]}" for key in counts))
 
 
@@ -237,7 +420,18 @@ def install(source: Path, target: Path, dry_run: bool) -> None:
             if not dry_run:
                 atomic_write(source_file, rendered_content(source_file, target), target_file)
             installed += 1
+    instructions = global_instructions_path(target)
+    validate_global_instructions(instructions)
+    if instructions.exists() and rendered_global_instructions(target) == instructions.read_bytes():
+        print(f"skip {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+        skipped += 1
+    else:
+        print(f"copy global caveman guidance -> {instructions}" if dry_run else f"install {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+        if not dry_run:
+            atomic_write(source_metadata_file(source), rendered_global_instructions(target), instructions)
+        installed += 1
     print(f"summary installed={installed} skipped={skipped}")
+    print_caveman_next_step()
 
 
 def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, prune_legacy: bool) -> None:
@@ -284,6 +478,27 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
                     safe_remove(target_file)
                 counts["backup"] += 1
                 counts["pruned"] += 1
+        instructions = global_instructions_path(target)
+        validate_global_instructions(instructions)
+        rendered = rendered_global_instructions(target)
+        if instructions.exists() and rendered == instructions.read_bytes():
+            print(f"current {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+            counts["unchanged"] += 1
+        elif instructions.exists():
+            print(f"update {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+            if not dry_run:
+                backup_file = backup / GLOBAL_INSTRUCTIONS_FILE
+                backup_copy(instructions, backup_file)
+                updated_files.append((instructions, backup_file))
+                atomic_write(source_metadata_file(source), rendered, instructions)
+            counts["backup"] += 1
+            counts["updated"] += 1
+        else:
+            print(f"add {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+            if not dry_run:
+                added_files.append(instructions)
+                atomic_write(source_metadata_file(source), rendered, instructions)
+            counts["added"] += 1
     except (OSError, RuntimeError) as error:
         if not dry_run:
             rollback_errors = []
@@ -302,26 +517,27 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
         raise
     backup_text = "not-created" if dry_run else str(backup)
     print(f"summary updated={counts['updated']} added={counts['added']} pruned={counts['pruned']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
+    print_caveman_next_step()
 
 
 def main() -> int:
     arguments = parser().parse_args()
-    source = arguments.source.expanduser().resolve()
     target = arguments.target.expanduser().resolve()
     try:
         reject_symlink_components(arguments.target.expanduser(), "target path")
-        if arguments.command == "status":
-            if arguments.dry_run:
-                raise RuntimeError("--dry-run cannot be used with status")
-            if arguments.prune_legacy:
-                raise RuntimeError("--prune-legacy can be used only with update")
-            status(source, target)
-        elif arguments.command == "install":
-            if arguments.prune_legacy:
-                raise RuntimeError("--prune-legacy can be used only with update")
-            install(source, target, arguments.dry_run)
-        else:
-            update(source, target, arguments.backup_dir.expanduser() if arguments.backup_dir else None, arguments.dry_run, arguments.prune_legacy)
+        with prepared_source(arguments.source, arguments.repository, arguments.ref, arguments.github_api) as source:
+            if arguments.command == "status":
+                if arguments.dry_run:
+                    raise RuntimeError("--dry-run cannot be used with status")
+                if arguments.prune_legacy:
+                    raise RuntimeError("--prune-legacy can be used only with update")
+                status(source, target)
+            elif arguments.command == "install":
+                if arguments.prune_legacy:
+                    raise RuntimeError("--prune-legacy can be used only with update")
+                install(source, target, arguments.dry_run)
+            else:
+                update(source, target, arguments.backup_dir.expanduser() if arguments.backup_dir else None, arguments.dry_run, arguments.prune_legacy)
     except (OSError, RuntimeError) as error:
         print(f"opencode-agents: {error}", file=sys.stderr)
         return 1

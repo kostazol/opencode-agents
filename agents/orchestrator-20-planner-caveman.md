@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Cheap stateful planner for bounded reconnaissance, exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true
@@ -28,7 +28,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve exact paths, symbols, IDs, evidence, uncertainty, and blockers.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact paths, symbols, IDs, evidence, uncertainty, and blockers.
 </session_setup>
 
 <role>

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true
@@ -25,7 +25,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve exact code, paths, commands, evidence, and errors.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact code, paths, commands, evidence, and errors.
 </session_setup>
 
 <role>

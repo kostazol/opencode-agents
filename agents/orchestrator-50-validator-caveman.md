@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -28,7 +28,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve commands, working directories, exits, decisive output, paths, IDs, and uncertainty.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve commands, working directories, exits, decisive output, paths, IDs, and uncertainty.
 </session_setup>
 
 <role>

@@ -4,6 +4,8 @@ import tempfile
 import unittest
 import os
 import importlib.util
+import base64
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 
@@ -30,6 +32,7 @@ class CliTests(unittest.TestCase):
 
             self.run_cli(source, target, "install")
             self.assertEqual((target / "agents/example.md").read_text(), f"'{target}/protocols/orchestrator-v2.md': allow\nRead {target}/protocols/orchestrator-v2.md\n")
+            self.assertIn("caveman", (target / "AGENTS.md").read_text())
             self.run_cli(source, target, "install")
 
             (target / "agents/example.md").write_text("local-change\n", encoding="utf-8")
@@ -40,7 +43,7 @@ class CliTests(unittest.TestCase):
             result = self.run_cli(source, target, "status", capture_output=True)
             self.assertIn("current agents/example.md", result.stdout)
 
-            legacy = target / "agents/build.md"
+            legacy = target / "agents/orchestrator-v2-00-orchestrator-caveman.md"
             unknown = target / "agents/user-agent.md"
             legacy.write_text("legacy\n", encoding="utf-8")
             unknown.write_text("user\n", encoding="utf-8")
@@ -66,12 +69,16 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
-            prompts = list((target / "agents").glob("*.md"))
+            prompts = sorted((target / "agents").glob("*.md"))
             self.assertEqual(len(prompts), 9)
             for prompt in prompts:
                 content = prompt.read_text(encoding="utf-8")
                 self.assertNotIn("__OPENCODE_PROTOCOL_PATH_", content)
                 self.assertIn(str(target / "protocols/orchestrator-v2.md"), content)
+            self.assertEqual([prompt.name for prompt in prompts], ["orchestrator-00-main-caveman.md", "orchestrator-10-workflow-bootstrap-caveman.md", "orchestrator-20-planner-caveman.md", "orchestrator-30-planner-senior-caveman.md", "orchestrator-40-executor-caveman.md", "orchestrator-50-validator-caveman.md", "orchestrator-60-mini-reviewer-caveman.md", "orchestrator-70-review-aggregator-caveman.md", "orchestrator-80-final-reviewer-caveman.md"])
+            self.assertIn("name: orchestrator", (target / "agents/orchestrator-00-main-caveman.md").read_text(encoding="utf-8"))
+            self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main-caveman.md").read_text(encoding="utf-8"))
+            self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor-caveman.md").read_text(encoding="utf-8"))
 
     def test_path_writer_for_windows_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -81,6 +88,40 @@ class CliTests(unittest.TestCase):
             source.write_text("source\n", encoding="utf-8")
             OPENCODE_AGENTS.atomic_write_path(source, b"rendered\n", target)
             self.assertEqual(target.read_text(), "rendered\n")
+
+    def test_github_api_source_does_not_need_clone(self):
+        tree = {"tree": [{"path": "AGENTS.md", "type": "blob", "sha": "a"}, {"path": "agents/example.md", "type": "blob", "sha": "b"}, {"path": "protocols/example.md", "type": "blob", "sha": "c"}]}
+        blobs = {"a": "global\n", "b": "agent\n", "c": "protocol\n"}
+
+        def github_response(url, token):
+            if "/git/trees/" in url:
+                return tree
+            sha = url.rsplit("/", 1)[1]
+            return {"content": base64.b64encode(blobs[sha].encode()).decode()}
+
+        with patch.object(OPENCODE_AGENTS, "github_json", side_effect=github_response):
+            with OPENCODE_AGENTS.prepared_source(None, "kostazol/opencode-agents", "main", "https://api.github.test") as source:
+                self.assertEqual((source / "agents/example.md").read_text(), "agent\n")
+                self.assertEqual((source / "protocols/example.md").read_text(), "protocol\n")
+
+    def test_repository_name_accepts_url_and_owner_name(self):
+        self.assertEqual(OPENCODE_AGENTS.repository_name("kostazol/opencode-agents"), "kostazol/opencode-agents")
+        self.assertEqual(OPENCODE_AGENTS.repository_name("https://github.com/kostazol/opencode-agents.git"), "kostazol/opencode-agents")
+        with self.assertRaisesRegex(RuntimeError, "unsupported repository URL"):
+            OPENCODE_AGENTS.repository_name("http://github.com/kostazol/opencode-agents")
+        with self.assertRaisesRegex(RuntimeError, "unsupported repository URL"):
+            OPENCODE_AGENTS.repository_name("https://github.com:443/kostazol/opencode-agents")
+
+    def test_github_json_reports_invalid_json(self):
+        response = MagicMock()
+        response.read.return_value = b"{"
+        context = MagicMock()
+        context.__enter__.return_value = response
+        opener = MagicMock()
+        opener.open.return_value = context
+        with patch.object(OPENCODE_AGENTS, "build_opener", return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, "GitHub API returned invalid JSON"):
+                OPENCODE_AGENTS.github_json("https://api.github.com/repos/kostazol/opencode-agents", None)
 
     @staticmethod
     def run_cli(source, target, command, *arguments, capture_output=False):
