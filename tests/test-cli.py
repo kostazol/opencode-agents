@@ -44,11 +44,14 @@ class CliTests(unittest.TestCase):
             self.assertIn("current agents/example.md", result.stdout)
 
             legacy = target / "agents/orchestrator-v2-00-orchestrator-caveman.md"
+            built_in = target / "agents/build.md"
             unknown = target / "agents/user-agent.md"
             legacy.write_text("legacy\n", encoding="utf-8")
+            built_in.write_text("built-in\n", encoding="utf-8")
             unknown.write_text("user\n", encoding="utf-8")
             self.run_cli(source, target, "update", "--backup-dir", str(backup), "--prune-legacy")
             self.assertFalse(legacy.exists())
+            self.assertEqual(built_in.read_text(), "built-in\n")
             self.assertEqual(unknown.read_text(), "user\n")
 
     def test_opencode_config_dir_default(self):

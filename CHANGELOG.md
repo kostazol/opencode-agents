@@ -17,7 +17,7 @@
 - Hidden workflow agents conditionally use Caveman ultra mode and continue normally when skill is unavailable.
 - CLI manages agents, protocols, and global guidance while preserving unrelated global instructions; it does not bundle or install a Caveman copy.
 - Existing local `--source` workflows remain supported.
-- Run `update --prune-legacy` to remove prior Orchestrator v2 agent files; unknown user prompts remain untouched.
+- Run `update --prune-legacy` to remove prior Orchestrator v2 agent files; built-in and unknown user prompts remain untouched.
 
 ## 2.1.0 - 2026-07-30
 

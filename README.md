@@ -77,7 +77,7 @@ py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.github
 py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" status
 ```
 
-`install` добавляет отсутствующие файлы. `update` заменяет изменённые файлы и создаёт backup. `update --prune-legacy` удаляет только старые имена агентов, ранее поставлявшиеся этим репозиторием, включая имена до current `orchestrator-` grouping. Неизвестные пользовательские prompt-файлы не удаляются.
+`install` добавляет отсутствующие файлы. `update` заменяет изменённые файлы и создаёт backup. `update --prune-legacy` удаляет только прежние имена Orchestrator и его workflow-подагентов. Built-in и неизвестные пользовательские prompt-файлы не удаляются.
 
 Для другого fork или версии используйте `--repository owner/name` либо URL и `--ref branch-or-tag`:
 
