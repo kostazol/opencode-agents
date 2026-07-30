@@ -5,15 +5,15 @@
 ## Состав
 
 ```text
-orchestrator-00-main-caveman (UI: orchestrator)
-├── orchestrator-10-workflow-bootstrap-caveman
-├── orchestrator-20-planner-caveman
-├── orchestrator-30-planner-senior-caveman (Terra)
-├── orchestrator-40-executor-caveman
-├── orchestrator-50-validator-caveman
-├── orchestrator-60-mini-reviewer-caveman
-├── orchestrator-70-review-aggregator-caveman
-└── orchestrator-80-final-reviewer-caveman (Terra)
+orchestrator-00-main (UI: orchestrator)
+├── orchestrator-10-workflow-bootstrap
+├── orchestrator-20-planner
+├── orchestrator-30-planner-senior (Terra)
+├── orchestrator-40-executor
+├── orchestrator-50-validator
+├── orchestrator-60-mini-reviewer
+├── orchestrator-70-review-aggregator
+└── orchestrator-80-final-reviewer (Terra)
 ```
 
 - `agents/` — исходные prompt-файлы агентов.
@@ -52,8 +52,8 @@ npx -y github:JuliusBrussee/caveman -- --only opencode
 
 Только роли, которым нужна независимость senior-уровня, используют фиксированную модель:
 
-- `orchestrator-30-planner-senior-caveman`: `openai/gpt-5.6-terra`;
-- `orchestrator-80-final-reviewer-caveman`: `openai/gpt-5.6-terra`.
+- `orchestrator-30-planner-senior`: `openai/gpt-5.6-terra`;
+- `orchestrator-80-final-reviewer`: `openai/gpt-5.6-terra`.
 
 Остальные агенты наследуют выбранную модель OpenCode.
 

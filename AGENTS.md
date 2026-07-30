@@ -9,7 +9,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 - `protocols/orchestrator-v2.md` owns shared workflow invariants, IDs, gates, handoff schemas, and final-state rules.
 - Each file under `agents/` owns only its role, permissions, modes, procedure, and compact response contract.
 - Caveman is optional response compression support; workflow agents must continue when it is unavailable.
-- `agents/` contains only `orchestrator-00-main-caveman` and its eight direct Orchestrator v2 roles, ordered with `orchestrator-10` through `orchestrator-80` filename prefixes.
+- `agents/` contains only `orchestrator-00-main` and its eight direct Orchestrator v2 roles, ordered with `orchestrator-10` through `orchestrator-80` filename prefixes.
 - Agent frontmatter must remain valid OpenCode configuration.
 - Explicit user instructions and platform safety constraints outrank repository prototypes.
 
@@ -34,7 +34,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 
 ## Model policy
 
-- Pin Terra only for `orchestrator-30-planner-senior-caveman` and `orchestrator-80-final-reviewer-caveman` unless an explicit design decision changes this policy.
+- Pin Terra only for `orchestrator-30-planner-senior` and `orchestrator-80-final-reviewer` unless an explicit design decision changes this policy.
 - Leave bootstrap, cheap planner, executor, validator, mini reviewer, and aggregator model-agnostic so they inherit the selected/default model.
 - Model changes require rationale in `CHANGELOG.md`.
 
@@ -75,7 +75,7 @@ When adding or changing a mode, state, ID, or artifact, verify:
 - Planner agents do not implement or run tests.
 - ID ownership follows protocol: bootstrap owns request/initial IDs, validator owns plan/product/evidence/review-input IDs, aggregator owns mini/final-review IDs, and planner agents only consume them.
 - Hidden workflow subagents remain callable by orchestrator but are less likely to be invoked directly.
-- `orchestrator-00-main-caveman` is user-facing as `orchestrator` and must not require or explicitly load Caveman; hidden workflow agents may load it conditionally and use ultra mode.
+- `orchestrator-00-main` is user-facing as `orchestrator` and must not require or explicitly load Caveman; hidden workflow agents may load it conditionally and use ultra mode.
 
 ## Validation
 

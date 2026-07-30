@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.2.0
+# OpenCode Agents version: 2.3.0
 description: Cheap stateful planner for bounded reconnaissance, exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true

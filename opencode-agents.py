@@ -21,7 +21,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents", "protocols")
@@ -35,6 +35,15 @@ def global_instructions(newline: str = "\n") -> bytes:
 LEGACY_AGENT_FILES = (
     "orchestrator-caveman-hardcode.md",
     "orchestrator-caveman.md",
+    "orchestrator-00-main-caveman.md",
+    "orchestrator-10-workflow-bootstrap-caveman.md",
+    "orchestrator-20-planner-caveman.md",
+    "orchestrator-30-planner-senior-caveman.md",
+    "orchestrator-40-executor-caveman.md",
+    "orchestrator-50-validator-caveman.md",
+    "orchestrator-60-mini-reviewer-caveman.md",
+    "orchestrator-70-review-aggregator-caveman.md",
+    "orchestrator-80-final-reviewer-caveman.md",
     "orchestrator-v2-00-orchestrator-caveman.md",
     "orchestrator-v2-10-workflow-bootstrap-caveman.md",
     "orchestrator-v2-20-planner-caveman.md",

@@ -43,7 +43,7 @@ class CliTests(unittest.TestCase):
             result = self.run_cli(source, target, "status", capture_output=True)
             self.assertIn("current agents/example.md", result.stdout)
 
-            legacy = target / "agents/orchestrator-v2-00-orchestrator-caveman.md"
+            legacy = target / "agents/orchestrator-00-main-caveman.md"
             built_in = target / "agents/build.md"
             unknown = target / "agents/user-agent.md"
             legacy.write_text("legacy\n", encoding="utf-8")
@@ -78,10 +78,10 @@ class CliTests(unittest.TestCase):
                 content = prompt.read_text(encoding="utf-8")
                 self.assertNotIn("__OPENCODE_PROTOCOL_PATH_", content)
                 self.assertIn(str(target / "protocols/orchestrator-v2.md"), content)
-            self.assertEqual([prompt.name for prompt in prompts], ["orchestrator-00-main-caveman.md", "orchestrator-10-workflow-bootstrap-caveman.md", "orchestrator-20-planner-caveman.md", "orchestrator-30-planner-senior-caveman.md", "orchestrator-40-executor-caveman.md", "orchestrator-50-validator-caveman.md", "orchestrator-60-mini-reviewer-caveman.md", "orchestrator-70-review-aggregator-caveman.md", "orchestrator-80-final-reviewer-caveman.md"])
-            self.assertIn("name: orchestrator", (target / "agents/orchestrator-00-main-caveman.md").read_text(encoding="utf-8"))
-            self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main-caveman.md").read_text(encoding="utf-8"))
-            self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor-caveman.md").read_text(encoding="utf-8"))
+            self.assertEqual([prompt.name for prompt in prompts], ["orchestrator-00-main.md", "orchestrator-10-workflow-bootstrap.md", "orchestrator-20-planner.md", "orchestrator-30-planner-senior.md", "orchestrator-40-executor.md", "orchestrator-50-validator.md", "orchestrator-60-mini-reviewer.md", "orchestrator-70-review-aggregator.md", "orchestrator-80-final-reviewer.md"])
+            self.assertIn("name: orchestrator", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
+            self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
+            self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8"))
 
     def test_path_writer_for_windows_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:

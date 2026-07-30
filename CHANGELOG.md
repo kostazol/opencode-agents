@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0 - 2026-07-31
+
+### Changed
+
+- Removed `caveman` from Orchestrator agent filenames and preserved optional Caveman skill support inside hidden workflow prompts.
+
+### Migration
+
+- Run `update --prune-legacy` to remove prior `-caveman` filenames.
+
 ## 2.2.0 - 2026-07-30
 
 ### Added
