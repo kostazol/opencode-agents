@@ -4,11 +4,13 @@ Private source repository for personal OpenCode agent prompts and shared orchest
 
 ## Contents
 
-- `agents/` — snapshots of global agents from `~/.config/opencode/agents/`.
+- `agents/` — portable source prompts for Orchestrator v2 roles.
 - `protocols/` — shared protocols loaded by coordinated agents.
 - `AGENTS.md` — maintenance rules for humans and coding agents.
 - `CHANGELOG.md` — notable prompt and workflow changes.
 - `VERSION` — repository configuration version.
+
+Repository keeps only Orchestrator v2 agents: orchestrator, bootstrap, planners, executor, validator, mini-reviewer, aggregator, and final-reviewer.
 
 ## Orchestrator v2
 
@@ -52,42 +54,35 @@ Other Orchestrator v2 agents omit `model` and inherit the active/default model. 
 
 ## Installation
 
-The current prompts use the personal absolute protocol path:
-
-```text
-/home/kostaz/.config/opencode/protocols/orchestrator-v2.md
-```
-
-Preview differences before installation:
+CLI installs and updates agent prompts plus shared protocols:
 
 ```bash
-diff -ru agents ~/.config/opencode/agents || true
-diff -ru protocols ~/.config/opencode/protocols || true
+# Linux/macOS
+python3 opencode-agents.py install
+python3 opencode-agents.py update --prune-legacy
+python3 opencode-agents.py status
+
+# Windows
+py -3 opencode-agents.py install
+py -3 opencode-agents.py update --prune-legacy
+py -3 opencode-agents.py status
 ```
 
-First installation without overwriting existing files:
+Run commands from repository root. Python CLI works on Windows, Linux, and macOS. `install` copies only missing files. `update` backs up changed files before replacement. `update --prune-legacy` removes only former repository agent names; unknown user prompts remain. Use `--dry-run` to preview updates, `--target DIR` to select another OpenCode config root, and `--backup-dir DIR` to control backup location. Unix users may use `./bin/opencode-agents` as convenience wrapper.
 
-```bash
-mkdir -p ~/.config/opencode/agents ~/.config/opencode/protocols
-cp -n agents/*.md ~/.config/opencode/agents/
-cp -n protocols/*.md ~/.config/opencode/protocols/
-```
-
-Updating replaces matching live prompts. Back them up first:
-
-```bash
-set -eu
-backup="$HOME/.config/opencode-backup-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$backup/agents" "$backup/protocols"
-cp -a ~/.config/opencode/agents/. "$backup/agents/"
-cp -a ~/.config/opencode/protocols/. "$backup/protocols/"
-test -d "$backup/agents" -a -d "$backup/protocols"
-mkdir -p ~/.config/opencode/agents ~/.config/opencode/protocols
-cp agents/*.md ~/.config/opencode/agents/
-cp protocols/*.md ~/.config/opencode/protocols/
-```
+Source prompts use portable protocol-path placeholders. CLI renders them to `<target>/protocols/orchestrator-v2.md` during installation and update, including matching OpenCode permissions.
 
 Restart OpenCode after installation. Agent and protocol files are loaded at process start.
+
+Run CLI checks:
+
+```bash
+# Linux/macOS
+python3 tests/test-cli.py
+
+# Windows
+py -3 tests/test-cli.py
+```
 
 ## Validation
 

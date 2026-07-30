@@ -22,3 +22,5 @@ id_ecdsa*
 id_dsa*
 tool-output/
 sessions/
+__pycache__/
+*.pyc

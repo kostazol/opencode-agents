@@ -1,4 +1,5 @@
 ---
+# OpenCode Agents version: 2.1.0
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -7,7 +8,7 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    /home/kostaz/.config/opencode/protocols/orchestrator-v2.md: allow
+    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
   read:
     "*": allow
     "*.env": ask
@@ -27,7 +28,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `/home/kostaz/.config/opencode/protocols/orchestrator-v2.md` once. Apply protocol version 2. Use ultra mode for final response. Preserve commands, working directories, exits, decisive output, paths, IDs, and uncertainty.
+Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve commands, working directories, exits, decisive output, paths, IDs, and uncertainty.
 </session_setup>
 
 <role>

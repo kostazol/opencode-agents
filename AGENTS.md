@@ -8,6 +8,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 
 - `protocols/orchestrator-v2.md` owns shared workflow invariants, IDs, gates, handoff schemas, and final-state rules.
 - Each file under `agents/` owns only its role, permissions, modes, procedure, and compact response contract.
+- `agents/` contains only `orchestrator-caveman` and its eight direct Orchestrator v2 roles: workflow bootstrap, cheap and senior planners, executor, validator, mini reviewer, aggregator, and final reviewer.
 - Agent frontmatter must remain valid OpenCode configuration.
 - Explicit user instructions and platform safety constraints outrank repository prototypes.
 
@@ -20,6 +21,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 5. Use positive gate language. Keep explicit prohibitions only for security, secrets, product ownership, reviewer independence, and Git history/index safety.
 6. Preserve role separation and least-privilege permissions.
 7. Run configuration validation after installation and obtain an independent prompt review before release.
+8. Run root `opencode-agents.py` tests and preserve Windows, Linux, and macOS compatibility.
 
 ## Prompt size
 
@@ -67,7 +69,7 @@ When adding or changing a mode, state, ID, or artifact, verify:
 ## Permissions
 
 - Keep wildcard denial before specific allows because OpenCode applies the last matching rule.
-- Shared protocol consumers need explicit `external_directory` access to `/home/kostaz/.config/opencode/protocols/orchestrator-v2.md`.
+- Shared protocol consumers use `__OPENCODE_PROTOCOL_PATH_YAML__` and `__OPENCODE_PROTOCOL_PATH_TEXT__`; installer renders both placeholders to target protocol path. Do not commit machine-specific protocol paths.
 - Reviewers may write only their supplied review artifact class.
 - Planner agents do not implement or run tests.
 - ID ownership follows protocol: bootstrap owns request/initial IDs, validator owns plan/product/evidence/review-input IDs, aggregator owns mini/final-review IDs, and planner agents only consume them.
@@ -75,11 +77,13 @@ When adding or changing a mode, state, ID, or artifact, verify:
 
 ## Validation
 
-Install or synchronize changed files into `~/.config/opencode/`, then run:
+Install or synchronize changed files with root CLI, then run:
 
 ```bash
 opencode debug config >/dev/null
 ```
+
+Run `python3 tests/test-cli.py` on Linux/macOS and `py -3 tests/test-cli.py` on Windows. Validate rendered prompts against selected target path and test `update --prune-legacy` without deleting unknown user prompts.
 
 Verify every modified text file:
 
@@ -94,6 +98,7 @@ Independent review must return no required correctness or operability findings b
 ## Versioning
 
 - Update `VERSION` for released configuration changes.
+- Keep `VERSION`, `opencode-agents.py:VERSION`, and every agent version marker identical. Increment once per committed change set; do not increment again for uncommitted follow-up fixes.
 - Update `CHANGELOG.md` with behavior, compatibility, and migration notes.
 - Use semantic versions:
   - major: incompatible protocol/state/installation change;

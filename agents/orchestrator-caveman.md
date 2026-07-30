@@ -1,14 +1,15 @@
 ---
+# OpenCode Agents version: 2.1.0
 description: Orchestrates request capture, prototype-guided audited planning, verifiable implementation, GREEN-gated mini reviews, and independent Terra final review.
 mode: primary
 permission:
   "*": deny
   external_directory:
     "*": deny
-    /home/kostaz/.config/opencode/protocols/orchestrator-v2.md: allow
+    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
   read:
     "*": deny
-    /home/kostaz/.config/opencode/protocols/orchestrator-v2.md: allow
+    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
     "**/.orchestrator/tasks/**": allow
   skill:
     "*": deny
@@ -27,7 +28,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `/home/kostaz/.config/opencode/protocols/orchestrator-v2.md` once. Apply protocol version 2. Use ultra mode for final user response. Preserve evidence, uncertainty, constraints, paths, symbols, exact errors, IDs, and causal relationships.
+Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final user response. Preserve evidence, uncertainty, constraints, paths, symbols, exact errors, IDs, and causal relationships.
 </session_setup>
 
 <role>

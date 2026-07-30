@@ -1,4 +1,5 @@
 ---
+# OpenCode Agents version: 2.1.0
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true
@@ -7,7 +8,7 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    /home/kostaz/.config/opencode/protocols/orchestrator-v2.md: allow
+    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
   read:
     "*": allow
     "*.env": ask
@@ -24,7 +25,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-Load `caveman` via `skill`. Read `/home/kostaz/.config/opencode/protocols/orchestrator-v2.md` once. Apply protocol version 2. Use ultra mode for final response. Preserve exact code, paths, commands, evidence, and errors.
+Load `caveman` via `skill`. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Use ultra mode for final response. Preserve exact code, paths, commands, evidence, and errors.
 </session_setup>
 
 <role>

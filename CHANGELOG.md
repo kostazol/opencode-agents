@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.1.0 - 2026-07-30
+
+### Added
+
+- `bin/opencode-agents` CLI with safe `install`, backed-up `update`, and `status` commands.
+- CLI smoke tests.
+- Explicit `2.1.0` version marker in every agent prompt.
+- Cross-platform Python CLI runnable from repository root.
+- Repository scope reduced to Orchestrator v2 agents and their direct workflow roles.
+- Portable protocol-path rendering for installed agent prompts.
+- `update --prune-legacy` for explicit removal of former repository agents.
+
+### Compatibility
+
+- Python CLI requires Python 3.9 or newer. Use `python3` on Linux/macOS or `py -3` on Windows.
+
+### Migration
+
+- Replace manual prompt copying with root CLI: `python3 opencode-agents.py install` on Linux/macOS or `py -3 opencode-agents.py install` on Windows.
+- Run `update --prune-legacy` once to remove only former repository agent names; unknown user prompts remain untouched.
+
 ## 2.0.0 - 2026-07-30
 
 ### Added
