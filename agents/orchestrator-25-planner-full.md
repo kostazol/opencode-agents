@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.1
+# OpenCode Agents version: 3.0.2
 description: Single-model structural planning authority that performs reconnaissance, complete prototype-aware planning, adversarial audit, and replanning without model overrides.
 mode: subagent
 hidden: true
@@ -35,6 +35,8 @@ permission:
     "*/.orchestrator/tasks/*/plan/audit.md": allow
     ".orchestrator/tasks/*/plan/structure.json": allow
     "*/.orchestrator/tasks/*/plan/structure.json": allow
+    ".orchestrator/tasks/*/status.md": allow
+    "*/.orchestrator/tasks/*/status.md": allow
   task: deny
 ---
 
@@ -61,7 +63,7 @@ Read contract, repository instructions, baseline, and likely implementation surf
 </recon>
 
 <planning priority="critical">
-Read every request, contract, baseline, recon map, repository instructions, and current IDs. Resolve acceptance, exclusions, constraints, high-impact facts, risks, and assumptions. Build independently observable, buildable, testable stages with acceptance IDs, dependencies, workspace, reads, exclusive product/artifact writes, consumers, prototype requirements, validation, review profile, and pass condition. Build DAG before waves; every product-mutating wave contains exactly one sequential stage. Define prototype novelty evidence, RED/GREEN, targeted, affected, and risk-required broad validation. Map all acceptance to stages and final evidence. Write `plan/master.md` and schema-versioned `plan/structure.json`; validator computes IDs.
+Read every request, contract, baseline, recon map, repository instructions, and current IDs. Resolve acceptance, exclusions, constraints, high-impact facts, risks, and assumptions. Build independently observable, buildable, testable stages with acceptance IDs, dependencies, workspace, reads, exclusive product/artifact writes, consumers, prototype requirements, validation, review profile, and pass condition. Build DAG before waves; every product-mutating wave contains exactly one sequential stage. Define prototype novelty evidence, RED/GREEN, targeted, affected, and risk-required broad validation. Map all acceptance to stages and final evidence. Write `plan/master.md` and schema-versioned `plan/structure.json`; validator computes IDs. Atomically refresh non-authoritative `status.md` with confirmed planning phase, stage/total, step, next action, and attention.
 </planning>
 
 <audit>

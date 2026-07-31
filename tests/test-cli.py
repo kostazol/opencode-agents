@@ -285,19 +285,19 @@ class CliTests(unittest.TestCase):
 
         cases = {
             "orchestrator-10-workflow-bootstrap.md": (
-                [".gitignore", "ET.API.3/.gitignore", "services/ET.API.3/.gitignore", ".orchestrator/tasks/t/manifest.json", "ET.API.3/.orchestrator/tasks/t/contract.md", "services/ET.API.3/.orchestrator/tasks/t/requests/R001.md", ".orchestrator/tasks/t/baseline/index.json"],
+                [".gitignore", "ET.API.3/.gitignore", "services/ET.API.3/.gitignore", ".orchestrator/tasks/t/manifest.json", "ET.API.3/.orchestrator/tasks/t/contract.md", "services/ET.API.3/.orchestrator/tasks/t/requests/R001.md", ".orchestrator/tasks/t/baseline/index.json", "ET.API.3/.orchestrator/tasks/t/status.md"],
                 ["not.gitignore", "ET.API.3/not.gitignore", ".orchestrator/tasks/t/plan/master.md", ".orchestrator/tasks/t/reviews/mini/lanes/lane.md", "ET.API.3/Program.cs"],
             ),
             "orchestrator-20-planner.md": (
-                [".orchestrator/tasks/t/recon/index.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/dispatch/S001.json", r"services\ET.API.3\.orchestrator\tasks\t\recon\index.md", ".orchestrator/tasks/t/stages/S001.md"],
+                [".orchestrator/tasks/t/recon/index.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/dispatch/S001.json", r"services\ET.API.3\.orchestrator\tasks\t\recon\index.md", ".orchestrator/tasks/t/stages/S001.md", "ET.API.3/.orchestrator/tasks/t/status.md"],
                 [".orchestrator/tasks/t/recon/other.md", ".orchestrator/tasks/t/plan/audit.md", ".orchestrator/tasks/t/recon/index.json", r"services\ET.API.3\.orchestrator\tasks\t\recon\index.json", "ET.API.3/Program.cs"],
             ),
             "orchestrator-25-planner-full.md": (
-                [".orchestrator/tasks/t/recon/prototypes.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/audit.md", ".orchestrator/tasks/t/plan/structure.json"],
+                [".orchestrator/tasks/t/recon/prototypes.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/audit.md", ".orchestrator/tasks/t/plan/structure.json", ".orchestrator/tasks/t/status.md", "ET.API.3/.orchestrator/tasks/t/status.md"],
                 [".orchestrator/tasks/t/plan/dispatch/S001.json", ".orchestrator/tasks/t/stages/S001.md", "ET.API.3/Program.cs"],
             ),
             "orchestrator-30-planner-senior.md": (
-                [".orchestrator/tasks/t/plan/master.md", "ET.API.3/.orchestrator/tasks/t/plan/audit.md", "services/ET.API.3/.orchestrator/tasks/t/plan/structure.json"],
+                [".orchestrator/tasks/t/plan/master.md", "ET.API.3/.orchestrator/tasks/t/plan/audit.md", "services/ET.API.3/.orchestrator/tasks/t/plan/structure.json", ".orchestrator/tasks/t/status.md", "ET.API.3/.orchestrator/tasks/t/status.md"],
                 [".orchestrator/tasks/t/plan/dispatch/S001.json", ".orchestrator/tasks/t/recon/index.md", "ET.API.3/Program.cs"],
             ),
             "orchestrator-50-validator.md": (

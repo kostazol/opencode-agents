@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.1
+# OpenCode Agents version: 3.0.2
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true

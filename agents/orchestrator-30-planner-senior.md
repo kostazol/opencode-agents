@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.1
+# OpenCode Agents version: 3.0.2
 description: Terra structural planning authority that builds and adversarially audits complete prototype-aware plans of verifiable implementation stages.
 mode: subagent
 hidden: true
@@ -30,6 +30,8 @@ permission:
     "*/.orchestrator/tasks/*/plan/audit.md": allow
     ".orchestrator/tasks/*/plan/structure.json": allow
     "*/.orchestrator/tasks/*/plan/structure.json": allow
+    ".orchestrator/tasks/*/status.md": allow
+    "*/.orchestrator/tasks/*/status.md": allow
   task: deny
 ---
 
@@ -65,7 +67,7 @@ Own goal contract, acceptance, exclusions, public/architectural/security/persist
 7. Give every stage one result, acceptance IDs, dependencies, workspace path, reads, exclusive product writes, exact artifact writes, direct consumers/config/generated/persistent state, prototype requirement, validation, review profile, and pass condition.
 8. Build DAG before waves. Put exactly one product-mutating stage in each sequential wave. Parallel waves contain only read-only stages on one frozen product snapshot. Add integration barrier when individual checks cannot prove combined behavior.
 9. Define baseline, RED/GREEN, targeted, affected, and risk/request-required broad validation. New tests are required for behavior not already proven; other artifacts use applicable validators.
-10. Map every acceptance criterion to stages and final evidence. Write schema-versioned `plan/structure.json`; cheap planner owns capsules.
+10. Map every acceptance criterion to stages and final evidence. Write schema-versioned `plan/structure.json`; cheap planner owns capsules. Atomically refresh non-authoritative `status.md` with confirmed planning phase, stage/total, step, next action, and attention.
 </planning>
 
 <risk_profiles>

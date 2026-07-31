@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.2 - 2026-08-01
+
+### Fixed
+
+- Granted structural planners exact `status.md` artifact writes and required them to refresh its planning state, preventing mandatory status writes from being denied during plan creation or replanning.
+- Preserved least-privilege plan ownership: each workflow role retains only its required `plan/` artifact paths instead of broad `plan/**` access.
+
+### Compatibility
+
+- Restart OpenCode after updating agents because permissions are loaded at process start.
+
 ## 3.0.1 - 2026-07-31
 
 ### Removed

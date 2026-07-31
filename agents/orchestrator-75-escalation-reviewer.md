@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.1
+# OpenCode Agents version: 3.0.2
 description: Independent Terra reviewer for a bounded post-budget stage escalation on one immutable current review input.
 mode: subagent
 hidden: true
