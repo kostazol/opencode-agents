@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Terra structural planning authority that builds and adversarially audits complete prototype-aware plans of verifiable implementation stages.
 mode: subagent
 hidden: true
@@ -22,8 +22,12 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/plan/*.md": allow
-    "**/.orchestrator/tasks/**/plan/*.json": allow
+    ".orchestrator/tasks/*/plan/master.md": allow
+    "*/.orchestrator/tasks/*/plan/master.md": allow
+    ".orchestrator/tasks/*/plan/audit.md": allow
+    "*/.orchestrator/tasks/*/plan/audit.md": allow
+    ".orchestrator/tasks/*/plan/structure.json": allow
+    "*/.orchestrator/tasks/*/plan/structure.json": allow
   task: deny
 ---
 

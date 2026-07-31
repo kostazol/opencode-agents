@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Fresh independent Terra reviewer that verifies final cumulative outcome, architecture, correctness, security, scope, and evidence for one immutable review input.
 mode: subagent
 hidden: true
@@ -22,7 +22,8 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/reviews/final/*.md": allow
+    ".orchestrator/tasks/*/reviews/final/*.md": allow
+    "*/.orchestrator/tasks/*/reviews/final/*.md": allow
   task: deny
 ---
 

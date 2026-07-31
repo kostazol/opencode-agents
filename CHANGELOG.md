@@ -1,12 +1,26 @@
 # Changelog
 
+## 2.4.1 - 2026-07-31
+
+### Fixed
+
+- Allowed root-relative `.orchestrator` artifacts explicitly, so normalized OpenCode `edit` paths can create workflow artifacts while deny-by-default remains intact.
+- Added nested workspace artifact patterns and corrected bootstrap root `.gitignore` permission.
+- Narrowed bootstrap and planner artifact ownership to exact canonical classes and separated mini-review lane and aggregate writes.
+- Assigned `SINGLE_MODEL` final assurance to validator `POST_REVIEW` and generalized planning authority contracts across profiles.
+
+### Compatibility
+
+- Mini-review writes now use `reviews/mini/lanes/` and `reviews/mini/aggregate/`; regenerate pending review output paths before resuming an active workflow.
+- Restart OpenCode after updating agents because permissions are loaded at process start.
+
 ## 2.4.0 - 2026-07-31
 
 ### Added
 
 - `orchestrator-single-model` primary agent for `SINGLE_MODEL` workflows.
 - Model-free `orchestrator-25-planner-full` combining reconnaissance, structural planning, audit, and replan for single-model workflows.
-- Immutable workflow profile persisted before baseline capture.
+- Immutable workflow profile selected before baseline capture and persisted in the workflow manifest.
 
 ### Changed
 

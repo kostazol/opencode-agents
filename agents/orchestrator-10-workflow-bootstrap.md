@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Initializes one ignored orchestrator workflow root, captures immutable pre-mutation baseline, and maintains redacted append-only request ledger.
 mode: subagent
 hidden: true
@@ -22,8 +22,16 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.gitignore": allow
-    "**/.orchestrator/tasks/**": allow
+    ".gitignore": allow
+    "*/.gitignore": allow
+    ".orchestrator/tasks/*/manifest.json": allow
+    "*/.orchestrator/tasks/*/manifest.json": allow
+    ".orchestrator/tasks/*/contract.md": allow
+    "*/.orchestrator/tasks/*/contract.md": allow
+    ".orchestrator/tasks/*/requests/*.md": allow
+    "*/.orchestrator/tasks/*/requests/*.md": allow
+    ".orchestrator/tasks/*/baseline/**": allow
+    "*/.orchestrator/tasks/*/baseline/**": allow
   task: deny
 ---
 

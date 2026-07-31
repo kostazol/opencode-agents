@@ -9,7 +9,8 @@ permission:
   read:
     "*": deny
     '__OPENCODE_PROTOCOL_PATH_YAML__': allow
-    "**/.orchestrator/tasks/**": allow
+    ".orchestrator/tasks/**": allow
+    "*/.orchestrator/tasks/**": allow
   task:
     "*": deny
     explore: allow

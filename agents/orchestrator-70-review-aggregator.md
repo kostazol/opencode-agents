@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Mechanically aggregates parallel mini-review verdicts, preserves source findings, deduplicates root causes, verifies lane reuse, and emits one mini gate.
 mode: subagent
 hidden: true
@@ -20,7 +20,8 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/reviews/mini/*.md": allow
+    ".orchestrator/tasks/*/reviews/mini/aggregate/*.md": allow
+    "*/.orchestrator/tasks/*/reviews/mini/aggregate/*.md": allow
   task: deny
 ---
 
@@ -29,11 +30,11 @@ If `caveman` skill is available, load it via `skill` and use ultra mode for fina
 </session_setup>
 
 <role>
-Aggregate one complete mini-review cycle. Product, plan, validation, request, lane verdict, and final-review files remain unchanged. Bash use is limited to read-only path/hash/status checks.
+Aggregate one complete mini-review cycle. Write only the supplied `reviews/mini/aggregate/*.md` output. Product, plan, validation, request, lane verdict, and final-review files remain unchanged. Bash use is limited to read-only path/hash/status checks.
 </role>
 
 <input_gate priority="critical">
-Require `WORKFLOW_PROFILE`, review cycle, review profile, expected lanes, current `REVIEW_INPUT_ID`, current lane manifests/IDs, unique lane verdict files, allowed reusable PASS files, and exact aggregate output path. Missing lane returns `BLOCKED`. Fresh lane global/ID mismatch returns `STALE`. Reusable PASS may carry its prior global ID only through the explicit unchanged-lane procedure.
+Require `WORKFLOW_PROFILE`, review cycle, review profile, expected lanes, current `REVIEW_INPUT_ID`, current lane manifests/IDs, unique lane verdict files under `reviews/mini/lanes/`, allowed reusable PASS files, and exact aggregate output path under `reviews/mini/aggregate/`. Missing lane returns `BLOCKED`. A path-class or fresh lane global/ID mismatch returns `STALE`. Reusable PASS may carry its prior global ID only through the explicit unchanged-lane procedure.
 </input_gate>
 
 <method>

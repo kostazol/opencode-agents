@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Stateful planner for OpenAI reconnaissance and all-profile exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true
@@ -20,10 +20,18 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/recon/*.md": allow
-    "**/.orchestrator/tasks/**/plan/*.md": allow
-    "**/.orchestrator/tasks/**/plan/dispatch/*.json": allow
-    "**/.orchestrator/tasks/**/stages/*.md": allow
+    ".orchestrator/tasks/*/recon/index.md": allow
+    "*/.orchestrator/tasks/*/recon/index.md": allow
+    ".orchestrator/tasks/*/recon/repository.md": allow
+    "*/.orchestrator/tasks/*/recon/repository.md": allow
+    ".orchestrator/tasks/*/recon/prototypes.md": allow
+    "*/.orchestrator/tasks/*/recon/prototypes.md": allow
+    ".orchestrator/tasks/*/plan/master.md": allow
+    "*/.orchestrator/tasks/*/plan/master.md": allow
+    ".orchestrator/tasks/*/plan/dispatch/*.json": allow
+    "*/.orchestrator/tasks/*/plan/dispatch/*.json": allow
+    ".orchestrator/tasks/*/stages/*.md": allow
+    "*/.orchestrator/tasks/*/stages/*.md": allow
   task: deny
 ---
 
@@ -36,7 +44,7 @@ Maintain repository and runtime planning context. Perform bounded reconnaissance
 </role>
 
 <source_of_truth priority="critical">
-Request ledger and repository state are facts. Senior-audited `plan/master.md` is structural authority. Session memory is cache. Every non-RECON call rereads manifest, contract, plan state, revisions, IDs, active wave, relevant capsules, and evidence. A mismatch returns `STALE` without mutation.
+Request ledger and repository state are facts. Profile-planning-authority-audited `plan/master.md` is structural authority. Session memory is cache. Every non-RECON call rereads manifest, contract, plan state, revisions, IDs, active wave, relevant capsules, and evidence. A mismatch returns `STALE` without mutation.
 </source_of_truth>
 
 <modes>
@@ -44,7 +52,7 @@ Request ledger and repository state are facts. Senior-audited `plan/master.md` i
 - `SYNC_AND_DISPATCH`: refine exact stage prototypes, verify gates, write dispatch manifest, activate one audited wave.
 - `ADVANCE`: consume complete gate/barrier reports, update statuses, and signal final gate, replan, blocker, or `READY_TO_SYNC`.
 - `REQUEST_CHANGED`: bind new request ID, mark active dispatch stale, persist actual-change inventory, and require profile planning-authority replan.
-- `FINAL_REVIEW_RESULT`: persist Terra result and complete or block canonical plan.
+- `FINAL_REVIEW_RESULT`: persist profile-specific final assurance and complete or block canonical plan.
 - `FINAL_REPAIR_RESULT`: persist repaired findings/evidence and reopen final gate.
 - `STATUS`: report artifact path, IDs, phase, and blocker without mutation.
 </modes>
@@ -135,7 +143,7 @@ Verify appended request and new `REQUEST_SET_ID`. Freeze dispatch, record active
 </request_changed>
 
 <final_result>
-For `OPENAI_COLLABORATION`, verify Terra verdict file, final review round, `FINAL_REVIEW_INPUT_ID`, product snapshot, mini bundle, complete baseline/final patch/inventory/evidence, and post-review identity check. For `SINGLE_MODEL`, verify `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`, final validation, mini bundle, and post-mini identity check; `FINAL_REVIEW_INPUT_ID` is `not_applicable`.
+For `OPENAI_COLLABORATION`, verify Terra verdict file, final review round, `FINAL_REVIEW_INPUT_ID`, product snapshot, mini bundle, complete baseline/final patch/inventory/evidence, and post-review identity check. For `SINGLE_MODEL`, verify validator `POST_REVIEW` evidence returning `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`, final validation, mini bundle, and post-mini identity check; `FINAL_REVIEW_INPUT_ID` is `not_applicable`.
 
 - For `SINGLE_MODEL`, final assurance on unchanged input increments plan revision, sets phase `COMPLETE`, and persists final validation, mini aggregate, and post-mini identity evidence.
 - For `OPENAI_COLLABORATION`, Terra PASS on unchanged input increments plan revision, sets phase `COMPLETE`, and persists exact review evidence. Terra FAIL with required findings before round 2 sets phase `REPAIR` for local findings within audited ownership; structural findings return `PLANNING_AUTHORITY_REQUIRED`.

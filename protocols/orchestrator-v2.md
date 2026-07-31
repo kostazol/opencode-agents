@@ -6,7 +6,7 @@ Normative order:
 1. Platform permissions and safety constraints.
 2. Latest explicit user instruction; scoped corrections supersede conflicting earlier requests.
 3. Repository instructions.
-4. Senior-audited design for the current request set.
+4. Profile-planning-authority-audited design for the current request set.
 
 Evidence order:
 1. Current observed repository state and immutable artifacts.
@@ -27,7 +27,7 @@ Profile selection is a workflow contract. An absent, invalid, or changed profile
 
 ## Workflow root
 
-Use one stable workflow ID per user outcome. Follow-ups reuse it. Artifacts live under `<workspace>/.orchestrator/tasks/<workflow-id>/`:
+Use one stable workflow ID per user outcome. Follow-ups reuse it. Artifacts live under `<workspace>/.orchestrator/tasks/<workflow-id>/`. Artifact-write permissions must separately allow `.orchestrator/...` and `*/.orchestrator/...`: OpenCode evaluates normalized Git-worktree-relative paths, each `*` spans path separators, and a wildcard prefix followed by `/` does not match the root-relative form.
 
 ```text
 manifest.json
@@ -44,7 +44,8 @@ plan/dispatch/
 stages/
 snapshots/
 validation/
-reviews/mini/
+reviews/mini/lanes/
+reviews/mini/aggregate/
 reviews/final/
 ```
 
@@ -160,7 +161,7 @@ For each final product snapshot:
 5. For `OPENAI_COLLABORATION`, `MINI_GATE: PASS` creates `FINAL_REVIEW_INPUT_ID`; run fresh Terra review.
 6. For `OPENAI_COLLABORATION`, `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required Terra findings get one consolidated repair batch, then restart final gate at step 1.
 7. For `OPENAI_COLLABORATION`, Terra PASS first runs validator `POST_REVIEW`. Unchanged product and mini bundle IDs then accompany PASS into canonical planner completion. Round 2 unresolved required findings block.
-8. For `SINGLE_MODEL`, `MINI_GATE: PASS` runs validator `POST_REVIEW` against current product and mini bundle. Unchanged identities create `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS` and permit canonical planner completion. Any mismatch restarts final gate at step 1.
+8. For `SINGLE_MODEL`, `MINI_GATE: PASS` runs validator `POST_REVIEW` against current product and mini bundle. Unchanged identities make validator persist and return `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`, permitting canonical planner completion. Any mismatch restarts final gate at step 1.
 
 Final combined validation gets one same-cause repair batch; recurring local failure blocks, structural failure escalates profile planning authority. Final mini review gets one consolidated repair batch; recurring local required findings block, structural findings escalate profile planning authority. New user input or materially different evidence resets the applicable cause-keyed budget.
 

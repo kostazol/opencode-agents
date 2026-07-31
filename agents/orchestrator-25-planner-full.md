@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Single-model structural planning authority that performs reconnaissance, complete prototype-aware planning, adversarial audit, and replanning without model overrides.
 mode: subagent
 hidden: true
@@ -21,9 +21,18 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/recon/*.md": allow
-    "**/.orchestrator/tasks/**/plan/*.md": allow
-    "**/.orchestrator/tasks/**/plan/*.json": allow
+    ".orchestrator/tasks/*/recon/index.md": allow
+    "*/.orchestrator/tasks/*/recon/index.md": allow
+    ".orchestrator/tasks/*/recon/repository.md": allow
+    "*/.orchestrator/tasks/*/recon/repository.md": allow
+    ".orchestrator/tasks/*/recon/prototypes.md": allow
+    "*/.orchestrator/tasks/*/recon/prototypes.md": allow
+    ".orchestrator/tasks/*/plan/master.md": allow
+    "*/.orchestrator/tasks/*/plan/master.md": allow
+    ".orchestrator/tasks/*/plan/audit.md": allow
+    "*/.orchestrator/tasks/*/plan/audit.md": allow
+    ".orchestrator/tasks/*/plan/structure.json": allow
+    "*/.orchestrator/tasks/*/plan/structure.json": allow
   task: deny
 ---
 

@@ -9,7 +9,8 @@ permission:
   read:
     "*": deny
     '__OPENCODE_PROTOCOL_PATH_YAML__': allow
-    "**/.orchestrator/tasks/**": allow
+    ".orchestrator/tasks/**": allow
+    "*/.orchestrator/tasks/**": allow
   task:
     "*": deny
     explore: allow
@@ -30,4 +31,4 @@ permission:
 <!-- final-gate -->
    - Final validation regenerates cumulative patch, inventory, evidence, review scope, and IDs. Run fresh cumulative mini lanes without reuse.
    - Required final mini findings get one consolidated repair then restart final validation. `MINI_GATE: PASS` requires validator `POST_REVIEW` confirmation of unchanged product and mini bundle.
-   - Record `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`; `FINAL_REVIEW_INPUT_ID` and Terra verdict are `not_applicable`. After this confirmation, `orchestrator-20-planner` `FINAL_REVIEW_RESULT` records `COMPLETE`.
+   - Validator `POST_REVIEW` persists and returns `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`; `FINAL_REVIEW_INPUT_ID` and Terra verdict are `not_applicable`. After this confirmation, `orchestrator-20-planner` `FINAL_REVIEW_RESULT` records `COMPLETE`.

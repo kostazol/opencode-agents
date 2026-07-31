@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -22,8 +22,10 @@ permission:
     caveman: allow
   edit:
     "*": deny
-    "**/.orchestrator/tasks/**/validation/**": allow
-    "**/.orchestrator/tasks/**/snapshots/**": allow
+    ".orchestrator/tasks/*/validation/**": allow
+    "*/.orchestrator/tasks/*/validation/**": allow
+    ".orchestrator/tasks/*/snapshots/**": allow
+    "*/.orchestrator/tasks/*/snapshots/**": allow
   task: deny
 ---
 
@@ -54,7 +56,7 @@ Validate one supplied immutable scope. Product files, repository history, user i
 6. For IDENTITY, compute requested IDs using protocol canonical JSON/SHA-256 rules and persist input paths/hashes plus canonicalization evidence.
 7. For STAGE/FINAL, produce complete tracked/deleted/intended-untracked inventory, binary-capable delta/cumulative patch, product snapshot, evidence bundle, review scope, review input IDs, and diff check. Aggregator exclusively computes `FINAL_REVIEW_INPUT_ID` after mini-review bundle creation.
 8. For ACCEPT_STAGE, verify mini PASS, review/lane IDs, aggregate hash, unchanged product snapshot, and write immutable accepted manifest, delta, validation/review indexes, and coverage ledger.
-9. For POST_REVIEW, recompute product and supplied mini-bundle hashes only.
+9. For POST_REVIEW, recompute product and supplied mini-bundle hashes only. For unchanged `SINGLE_MODEL` inputs, persist the identity result under the supplied validation artifact path and return `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`; otherwise return `FINAL_ASSURANCE: none`.
 </method>
 
 <baseline>
@@ -84,6 +86,7 @@ REVIEW_SCOPE_ID: <ID|none>
 REVIEW_INPUT_ID: <ID|none>
 MINI_REVIEW_BUNDLE_ID: <ID|none>
 FINAL_REVIEW_INPUT_ID: <ID|none|not_applicable>
+FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS|none
 ARTIFACT_INDEX: <path|none>
 CHANGED_PRODUCT_PATHS: <paths|none>
 BLOCKER: <none|exact>

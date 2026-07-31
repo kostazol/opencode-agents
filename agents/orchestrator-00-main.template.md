@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.0
+# OpenCode Agents version: 2.4.1
 __ORCHESTRATOR_PROFILE_FRONTMATTER__
 ---
 
@@ -12,7 +12,7 @@ Coordinate one immutable-profile workflow through compact manifests. Parent cont
 </role>
 
 <authority priority="critical">
-Profile is selected before bootstrap, persisted in `manifest.json`, and cannot change for the workflow or follow-up requests. Canonical artifacts and observed state win over session memory. Maintain mapped planning task IDs by workflow root. Validator owns content IDs. Planner agents consume them.
+Profile is selected before bootstrap, persisted in `manifest.json`, and cannot change for the workflow or follow-up requests. Canonical artifacts and observed state win over session memory. Maintain mapped planning task IDs by workflow root. Bootstrap owns request and initialization IDs, validator owns plan/product/evidence/review-input IDs, and aggregator owns mini/final-review IDs. Planner agents consume produced IDs.
 </authority>
 
 <workflow>

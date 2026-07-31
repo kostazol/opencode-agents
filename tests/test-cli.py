@@ -5,6 +5,7 @@ import unittest
 import os
 import importlib.util
 import base64
+import re
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 
@@ -89,6 +90,87 @@ class CliTests(unittest.TestCase):
             self.assertNotIn("\nmodel:", (target / "agents/orchestrator-25-planner-full.md").read_text(encoding="utf-8"))
             self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
             self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8"))
+
+    def test_workflow_artifact_permissions_allow_root_relative_paths(self):
+        def permission_rules(content, permission):
+            lines = content.splitlines()
+            start = lines.index(f"  {permission}:") + 1
+            rules = []
+            for line in lines[start:]:
+                if not line.startswith("    "):
+                    break
+                match = re.fullmatch(r'    (["\'])(.*)\1: (allow|ask|deny)', line)
+                if match:
+                    rules.append((match.group(2), match.group(3)))
+            return rules
+
+        def evaluate(rules, path):
+            result = "ask"
+            path = path.replace("\\", "/")
+            for pattern, action in rules:
+                pattern = pattern.replace("\\", "/")
+                expression = re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".")
+                flags = re.DOTALL | (re.IGNORECASE if os.name == "nt" else 0)
+                if re.fullmatch(expression, path, flags=flags):
+                    result = action
+            return result
+
+        cases = {
+            "orchestrator-10-workflow-bootstrap.md": (
+                [".gitignore", "ET.API.3/.gitignore", "services/ET.API.3/.gitignore", ".orchestrator/tasks/t/manifest.json", "ET.API.3/.orchestrator/tasks/t/contract.md", "services/ET.API.3/.orchestrator/tasks/t/requests/R001.md", ".orchestrator/tasks/t/baseline/index.json"],
+                ["not.gitignore", "ET.API.3/not.gitignore", ".orchestrator/tasks/t/plan/master.md", ".orchestrator/tasks/t/reviews/mini/lanes/lane.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-20-planner.md": (
+                [".orchestrator/tasks/t/recon/index.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/dispatch/S001.json", r"services\ET.API.3\.orchestrator\tasks\t\recon\index.md", ".orchestrator/tasks/t/stages/S001.md"],
+                [".orchestrator/tasks/t/recon/other.md", ".orchestrator/tasks/t/plan/audit.md", ".orchestrator/tasks/t/recon/index.json", r"services\ET.API.3\.orchestrator\tasks\t\recon\index.json", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-25-planner-full.md": (
+                [".orchestrator/tasks/t/recon/prototypes.md", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/plan/audit.md", ".orchestrator/tasks/t/plan/structure.json"],
+                [".orchestrator/tasks/t/plan/dispatch/S001.json", ".orchestrator/tasks/t/stages/S001.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-30-planner-senior.md": (
+                [".orchestrator/tasks/t/plan/master.md", "ET.API.3/.orchestrator/tasks/t/plan/audit.md", "services/ET.API.3/.orchestrator/tasks/t/plan/structure.json"],
+                [".orchestrator/tasks/t/plan/dispatch/S001.json", ".orchestrator/tasks/t/recon/index.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-50-validator.md": (
+                [".orchestrator/tasks/t/validation/final/index.md", "services/ET.API.3/.orchestrator/tasks/t/snapshots/S001/manifest.json"],
+                [".orchestrator/tasks/t/plan/master.md", ".orchestrator/tasks/t/reviews/final/verdict.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-60-mini-reviewer.md": (
+                [".orchestrator/tasks/t/reviews/mini/lanes/goal.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/mini/lanes/security.md"],
+                [".orchestrator/tasks/t/reviews/mini/aggregate/index.md", ".orchestrator/tasks/t/reviews/final/verdict.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-70-review-aggregator.md": (
+                [".orchestrator/tasks/t/reviews/mini/aggregate/index.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/mini/aggregate/final.md"],
+                [".orchestrator/tasks/t/reviews/mini/lanes/goal.md", ".orchestrator/tasks/t/reviews/final/verdict.md", "ET.API.3/Program.cs"],
+            ),
+            "orchestrator-80-final-reviewer.md": (
+                [".orchestrator/tasks/t/reviews/final/verdict.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/final/round-2.md"],
+                [".orchestrator/tasks/t/reviews/mini/aggregate/index.md", ".orchestrator/tasks/t/reviews/final/verdict.json", "ET.API.3/Program.cs"],
+            ),
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "config"
+            self.run_cli(ROOT, target, "install")
+            for filename, (allowed, denied) in cases.items():
+                content = (target / "agents" / filename).read_text(encoding="utf-8")
+                rules = permission_rules(content, "edit")
+                self.assertEqual(rules[0], ("*", "deny"))
+                for path in allowed:
+                    self.assertEqual(evaluate(rules, path), "allow", f"{filename} should allow {path}")
+                for path in denied:
+                    self.assertEqual(evaluate(rules, path), "deny", f"{filename} should deny {path}")
+                if os.name == "nt" and allowed:
+                    self.assertEqual(evaluate(rules, allowed[0].upper()), "allow", f"{filename} should match case-insensitively on Windows")
+            for filename in ("orchestrator-00-main.md", "orchestrator-01-single-model-main.md"):
+                content = (target / "agents" / filename).read_text(encoding="utf-8")
+                rules = permission_rules(content, "read")
+                self.assertEqual(rules[0], ("*", "deny"))
+                for path in (".orchestrator/tasks/t/manifest.json", "ET.API.3/.orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/mini/aggregate/index.md"):
+                    self.assertEqual(evaluate(rules, path), "allow", f"{filename} should allow {path}")
+                for path in ("ET.API.3/Program.cs", ".orchestrator/other.md"):
+                    self.assertEqual(evaluate(rules, path), "deny", f"{filename} should deny {path}")
 
     def test_path_writer_for_windows_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
