@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.1
+# OpenCode Agents version: 2.4.2
 description: Stateful planner for OpenAI reconnaissance and all-profile exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true
@@ -7,12 +7,14 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
   read:
     "*": allow
     "*.env": ask
     "*.env.*": ask
     "*.env.example": allow
+    "*protocols/*": deny
+    "*protocols/orchestrator-v2.md": allow
   glob: allow
   grep: allow
   skill:

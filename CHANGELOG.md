@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.2 - 2026-07-31
+
+### Fixed
+
+- Allowed only the installed protocol directory glob at the external-directory boundary, then denied worktree-relative protocol paths except `orchestrator-v2.md` in `read` permissions. This lets every Orchestrator role read its mandatory protocol without exposing other external configuration paths.
+
+### Compatibility
+
+- Restart OpenCode after updating agents because permissions are loaded at process start.
+
 ## 2.4.1 - 2026-07-31
 
 ### Fixed

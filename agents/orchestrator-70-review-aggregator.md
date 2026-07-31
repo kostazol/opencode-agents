@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.1
+# OpenCode Agents version: 2.4.2
 description: Mechanically aggregates parallel mini-review verdicts, preserves source findings, deduplicates root causes, verifies lane reuse, and emits one mini gate.
 mode: subagent
 hidden: true
@@ -8,12 +8,14 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
   read:
     "*": allow
     "*.env": deny
     "*.env.*": deny
     "*.env.example": allow
+    "*protocols/*": deny
+    "*protocols/orchestrator-v2.md": allow
   bash: allow
   skill:
     "*": deny

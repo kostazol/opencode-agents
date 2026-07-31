@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.1
+# OpenCode Agents version: 2.4.2
 description: Cheap independent reviewer for one immutable goal, correctness, architecture, or security lens; persists all evidence-based findings without modifying product files.
 mode: subagent
 hidden: true
@@ -8,12 +8,14 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
   read:
     "*": allow
     "*.env": ask
     "*.env.*": ask
     "*.env.example": allow
+    "*protocols/*": deny
+    "*protocols/orchestrator-v2.md": allow
   glob: allow
   grep: allow
   skill:

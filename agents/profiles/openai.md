@@ -5,10 +5,10 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
   read:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    "*protocols/orchestrator-v2.md": allow
     ".orchestrator/tasks/**": allow
     "*/.orchestrator/tasks/**": allow
   task:

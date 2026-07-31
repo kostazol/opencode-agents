@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.1
+# OpenCode Agents version: 2.4.2
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true
@@ -8,12 +8,14 @@ permission:
   "*": deny
   external_directory:
     "*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
   read:
     "*": allow
     "*.env": ask
     "*.env.*": ask
     "*.env.example": allow
+    "*protocols/*": deny
+    "*protocols/orchestrator-v2.md": allow
   glob: allow
   grep: allow
   bash: allow

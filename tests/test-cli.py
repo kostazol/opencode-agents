@@ -91,6 +91,42 @@ class CliTests(unittest.TestCase):
             self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
             self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8"))
 
+    def test_protocol_permissions_match_opencode_tool_patterns(self):
+        def permission_rules(content, permission):
+            lines = content.splitlines()
+            start = lines.index(f"  {permission}:") + 1
+            rules = []
+            for line in lines[start:]:
+                if not line.startswith("    "):
+                    break
+                match = re.fullmatch(r'    (["\'])(.*)\1: (allow|ask|deny)', line)
+                if match:
+                    rules.append((match.group(2), match.group(3)))
+            return rules
+
+        def evaluate(rules, path):
+            result = "ask"
+            for pattern, action in rules:
+                regex = re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".")
+                if re.fullmatch(regex, path):
+                    result = action
+            return result
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "config"
+            self.run_cli(ROOT, target, "install")
+            external_pattern = f"{target}/protocols/*"
+            protocol_relative = "../../config/protocols/orchestrator-v2.md"
+            sibling_relative = "../../config/protocols/other.md"
+            for prompt in sorted((target / "agents").glob("orchestrator-*.md")):
+                content = prompt.read_text(encoding="utf-8")
+                external_rules = permission_rules(content, "external_directory")
+                read_rules = permission_rules(content, "read")
+                self.assertEqual(evaluate(external_rules, external_pattern), "allow", prompt.name)
+                self.assertEqual(evaluate(external_rules, f"{target}/skills/*"), "deny", prompt.name)
+                self.assertEqual(evaluate(read_rules, protocol_relative), "allow", prompt.name)
+                self.assertEqual(evaluate(read_rules, sibling_relative), "deny", prompt.name)
+
     def test_workflow_artifact_permissions_allow_root_relative_paths(self):
         def permission_rules(content, permission):
             lines = content.splitlines()

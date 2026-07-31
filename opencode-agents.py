@@ -21,7 +21,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.4.1"
+VERSION = "2.4.2"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents", "protocols")
@@ -269,9 +269,11 @@ def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
         content = content.replace(b"__ORCHESTRATOR_PROFILE_FRONTMATTER__", profile_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_WORKFLOW__", workflow_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_FINAL_GATE__", workflow_parts[1]).replace(b"__WORKFLOW_PROFILE__", workflow_profile.encode())
     if source.parent.name != "agents":
         return content
+    protocol_directory = str(target / "protocols")
     protocol_path = str(target / "protocols" / "orchestrator-v2.md")
     yaml_path = protocol_path.replace("'", "''")
-    return content.replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode())
+    yaml_directory = protocol_directory.replace("'", "''")
+    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode())
 
 
 def validate_target_group(path: Path) -> None:

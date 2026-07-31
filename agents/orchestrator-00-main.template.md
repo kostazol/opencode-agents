@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.1
+# OpenCode Agents version: 2.4.2
 __ORCHESTRATOR_PROFILE_FRONTMATTER__
 ---
 
