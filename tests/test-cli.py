@@ -127,6 +127,57 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(evaluate(read_rules, protocol_relative), "allow", prompt.name)
                 self.assertEqual(evaluate(read_rules, sibling_relative), "deny", prompt.name)
 
+    def test_rendered_workflow_enforces_dispatch_and_validation_gates(self):
+        def permission_rules(content, permission):
+            lines = content.splitlines()
+            start = lines.index(f"  {permission}:") + 1
+            rules = []
+            for line in lines[start:]:
+                if not line.startswith("    "):
+                    break
+                match = re.fullmatch(r'    (["\'])(.*)\1: (allow|ask|deny)', line)
+                if match:
+                    rules.append((match.group(2), match.group(3)))
+            return rules
+
+        def evaluate(rules, command):
+            result = "ask"
+            for pattern, action in rules:
+                expression = re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".")
+                if re.fullmatch(expression, command):
+                    result = action
+            return result
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "config"
+            self.run_cli(ROOT, target, "install")
+            for filename in ("orchestrator-00-main.md", "orchestrator-01-single-model-main.md"):
+                content = (target / "agents" / filename).read_text(encoding="utf-8")
+                self.assertNotIn("explore: allow", content)
+                self.assertIn("<dispatch_guard priority=\"critical\">", content)
+                self.assertIn("never copy source bodies", content)
+                self.assertIn("validator-produced `DISPATCH_AUTHORIZATION_ID`", content)
+                self.assertIn("Only validator STAGE/FINAL output establishes a post-mutation product snapshot", content)
+            executor = (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8")
+            self.assertIn("copied source bodies, inferred plans, and ad hoc write lists return `BLOCKED`", executor)
+            self.assertIn("Direct Git command patterns and edit-tool `.git` writes are denied", executor)
+            self.assertIn("Reject commands containing unquoted shell control operators", executor)
+            self.assertEqual(evaluate(permission_rules(executor, "bash"), "git checkout -- file.cs"), "deny")
+            self.assertEqual(evaluate(permission_rules(executor, "bash"), "dotnet test Tests.csproj"), "allow")
+            self.assertEqual(evaluate(permission_rules(executor, "bash"), "dotnet test Digital.Tests.csproj"), "allow")
+            self.assertEqual(evaluate(permission_rules(executor, "bash"), "/usr/bin/git status"), "deny")
+            validator = (target / "agents/orchestrator-50-validator.md").read_text(encoding="utf-8")
+            self.assertIn("reject unquoted shell control operators", validator)
+            self.assertIn("every other Git command requires runtime user approval", validator)
+            self.assertEqual(evaluate(permission_rules(validator, "bash"), "/usr/bin/git restore file.cs"), "ask")
+            self.assertEqual(evaluate(permission_rules(validator, "bash"), "git status --short"), "allow")
+            self.assertEqual(evaluate(permission_rules(validator, "bash"), "python3 tests/test-cli.py"), "allow")
+            self.assertEqual(evaluate(permission_rules(validator, "bash"), "dotnet test Digital.Tests.csproj"), "allow")
+            protocol = (target / "protocols/orchestrator-v2.md").read_text(encoding="utf-8")
+            executor_contract = "EXECUTOR_REPORT | <stage|repair> | PASS|FAIL|BLOCKED|DEVIATION|STALE | product: <paths|none> | expected-product: <ID> | authorization: <ID> | validation: PASS|FAIL|BLOCKED | evidence: <path|required for PASS> | blocker: <none|exact>"
+            self.assertIn(executor_contract, executor)
+            self.assertIn(executor_contract, protocol)
+
     def test_workflow_artifact_permissions_allow_root_relative_paths(self):
         def permission_rules(content, permission):
             lines = content.splitlines()
@@ -172,6 +223,10 @@ class CliTests(unittest.TestCase):
                 [".orchestrator/tasks/t/validation/final/index.md", "services/ET.API.3/.orchestrator/tasks/t/snapshots/S001/manifest.json"],
                 [".orchestrator/tasks/t/plan/master.md", ".orchestrator/tasks/t/reviews/final/verdict.md", "ET.API.3/Program.cs"],
             ),
+            "orchestrator-40-executor.md": (
+                ["Program.cs", ".orchestrator/tasks/t/stages/executor/D001/report.md", "services/ET.API.3/.orchestrator/tasks/t/stages/executor/D001/log.txt"],
+                [".git", ".git/index", "services/ET.API.3/.git", "services/ET.API.3/.git/config", ".orchestrator/tasks/t/manifest.json", ".orchestrator/tasks/t/plan/master.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/mini/aggregate/index.md"],
+            ),
             "orchestrator-60-mini-reviewer.md": (
                 [".orchestrator/tasks/t/reviews/mini/lanes/goal.md", "services/ET.API.3/.orchestrator/tasks/t/reviews/mini/lanes/security.md"],
                 [".orchestrator/tasks/t/reviews/mini/aggregate/index.md", ".orchestrator/tasks/t/reviews/final/verdict.md", "ET.API.3/Program.cs"],
@@ -192,7 +247,7 @@ class CliTests(unittest.TestCase):
             for filename, (allowed, denied) in cases.items():
                 content = (target / "agents" / filename).read_text(encoding="utf-8")
                 rules = permission_rules(content, "edit")
-                self.assertEqual(rules[0], ("*", "deny"))
+                self.assertEqual(rules[0], ("*", "allow") if filename == "orchestrator-40-executor.md" else ("*", "deny"))
                 for path in allowed:
                     self.assertEqual(evaluate(rules, path), "allow", f"{filename} should allow {path}")
                 for path in denied:

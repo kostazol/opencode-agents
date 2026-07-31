@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.2
+# OpenCode Agents version: 2.5.0
 description: Cheap independent reviewer for one immutable goal, correctness, architecture, or security lens; persists all evidence-based findings without modifying product files.
 mode: subagent
 hidden: true

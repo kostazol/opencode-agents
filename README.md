@@ -37,9 +37,9 @@ orchestrator-01-single-model-main (UI: orchestrator-single-model)
 1. Пользователь запускает `orchestrator` или `orchestrator-single-model`.
 2. `orchestrator-10-workflow-bootstrap` фиксирует запрос и baseline.
 3. Планирование: `20 → 50 → 30 → 50` для `OPENAI_COLLABORATION` либо `25 → 50 → 25 → 50` для `SINGLE_MODEL`.
-4. Каждая стадия: `20 → 40 → 50 → 60` (параллельные lanes) `→ 70`.
+4. Каждая стадия: `20 candidate → 50 AUTHORIZE_DISPATCH → 20 ACTIVATE_DISPATCH → 40 → 50 → 60` (параллельные lanes) `→ 70`.
 5. После PASS validator принимает стадию, а `orchestrator-20-planner` запускает следующую; после замечаний цикл повторяется с исправлениями.
-6. Финальный цикл: `50 → 60 → 70 → 80 → 50` для `OPENAI_COLLABORATION` либо `50 → 60 → 70 → 50` для `SINGLE_MODEL`.
+6. Финальный цикл: `50 → 60 → 70 → 80 → 50` для `OPENAI_COLLABORATION` либо `50 → 60 → 70 → 50` для `SINGLE_MODEL`; product repairs повторяют authorization sequence из шага 4.
 
 - `agents/` — исходные prompt-файлы агентов.
 - `protocols/` — общий протокол Orchestrator v2.

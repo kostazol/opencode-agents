@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.5.0 - 2026-07-31
+
+### Fixed
+
+- Removed primary-agent permission for generic exploration and required workflow-role artifact gates before executor dispatch.
+- Added validator-produced dispatch authorization IDs and inactive-candidate activation for stages and local repair batches.
+- Added artifact- and identity-bound executor preflight, with `BLOCKED` results for missing, stale, or contradictory inputs.
+- Required direct validation command exits and evidence artifacts before stage acceptance or `DONE`.
+- Denied direct executor Git command patterns, denied edit-tool `.git` writes, allowlisted exact validator read-only Git commands, and required runtime approval for other validator Git commands; both roles retain explicit prompt-level mutation prohibitions and post-command inventory checks.
+- Required command-safety preflight for shell composition and prohibited undeclared bulk rewrites in executor and validator workflows.
+
+### Compatibility
+
+- Dispatch now requires planner candidate creation, validator `AUTHORIZE_DISPATCH`, and planner `ACTIVATE_DISPATCH`; local repairs additionally use planner `AUTHORIZE_REPAIR`.
+- Executor callers must provide canonical artifact references and IDs instead of copied source, inferred plans, or ad hoc write lists.
+- Restart OpenCode after updating agents because permissions are loaded at process start.
+
 ## 2.4.2 - 2026-07-31
 
 ### Fixed

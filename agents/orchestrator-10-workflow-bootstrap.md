@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.2
+# OpenCode Agents version: 2.5.0
 description: Initializes one ignored orchestrator workflow root, captures immutable pre-mutation baseline, and maintains redacted append-only request ledger.
 mode: subagent
 hidden: true

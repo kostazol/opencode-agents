@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.4.2
+# OpenCode Agents version: 2.5.0
 description: Fresh independent Terra reviewer that verifies final cumulative outcome, architecture, correctness, security, scope, and evidence for one immutable review input.
 mode: subagent
 hidden: true

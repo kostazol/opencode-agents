@@ -42,6 +42,7 @@ plan/structure.json
 plan/audit.md
 plan/dispatch/
 stages/
+stages/executor/
 snapshots/
 validation/
 reviews/mini/lanes/
@@ -70,13 +71,14 @@ Content IDs:
 - `EVIDENCE_BUNDLE_ID`: baseline classification, commands, toolchain, results, artifacts, and pre/post product IDs;
 - `REVIEW_SCOPE_ID`: baseline, delta/cumulative patch, inventory, prototypes, accepted implementation variances, prior findings, acceptance, lane assignments, and their hashes;
 - `REVIEW_INPUT_ID`: request set, plan structure, product snapshot, evidence bundle, and review scope IDs;
+- `DISPATCH_AUTHORIZATION_ID`: workflow/profile, request/plan/expected-product IDs, current and target post-activation revisions, active stage or repair cycle, validator-resolved capsule or repair-manifest and prototype/evidence hashes, validation manifest, declared writes, and target dispatch phase;
 - `LANE_INPUT_ID`: lens-specific path, dependency, contract, prototype, prior-finding, and evidence hashes;
 - `MINI_REVIEW_BUNDLE_ID`: current lane verdict files plus aggregate hash;
 - `FINAL_REVIEW_INPUT_ID`: `OPENAI_COLLABORATION` review input plus mini-review bundle IDs; `not_applicable` for `SINGLE_MODEL`.
 
 Compute IDs as lowercase SHA-256 of UTF-8 canonical JSON: schema/version domain tag, sorted object keys, preserved array order, no insignificant whitespace, and explicit relative paths. An artifact containing its own ID excludes that ID field from hashed payload. `MINI_REVIEW_BUNDLE_ID` hashes lane files plus aggregate payload with `MINI_REVIEW_BUNDLE_ID` and `FINAL_REVIEW_INPUT_ID` removed.
 
-Authoring agents write canonical unhashed inputs. Designated ID producers: bootstrap computes `REQUEST_SET_ID` and initialization base/current product IDs; validator `IDENTITY` computes plan, later product, evidence, review-scope, and review-input IDs; aggregator computes mini-review bundle and final-review-input IDs from validator-bound inputs. Aggregator records `FINAL_REVIEW_INPUT_ID: not_applicable` for `SINGLE_MODEL`. Each producer writes canonicalization/hash evidence. Planner agents consume produced IDs; they do not synthesize cryptographic hashes.
+Authoring agents write canonical unhashed inputs. Designated ID producers: bootstrap computes `REQUEST_SET_ID` and initialization base/current product IDs; validator `IDENTITY` computes plan, later product, evidence, review-scope, and review-input IDs; validator `AUTHORIZE_DISPATCH` computes `DISPATCH_AUTHORIZATION_ID`; aggregator computes mini-review bundle and final-review-input IDs from validator-bound inputs. Aggregator records `FINAL_REVIEW_INPUT_ID: not_applicable` for `SINGLE_MODEL`. Each producer writes canonicalization/hash evidence. Planner agents consume produced IDs; they do not synthesize cryptographic hashes.
 
 Status-only plan updates preserve content IDs. Changed content recomputes affected IDs before further execution or review.
 
@@ -98,6 +100,14 @@ Every dispatched implementation stage is one independently observable, buildable
 Inseparable non-buildable operations are ordered substeps inside one stage and one executor task. Intermediate broken state gets no handoff, review, snapshot checkpoint, or parallel exposure. Planning, authorization, investigation, baseline, artifact, and validation stages may remain separate when they have machine-verifiable results.
 
 Product-mutating stages execute sequentially in the shared worktree. Read-only validation and review tasks may run in parallel on one frozen snapshot.
+
+## Dispatch authorization
+
+Primary orchestrators do not inspect product code or use generic exploration agents. They dispatch only named workflow roles and only after rereading canonical workflow artifacts. An implementation executor input contains references and IDs, never copied source bodies, inferred plans, or ad hoc write lists.
+
+Planner first writes an inactive candidate dispatch manifest with `TARGET_PHASE: EXECUTING`. Validator `AUTHORIZE_DISPATCH` verifies canonical workflow inputs and computes `DISPATCH_AUTHORIZATION_ID` over the candidate payload with `DISPATCH_AUTHORIZATION_ID` and operational `ACTIVE` fields omitted. Planner then verifies the authorization artifact and activates the unchanged authorization payload in canonical plan state. Stage and local repair dispatches use the same sequence; planner `AUTHORIZE_REPAIR` accepts aggregated local findings or exact validator readiness failures and creates a bounded repair manifest and candidate before validator authorization. Structural repairs return to profile planning authority instead.
+
+An active implementation dispatch requires current `manifest.json`, `contract.md`, audited `plan/master.md`, exact stage capsule or repair manifest, dispatch manifest, validator authorization artifact, `DISPATCH_AUTHORIZATION_ID`, `PLAN_STRUCTURE_ID`, expected `PRODUCT_SNAPSHOT_ID`, prototype gate `PASS|NOVEL_APPROVED`, declared product/artifact write sets, and plan-bound validation manifest. Executor first validates artifact paths and authorization hashes, then may read repository instructions and compute the current product manifest. Mutation starts only after expected product identity and canonical phase `EXECUTING` match. Missing, unreadable, stale, or contradictory authorization returns `BLOCKED` before mutation.
 
 ## Prototype gate
 
@@ -123,9 +133,9 @@ Only `PASS` or `NOVEL_APPROVED` permits implementation dispatch. One unchanged-i
 
 ## Execution and validation
 
-Executor reads request, capsule, prototypes, and repository instructions; writes declared paths; reports ownership or contract contradiction before out-of-scope mutation. Behavior changes follow RED, minimal implementation, GREEN targeted checks, then affected checks. `RED_DEFERRED` needs exact reason and new/updated tests before review. Other artifacts use applicable validators.
+Executor reads request, capsule, prototypes, and repository instructions only after dispatch authorization; writes declared paths; reports ownership or contract contradiction before out-of-scope mutation. Behavior changes follow RED, minimal implementation, GREEN targeted checks, then affected checks. `RED_DEFERRED` needs exact reason and new/updated tests before review. Other artifacts use applicable validators. Before execution, reject validation commands containing unquoted shell control operators, fallback branches, backgrounding, command substitution, output redirection, or explicit exit rewriting. Run accepted commands directly and record each command's own exit and bounded decisive output.
 
-Review readiness requires complete inventory, current product snapshot, build/validator PASS, changed-symbol-to-test mapping, applicable new/updated tests, targeted/affected checks, requested/risk-required broad checks, diff check, and evidence bundle. Failure returns `review: NOT_RUN` and goes to validation repair.
+Review readiness requires complete inventory, current product snapshot, build/validator PASS, changed-symbol-to-test mapping, applicable new/updated tests, targeted/affected checks, requested/risk-required broad checks, diff check, and evidence bundle. Evidence records direct command exits and bounded output. Failure returns `review: NOT_RUN`; planner terminalizes the failed dispatch before the authorized local validation-repair sequence or structural replan.
 
 After mini PASS, validator `ACCEPT_STAGE` creates immutable snapshot checkpoints, not Git commits: manifest, previous-to-current delta including intended additions, validation index, review index, and coverage ledger. Repository history and user index remain unchanged.
 
@@ -157,9 +167,9 @@ For each final product snapshot:
 1. Run combined required validation.
 2. Regenerate cumulative patch, inventory, evidence bundle, review scope, and review input IDs.
 3. Run fresh cumulative mini lanes and aggregation.
-4. Required mini findings get one consolidated repair batch; restart final gate at step 1 on repaired snapshot.
+4. Required local mini findings get one consolidated repair batch through planner `AUTHORIZE_REPAIR`, validator `AUTHORIZE_DISPATCH`, planner `ACTIVATE_DISPATCH`, and executor; structural findings return to profile planning authority. Run final validation and planner `FINAL_REPAIR_RESULT` to terminalize the repair dispatch before restarting cumulative mini review.
 5. For `OPENAI_COLLABORATION`, `MINI_GATE: PASS` creates `FINAL_REVIEW_INPUT_ID`; run fresh Terra review.
-6. For `OPENAI_COLLABORATION`, `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required Terra findings get one consolidated repair batch, then restart final gate at step 1.
+6. For `OPENAI_COLLABORATION`, `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required local Terra findings use the authorized repair sequence and executor, followed by final validation and planner `FINAL_REPAIR_RESULT`; structural findings return to profile planning authority; then restart cumulative mini review.
 7. For `OPENAI_COLLABORATION`, Terra PASS first runs validator `POST_REVIEW`. Unchanged product and mini bundle IDs then accompany PASS into canonical planner completion. Round 2 unresolved required findings block.
 8. For `SINGLE_MODEL`, `MINI_GATE: PASS` runs validator `POST_REVIEW` against current product and mini bundle. Unchanged identities make validator persist and return `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS`, permitting canonical planner completion. Any mismatch restarts final gate at step 1.
 
@@ -172,7 +182,7 @@ Final reviewers persist exact verdicts. Terra finding IDs are `T<round>-F###`.
 Use paths and IDs instead of dumps. Every task prompt supplies its exact mode, allowed writes, expected artifact, and compact report schema. Every response includes `PROTOCOL_VERSION: 2`.
 
 Executor:
-`EXECUTOR_REPORT | <stage> | PASS|FAIL|BLOCKED|DEVIATION|STALE | product: <paths|none> | snapshot: <ID|none> | validation: PASS|FAIL|BLOCKED | evidence: <path|none> | blocker: <none|exact>`
+`EXECUTOR_REPORT | <stage|repair> | PASS|FAIL|BLOCKED|DEVIATION|STALE | product: <paths|none> | expected-product: <ID> | authorization: <ID> | validation: PASS|FAIL|BLOCKED | evidence: <path|required for PASS> | blocker: <none|exact>`
 
 Gate:
 `GATE_REPORT | <stage> | PASS|FAIL|BLOCKED|DEVIATION|STALE | readiness: PASS|FAIL|BLOCKED | review: PASS|FAIL|NOT_RUN | findings: <IDs|none> | snapshot: <ID> | evidence: <paths>`

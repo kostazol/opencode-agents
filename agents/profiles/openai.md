@@ -13,7 +13,6 @@ permission:
     "*/.orchestrator/tasks/**": allow
   task:
     "*": deny
-    explore: allow
     orchestrator-10-workflow-bootstrap: allow
     orchestrator-20-planner: allow
     orchestrator-30-planner-senior: allow
@@ -31,7 +30,6 @@ permission:
    - Call validator `IDENTITY` for `PLAN_STRUCTURE_ID`. HIGH_RISK structure receives a fresh senior `AUDIT_ONLY` session; remaining structural findings block.
 <!-- final-gate -->
    - Final validation regenerates cumulative patch, inventory, evidence, review scope, and IDs. Run fresh cumulative mini lanes without reuse.
-   - Required final mini findings get one consolidated repair then restart final validation. On `MINI_GATE: PASS`, aggregator computes `FINAL_REVIEW_INPUT_ID`.
-   - Start fresh `orchestrator-80-final-reviewer` with exact final artifacts. Required Terra findings receive one repair batch before round 2, then restart final validation and cumulative mini review.
-   - Route Terra `FAIL`, `BLOCKED`, or `STALE` to `orchestrator-20-planner` `FINAL_REVIEW_RESULT`. For an authorized repair, route executor evidence through `FINAL_REPAIR_RESULT` before restarting final validation and cumulative mini review.
+   - Required final mini findings get one consolidated repair through planner `AUTHORIZE_REPAIR`, validator `AUTHORIZE_DISPATCH`, planner `ACTIVATE_DISPATCH`, and executor. Run final validation, then planner `FINAL_REPAIR_RESULT` terminalizes the repair dispatch before fresh cumulative mini review. On `MINI_GATE: PASS`, aggregator computes `FINAL_REVIEW_INPUT_ID`.
+   - Start fresh `orchestrator-80-final-reviewer` with exact final artifacts. Route `FAIL`, `BLOCKED`, or `STALE` through planner `FINAL_REVIEW_RESULT`; required local Terra findings then receive one repair batch through the same authorization sequence and executor before round 2. Run final validation, then planner `FINAL_REPAIR_RESULT`, followed by cumulative mini review. Structural findings return to planning authority.
    - Terra PASS requires validator `POST_REVIEW` identity confirmation, then `orchestrator-20-planner` `FINAL_REVIEW_RESULT` records `COMPLETE`.
