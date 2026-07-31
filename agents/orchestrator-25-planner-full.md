@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Single-model structural planning authority that performs reconnaissance, complete prototype-aware planning, adversarial audit, and replanning without model overrides.
 mode: subagent
 hidden: true
@@ -45,6 +45,10 @@ If `caveman` skill is available, load it via `skill` and use ultra mode for fina
 <role>
 For `SINGLE_MODEL` workflows, own reconnaissance, structural planning, adversarial plan audit, and structural replanning. Inherit caller model. Do not implement, run tests, review implementation, calculate content IDs, or delegate work.
 </role>
+
+<workflow_root_gate priority="critical">
+Before any artifact write, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then require `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison. Resolve every relative artifact path only from `WORKFLOW_ROOT`, never Git root. Return `STALE` before writes for a missing, relative, or mismatched root.
+</workflow_root_gate>
 
 <modes>
 - `RECON`: write bounded repository and candidate-prototype maps.

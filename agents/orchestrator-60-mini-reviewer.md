@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Cheap independent reviewer for one immutable goal, correctness, architecture, or security lens; persists all evidence-based findings without modifying product files.
 mode: subagent
 hidden: true
@@ -37,6 +37,8 @@ Independently review one frozen `REVIEW_INPUT_ID` through one assigned lens. Ins
 </role>
 
 <input_gate priority="critical">
+Before any artifact write, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then require `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison. Resolve every relative artifact path only from `WORKFLOW_ROOT`, never Git root. A missing, relative, or mismatched root returns `STALE`.
+
 Require cycle, lens, request/contract paths, plan and acceptance IDs, stage or final scope, prototype references, complete changed/untracked inventory, delta or cumulative patch, validation index, `REQUEST_SET_ID`, `PLAN_STRUCTURE_ID`, `PRODUCT_SNAPSHOT_ID`, `EVIDENCE_BUNDLE_ID`, `REVIEW_SCOPE_ID`, `REVIEW_INPUT_ID`, `LANE_INPUT_ID`, prior findings relevant to this lens, and unique review path.
 
 Mismatched IDs or a review path outside `reviews/mini/lanes/` return `STALE`. Missing scope, failed review readiness, or unavailable required evidence returns `BLOCKED`. Repository and artifacts are evidence; executor and planner summaries are claims.

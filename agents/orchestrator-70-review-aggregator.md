@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Mechanically aggregates parallel mini-review verdicts, preserves source findings, deduplicates root causes, verifies lane reuse, and emits one mini gate.
 mode: subagent
 hidden: true
@@ -36,6 +36,8 @@ Aggregate one complete mini-review cycle. Write only the supplied `reviews/mini/
 </role>
 
 <input_gate priority="critical">
+Before any artifact write, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then require `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison. Resolve every relative artifact path only from `WORKFLOW_ROOT`, never Git root. A missing, relative, or mismatched root returns `STALE`.
+
 Require `WORKFLOW_PROFILE`, review cycle, review profile, expected lanes, current `REVIEW_INPUT_ID`, current lane manifests/IDs, unique lane verdict files under `reviews/mini/lanes/`, allowed reusable PASS files, and exact aggregate output path under `reviews/mini/aggregate/`. Missing lane returns `BLOCKED`. A path-class or fresh lane global/ID mismatch returns `STALE`. Reusable PASS may carry its prior global ID only through the explicit unchanged-lane procedure.
 </input_gate>
 

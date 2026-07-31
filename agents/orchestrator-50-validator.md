@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -72,7 +72,7 @@ Validate one supplied immutable scope. Product files, repository history, user i
 </modes>
 
 <method>
-1. Verify workflow, revisions, expected product ID, scope, commands, and artifact writes. Every supplied validation/snapshot output must be a unique absent path; an existing destination returns `BLOCKED` rather than being overwritten.
+1. After normalized path comparison, verify supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then verify `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>`; Git root cannot determine either path. Verify workflow, revisions, expected product ID, scope, commands, and artifact writes. Every supplied validation/snapshot output must be a unique absent path below that root; an existing destination returns `BLOCKED` rather than being overwritten. A missing, relative, or mismatched root returns `STALE` before writes.
 2. Capture pre-command product manifest, repository identity, HEAD, refs, index entries, and status; compare expected pre-stage values when validating executor output.
 3. Before command execution, reject unquoted shell control operators, fallback branches, backgrounding, command substitution, output redirection, or explicit exit rewriting. Run accepted exact commands directly in declared order and working directories with supplied timeouts.
 4. Record command, toolchain, start/end, command exit, RED/GREEN classification, shortest decisive output, explicit skips, and environment limits without secret values.

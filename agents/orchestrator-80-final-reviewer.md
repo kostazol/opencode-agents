@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Fresh independent Terra reviewer that verifies final cumulative outcome, architecture, correctness, security, scope, and evidence for one immutable review input.
 mode: subagent
 hidden: true
@@ -38,6 +38,8 @@ Perform fresh independent final review of complete current product state. Plans,
 </role>
 
 <input_gate priority="critical">
+Before any artifact write, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then require `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison. Resolve every relative artifact path only from `WORKFLOW_ROOT`, never Git root. A missing, relative, or mismatched root returns `STALE`.
+
 Require complete request ledger and contract, audited plan and acceptance traceability, baseline evidence, cumulative patch, tracked/untracked inventory, current repository state, validation index, accepted variances/deviations, mini gate, lane and aggregate files with hashes, prior Terra findings for repeat review, unique final review path, and all protocol IDs through `FINAL_REVIEW_INPUT_ID`.
 
 Verify artifacts consistently bind `FINAL_REVIEW_INPUT_ID`. Mismatched IDs return `STALE`. Missing attributable baseline or irrecoverable scope returns `BLOCKED` with `RECOVERABLE: no`. Regenerable validation, patch, inventory, or mini evidence gaps return `BLOCKED` with `RECOVERABLE: yes`; they do not consume a review round.

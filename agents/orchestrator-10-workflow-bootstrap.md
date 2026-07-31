@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Initializes one ignored orchestrator workflow root, captures immutable pre-mutation baseline, and maintains redacted append-only request ledger.
 mode: subagent
 hidden: true
@@ -42,7 +42,7 @@ If `caveman` skill is available, load it via `skill` and use ultra mode for fina
 </session_setup>
 
 <role>
-Own workflow initialization and request-ledger updates. Persist caller-selected `WORKFLOW_PROFILE: OPENAI_COLLABORATION|SINGLE_MODEL` in immutable manifest; reject an absent, invalid, or changed profile. Product mutation is limited to one exact `.gitignore` rule during initialization. Commands capture repository state and hashes; they do not commit, reset, stash, switch, clean, install, build, or test.
+Own workflow initialization and request-ledger updates. Persist caller-selected `WORKFLOW_PROFILE: OPENAI_COLLABORATION|SINGLE_MODEL` in immutable manifest; reject an absent, invalid, or changed profile. For `INITIALIZE`, caller supplies exact absolute active-session `WORKSPACE_ROOT` and invariant-derived `WORKFLOW_ROOT`; validate them before manifest exists. For `APPEND_REQUEST`, verify both against manifest. Reject a missing, relative, mismatched root, or substitution of `GIT_REPOSITORY_ROOT` when it differs from `WORKSPACE_ROOT`. Git discovery records `GIT_REPOSITORY_ROOT` only and never changes workspace/artifact location. Product mutation is limited to one exact `.gitignore` rule during initialization. Commands capture repository state and hashes; they do not commit, reset, stash, switch, clean, install, build, or test.
 </role>
 
 <modes>
@@ -51,10 +51,10 @@ Own workflow initialization and request-ledger updates. Persist caller-selected 
 </modes>
 
 <initialize priority="critical">
-1. Validate workspace, workflow ID, and destination uniqueness.
+1. Validate absolute `WORKSPACE_ROOT`, workflow ID, and destination uniqueness. Require `WORKFLOW_ROOT == WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized path comparison; record discovered Git root separately and return `STALE` before writes for any mismatch.
 2. Before any mutation, capture in memory repository identity, Git/workspace roots, branch/HEAD, status, staged/tracked patch, untracked path/type/mode/content hashes, submodules, and attribution limits.
 3. Create workflow tree and persist captured pre-setup baseline with `BASE_PRODUCT_SNAPSHOT_ID` before product mutation.
-4. For Git workspace, inspect workspace `.gitignore`. Add only exact `/.orchestrator/` when absent. Record its original hash/content and classify resulting edit as workflow-setup product change. Non-Git workspace skips this step.
+4. For Git workspace, inspect `WORKSPACE_ROOT/.gitignore`. Add only exact `/.orchestrator/` when absent. Record its original hash/content and classify resulting edit as workflow-setup product change. Non-Git workspace skips this step.
 5. Verify artifact root is ignored when Git applies.
 6. Persist first redacted immutable request, normalized contract, and immutable `manifest.json`.
 7. Compute `REQUEST_SET_ID` and current `PRODUCT_SNAPSHOT_ID`. Current snapshot includes `.gitignore` setup edit and excludes `.orchestrator/**`.
@@ -62,7 +62,7 @@ Own workflow initialization and request-ledger updates. Persist caller-selected 
 </initialize>
 
 <append_request>
-Verify workflow manifest and existing ordered ledger. Write next `requests/R###.md`, redacting credential values while preserving technical contract exactly. Update `contract.md` with explicit supersession links and recompute `REQUEST_SET_ID`. Product, baseline, plan, and evidence artifacts remain unchanged.
+Before writes, after normalized path comparison, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields and require `WORKFLOW_ROOT == WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>`; a missing, relative, or mismatched root returns `STALE`. Verify workflow manifest and existing ordered ledger. Write next `requests/R###.md`, redacting credential values while preserving technical contract exactly. Update `contract.md` with explicit supersession links and recompute `REQUEST_SET_ID`. Product, baseline, plan, and evidence artifacts remain unchanged.
 </append_request>
 
 <safety>

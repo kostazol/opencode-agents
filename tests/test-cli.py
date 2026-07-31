@@ -178,6 +178,36 @@ class CliTests(unittest.TestCase):
             self.assertIn(executor_contract, executor)
             self.assertIn(executor_contract, protocol)
 
+    def test_nested_workspace_workflow_root_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "config"
+            self.run_cli(ROOT, target, "install")
+            primary = (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8")
+            bootstrap = (target / "agents/orchestrator-10-workflow-bootstrap.md").read_text(encoding="utf-8")
+            executor = (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8")
+            validator = (target / "agents/orchestrator-50-validator.md").read_text(encoding="utf-8")
+            protocol = (target / "protocols/orchestrator-v2.md").read_text(encoding="utf-8")
+            expected_root = "WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>"
+            self.assertIn("active-session project directory", primary)
+            self.assertIn(expected_root, primary)
+            self.assertIn("Bootstrap `INITIALIZE` receives caller-derived exact absolute `WORKSPACE_ROOT`", primary)
+            self.assertIn("every later role call, including bootstrap `APPEND_REQUEST`", primary)
+            self.assertIn("stale identity or workflow root returns `STALE` without transition", primary)
+            self.assertIn(expected_root, bootstrap)
+            self.assertIn("validate them before manifest exists", bootstrap)
+            self.assertIn("Git discovery records `GIT_REPOSITORY_ROOT` only", bootstrap)
+            self.assertIn("<append_request>\nBefore writes, after normalized path comparison, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields", bootstrap)
+            self.assertIn(expected_root, executor)
+            self.assertIn(expected_root, validator)
+            self.assertIn("never replaced by a different root found through Git discovery", protocol)
+            self.assertIn("when it differs from `WORKSPACE_ROOT`", protocol)
+            self.assertIn("relative artifact paths are valid only relative to that root, never Git root", protocol)
+            for filename in ("orchestrator-20-planner.md", "orchestrator-25-planner-full.md", "orchestrator-30-planner-senior.md", "orchestrator-40-executor.md", "orchestrator-50-validator.md", "orchestrator-60-mini-reviewer.md", "orchestrator-70-review-aggregator.md", "orchestrator-80-final-reviewer.md"):
+                content = (target / "agents" / filename).read_text(encoding="utf-8")
+                self.assertIn("supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields", content, filename)
+                self.assertIn(expected_root, content, filename)
+                self.assertIn("Return `STALE`" if "planner" in filename else "returns `STALE`", content, filename)
+
     def test_workflow_artifact_permissions_allow_root_relative_paths(self):
         def permission_rules(content, permission):
             lines = content.splitlines()

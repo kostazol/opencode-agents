@@ -27,7 +27,7 @@ Profile selection is a workflow contract. An absent, invalid, or changed profile
 
 ## Workflow root
 
-Use one stable workflow ID per user outcome. Follow-ups reuse it. Artifacts live under `<workspace>/.orchestrator/tasks/<workflow-id>/`. Artifact-write permissions must separately allow `.orchestrator/...` and `*/.orchestrator/...`: OpenCode evaluates normalized Git-worktree-relative paths, each `*` spans path separators, and a wildcard prefix followed by `/` does not match the root-relative form.
+Use one stable workflow ID per user outcome. Follow-ups reuse it. `WORKSPACE_ROOT` is exact absolute active-session project directory supplied by primary orchestrator; it is never replaced by a different root found through Git discovery. `GIT_REPOSITORY_ROOT` may equal or contain `WORKSPACE_ROOT`, but is repository metadata only. `WORKFLOW_ROOT` is exact absolute `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>/`; no artifact may use another `.orchestrator/` directory. During `INITIALIZE`, bootstrap validates caller-derived absolute roots and their equality invariant before any write, then persists all three roots. After manifest creation, every role verifies supplied roots against it. A mismatch, a relative root, or substituting `GIT_REPOSITORY_ROOT` when it differs from `WORKSPACE_ROOT` returns `STALE` before writes. Handoffs use exact absolute `WORKFLOW_ROOT`; relative artifact paths are valid only relative to that root, never Git root. Artifact-write permissions must separately allow `.orchestrator/...` and `*/.orchestrator/...`: OpenCode evaluates normalized Git-worktree-relative paths, each `*` spans path separators, and a wildcard prefix followed by `/` does not match the root-relative form.
 
 ```text
 manifest.json
@@ -50,9 +50,9 @@ reviews/mini/aggregate/
 reviews/final/
 ```
 
-Initialization captures complete pre-setup status, tracked/staged patch, untracked hashes, branch/HEAD, repository identity, and `BASE_PRODUCT_SNAPSHOT_ID` before mutation. Persist this baseline under the new workflow root first. In a Git workspace, then add only the exact `/.orchestrator/` rule to workspace `.gitignore` when missing and verify the root is ignored. Classify the `.gitignore` edit as an intentional user-authorized workflow-setup product change, include it in current product identity, plan traceability, inventory, and final patch. Non-Git workspaces skip ignore setup. Exclude only `.orchestrator/**` from product scope, snapshots, patches, staging, and review.
+Initialization captures complete pre-setup status, tracked/staged patch, untracked hashes, branch/HEAD, repository identity, and `BASE_PRODUCT_SNAPSHOT_ID` before mutation. Persist this baseline under the new workflow root first. In a Git workspace, then add only the exact `/.orchestrator/` rule to `WORKSPACE_ROOT/.gitignore` when missing and verify the root is ignored. Classify the `.gitignore` edit as an intentional user-authorized workflow-setup product change, include it in current product identity, plan traceability, inventory, and final patch. Non-Git workspaces skip ignore setup. Exclude only `WORKSPACE_ROOT/.orchestrator/**` from product scope, snapshots, patches, staging, and review.
 
-`manifest.json` is an immutable bootstrap index: protocol version, workflow ID, workspace/Git roots, artifact root, baseline paths, first request path, and initialization result. Runtime state lives in `plan/master.md`.
+`manifest.json` is an immutable bootstrap index: protocol version, workflow ID, absolute `WORKSPACE_ROOT`, `GIT_REPOSITORY_ROOT`, `WORKFLOW_ROOT`, baseline paths, first request path, and initialization result. Runtime state lives in `plan/master.md`.
 
 Each user task or correction gets a new immutable request file. Preserve APIs, CLI, schemas, acceptance, exact errors, commands, and constraints. Replace credential values with `[REDACTED_SECRET]`. `contract.md` normalizes the active request set and records supersession links; request text remains authoritative.
 

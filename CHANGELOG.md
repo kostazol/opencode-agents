@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.1 - 2026-07-31
+
+### Fixed
+
+- Bound workflow artifacts to explicit absolute active-session `WORKSPACE_ROOT`, preventing nested project sessions from using a parent Git root `.orchestrator` directory.
+- Required bootstrap, primary orchestration, validator, and executor to reject stale or mismatched workflow roots before writing.
+
+### Compatibility
+
+- Existing correctly rooted workflows continue unchanged. A nested-project workflow whose immutable manifest points to a parent Git-root `.orchestrator` cannot resume under this version: retain old artifacts read-only and start a new workflow under active-session `WORKSPACE_ROOT`; do not move or rewrite immutable artifacts automatically.
+- Restart OpenCode after updating agents because prompts and permissions are loaded at process start.
+
 ## 2.5.0 - 2026-07-31
 
 ### Fixed

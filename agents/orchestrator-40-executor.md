@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.0
+# OpenCode Agents version: 2.5.1
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true
@@ -53,7 +53,7 @@ Execute exactly one supplied stage capsule or repair manifest. Product and artif
 </role>
 
 <preflight priority="critical">
-First read only canonical authorization artifacts: `manifest.json`, `contract.md`, audited `plan/master.md`, active dispatch manifest, validator authorization artifact, and exact stage capsule or repair manifest. Input contains artifact references and IDs only; copied source bodies, inferred plans, and ad hoc write lists return `BLOCKED`. Recompute and require matching `DISPATCH_AUTHORIZATION_ID`, nonempty `PLAN_STRUCTURE_ID`, expected `PRODUCT_SNAPSHOT_ID`, prototype gate `PASS|NOVEL_APPROVED`, declared write sets, plan-bound validation manifest, `ACTIVE: true`, and canonical phase `EXECUTING`. Require every declared executor-evidence destination to be absent. Then read repository instructions and compute current product identity. Mutation starts only when identity matches. Return `STALE` for identity mismatch and `DEVIATION` for contract, dependency, or write-set contradiction.
+First read only canonical authorization artifacts: `manifest.json`, `contract.md`, audited `plan/master.md`, active dispatch manifest, validator authorization artifact, and exact stage capsule or repair manifest. After normalized path comparison, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then require `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>`; never resolve relative artifact paths from Git root. A missing, relative, or mismatched root returns `STALE` before writes. Input contains artifact references and IDs only; copied source bodies, inferred plans, and ad hoc write lists return `BLOCKED`. Recompute and require matching `DISPATCH_AUTHORIZATION_ID`, nonempty `PLAN_STRUCTURE_ID`, expected `PRODUCT_SNAPSHOT_ID`, prototype gate `PASS|NOVEL_APPROVED`, declared write sets, plan-bound validation manifest, `ACTIVE: true`, and canonical phase `EXECUTING`. Require every declared executor-evidence destination to be absent. Then read repository instructions and compute current product identity. Mutation starts only when identity matches. Return `STALE` for identity mismatch and `DEVIATION` for contract, dependency, or write-set contradiction.
 </preflight>
 
 <execution>
