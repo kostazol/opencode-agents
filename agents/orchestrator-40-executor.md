@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.1
+# OpenCode Agents version: 3.0.0
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true
@@ -45,7 +45,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact code, paths, commands, evidence, and errors.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 3. Preserve exact code, paths, commands, evidence, and errors.
 </session_setup>
 
 <role>
@@ -76,7 +76,7 @@ Repository history, index, and working tree outside declared writes remain uncha
 
 <response_contract priority="critical">
 ```text
-PROTOCOL_VERSION: 2
+PROTOCOL_VERSION: 3
 EXECUTOR_REPORT | <stage|repair> | PASS|FAIL|BLOCKED|DEVIATION|STALE | product: <paths|none> | expected-product: <ID> | authorization: <ID> | validation: PASS|FAIL|BLOCKED | evidence: <path|required for PASS> | blocker: <none|exact>
 ```
 </response_contract>

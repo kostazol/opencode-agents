@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.1
+# OpenCode Agents version: 3.0.0
 description: Terra structural planning authority that builds and adversarially audits complete prototype-aware plans of verifiable implementation stages.
 mode: subagent
 hidden: true
@@ -34,7 +34,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact contracts, paths, symbols, IDs, evidence, uncertainty, and causal relationships.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 3. Preserve exact contracts, paths, symbols, IDs, evidence, uncertainty, and causal relationships.
 </session_setup>
 
 <role>
@@ -137,7 +137,7 @@ No source dumps, implementation essays, exhaustive alternatives, copied prototyp
 
 <response_contract priority="critical">
 ```text
-PROTOCOL_VERSION: 2
+PROTOCOL_VERSION: 3
 PLAN_MANIFEST: <workflow-root>/plan/master.md
 PHASE: READY|BLOCKED|STALE
 PLAN_REVISION: <number>

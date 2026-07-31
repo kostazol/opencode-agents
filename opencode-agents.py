@@ -8,6 +8,7 @@ import base64
 from datetime import datetime
 import json
 import os
+import shlex
 import shutil
 import stat
 import sys
@@ -21,10 +22,11 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.5.1"
+VERSION = "3.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
-GROUPS = ("agents", "protocols")
+GROUPS = ("agents", "protocols", "helpers")
+OPTIONAL_GROUPS = ("helpers",)
 ORCHESTRATOR_TEMPLATE = "orchestrator-00-main.template.md"
 ORCHESTRATOR_PROFILES = {
     "orchestrator-00-main.md": "openai.md",
@@ -104,10 +106,11 @@ def source_files(source: Path, target: Path):
     for group in GROUPS:
         source_group = source / group
         if not source_group.is_dir():
-            if group == "skills":
+            if group in OPTIONAL_GROUPS:
                 continue
             raise RuntimeError(f"source missing {group}/: {source}")
-        for source_file in sorted(source_group.glob("*.md")):
+        pattern = "*.py" if group == "helpers" else "*.md"
+        for source_file in sorted(source_group.glob(pattern)):
             if group == "agents" and source_file.name == ORCHESTRATOR_TEMPLATE:
                 continue
             files.append((source_file, target / group / source_file.relative_to(source_group)))
@@ -270,19 +273,34 @@ def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
     if source.parent.name != "agents":
         return content
     protocol_directory = str(target / "protocols")
+    helper_directory = str(target / "helpers")
     protocol_path = str(target / "protocols" / "orchestrator-v2.md")
     yaml_path = protocol_path.replace("'", "''")
     yaml_directory = protocol_directory.replace("'", "''")
-    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode())
+    yaml_helper_directory = helper_directory.replace("'", "''")
+    checkpoint_helper_path = str(target / "helpers" / "checkpoint.py")
+    python3_command, py_command = checkpoint_commands(checkpoint_helper_path)
+    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_HELPER_DIRECTORY_PATH_YAML__", yaml_helper_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode()).replace(b"__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_YAML__", json.dumps(python3_command, ensure_ascii=False).encode()).replace(b"__OPENCODE_CHECKPOINT_PY_COMMAND_YAML__", json.dumps(py_command, ensure_ascii=False).encode()).replace(b"__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_TEXT__", python3_command.encode()).replace(b"__OPENCODE_CHECKPOINT_PY_COMMAND_TEXT__", py_command.encode())
+
+
+def checkpoint_commands(helper_path: str):
+    if any(character in helper_path for character in ('*', '?', '\r', '\n')):
+        raise RuntimeError(f"checkpoint helper path contains unsupported permission-pattern character: {helper_path}")
+    if os.name == "nt":
+        if any(character in helper_path for character in ('"', '%', '!', '$', '`', '\r', '\n')):
+            raise RuntimeError(f"checkpoint helper path contains unsupported Windows shell character: {helper_path}")
+        quoted_path = f'"{helper_path}"'
+        return f"python3 {quoted_path}", f"py -3 {quoted_path}"
+    return shlex.join(["python3", helper_path]), shlex.join(["py", "-3", helper_path])
 
 
 def validate_target_group(path: Path) -> None:
-    if path.is_symlink() or (path.exists() and not path.is_dir()):
+    if is_link_or_reparse(path) or (path.exists() and not path.is_dir()):
         raise RuntimeError(f"target group is not a directory: {path}")
 
 
 def validate_target_file(path: Path) -> None:
-    if path.is_symlink():
+    if is_link_or_reparse(path):
         raise RuntimeError(f"refusing symlink target: {path}")
     if path.exists() and not path.is_file():
         raise RuntimeError(f"target is not a regular file: {path}")
@@ -365,7 +383,7 @@ def atomic_write_path(source: Path, content: bytes, target: Path) -> None:
 def backup_copy(source: Path, target: Path) -> None:
     current = target
     while True:
-        if current.is_symlink():
+        if is_link_or_reparse(current):
             raise RuntimeError(f"refusing symlink backup path: {current}")
         if current.parent == current:
             break
@@ -378,8 +396,17 @@ def reject_symlink_components(path: Path, description: str) -> None:
     current = Path(absolute.anchor)
     for part in absolute.parts[1:]:
         current /= part
-        if current.is_symlink():
+        if is_link_or_reparse(current):
             raise RuntimeError(f"refusing symlink {description}: {current}")
+
+
+def is_link_or_reparse(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    return stat.S_ISLNK(metadata.st_mode) or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
 def validate_backup(backup: Path, source: Path, target: Path) -> Path:
@@ -388,13 +415,13 @@ def validate_backup(backup: Path, source: Path, target: Path) -> Path:
     backup = backup.resolve()
     if backup == source or backup == target or source in backup.parents or target in backup.parents or backup in source.parents or backup in target.parents:
         raise RuntimeError(f"backup path overlaps source or target: {backup}")
-    if backup.is_symlink() or (backup.exists() and not backup.is_dir()):
+    if is_link_or_reparse(backup) or (backup.exists() and not backup.is_dir()):
         raise RuntimeError(f"backup path is not a directory: {backup}")
     return backup
 
 
 def validate_target(target: Path) -> None:
-    if target.is_symlink():
+    if is_link_or_reparse(target):
         raise RuntimeError(f"refusing symlink target root: {target}")
     for group in GROUPS:
         validate_target_group(target / group)

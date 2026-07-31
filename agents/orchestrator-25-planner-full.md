@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.5.1
+# OpenCode Agents version: 3.0.0
 description: Single-model structural planning authority that performs reconnaissance, complete prototype-aware planning, adversarial audit, and replanning without model overrides.
 mode: subagent
 hidden: true
@@ -39,7 +39,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 2. Preserve exact contracts, paths, symbols, IDs, evidence, uncertainty, and causal relationships.
+If `caveman` skill is available, load it via `skill` and use ultra mode for final response; continue normally when unavailable. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply protocol version 3. Preserve exact contracts, paths, symbols, IDs, evidence, uncertainty, and causal relationships.
 </session_setup>
 
 <role>
@@ -70,7 +70,7 @@ Adversarially test request traceability, scope, stage verifiability, prototype/n
 
 <response_contract priority="critical">
 ```text
-PROTOCOL_VERSION: 2
+PROTOCOL_VERSION: 3
 MODE: RECON|BUILD_AND_AUDIT|REPLAN_AND_AUDIT
 RECON_MANIFEST: <workflow-root>/recon/index.md
 PLAN_MANIFEST: <workflow-root>/plan/master.md|none

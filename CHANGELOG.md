@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.0.0 - 2026-07-31
+
+### Added
+
+- Validator-owned immutable review epochs and `LANE_INPUT_ID` manifests, plus unique epoch lane and aggregate paths.
+- `orchestrator-45-checkpointer` for exact accepted-stage commits through isolated index handling.
+- Terra-pinned `orchestrator-75-escalation-reviewer` for demonstrated-risk adjudication after two mini cycles; `80` remains final-only.
+- Human-readable workflow `status.md`, final-cycle progress, recovery/replan, dirty-baseline consent, and major protocol migration gates.
+
+### Changed
+
+- Accepted stages now retain normal branch commits after review PASS. Workflow never rewrites history and preserves user-owned staged entries while refreshing committed workflow-path index entries.
+- Stage mini reviewers receive only prior-checkpoint-to-current-stage delta; final reviewers receive cumulative checkpoint range.
+- Unresolved stage security/local findings remain in current small-diff stage: after two mini-review/repair cycles Terra adjudicates only demonstrated risks, then replan/review repeats until resolution. Repairable final findings have no numeric blocker limit.
+
+### Compatibility
+
+- This is protocol major version 3. Existing v2 workflows require read-only recovery and explicit user-approved migration before execution resumes.
+- Terra escalation adds a third Terra-pinned role; `orchestrator-single-model` denies access to it.
+- Restart OpenCode after updating agents because prompts and permissions are loaded at process start.
+
 ## 2.5.1 - 2026-07-31
 
 ### Fixed

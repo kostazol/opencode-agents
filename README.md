@@ -1,6 +1,6 @@
 # OpenCode Agents
 
-Набор агентов и протоколов для OpenCode. Репозиторий ориентирован на управляемую разработку через Orchestrator v2: фиксация запроса, планирование, последовательная реализация, валидация и независимое ревью.
+Набор агентов и протоколов для OpenCode. Репозиторий ориентирован на управляемую разработку через Orchestrator v3: фиксация запроса, планирование, последовательная реализация, checkpoint commits, валидация и независимое ревью.
 
 ## Состав
 
@@ -12,9 +12,11 @@ orchestrator-01-single-model-main (UI: orchestrator-single-model)
 ├── orchestrator-25-planner-full (single-model)
 ├── orchestrator-30-planner-senior (Terra)
 ├── orchestrator-40-executor
+├── orchestrator-45-checkpointer
 ├── orchestrator-50-validator
 ├── orchestrator-60-mini-reviewer
 ├── orchestrator-70-review-aggregator
+├── orchestrator-75-escalation-reviewer (Terra)
 └── orchestrator-80-final-reviewer (Terra)
 ```
 
@@ -27,9 +29,11 @@ orchestrator-01-single-model-main (UI: orchestrator-single-model)
 - `orchestrator-25-planner-full` — исследует, планирует и перепланирует в `SINGLE_MODEL`.
 - `orchestrator-30-planner-senior` — строит и проверяет план в `OPENAI_COLLABORATION`.
 - `orchestrator-40-executor` — реализует одну стадию или пакет исправлений.
+- `orchestrator-45-checkpointer` — создаёт точный stage checkpoint commit после review PASS.
 - `orchestrator-50-validator` — проверяет baseline, стадии, итог и идентичность артефактов.
 - `orchestrator-60-mini-reviewer` — независимо проверяет один аспект изменений.
 - `orchestrator-70-review-aggregator` — объединяет mini-review и формирует общий verdict.
+- `orchestrator-75-escalation-reviewer` — независимо проверяет post-budget escalation в `OPENAI_COLLABORATION`.
 - `orchestrator-80-final-reviewer` — выполняет финальное независимое Terra-ревью.
 
 ### Порядок запуска
@@ -37,19 +41,19 @@ orchestrator-01-single-model-main (UI: orchestrator-single-model)
 1. Пользователь запускает `orchestrator` или `orchestrator-single-model`.
 2. `orchestrator-10-workflow-bootstrap` фиксирует запрос и baseline.
 3. Планирование: `20 → 50 → 30 → 50` для `OPENAI_COLLABORATION` либо `25 → 50 → 25 → 50` для `SINGLE_MODEL`.
-4. Каждая стадия: `20 candidate → 50 AUTHORIZE_DISPATCH → 20 ACTIVATE_DISPATCH → 40 → 50 → 60` (параллельные lanes) `→ 70`.
-5. После PASS validator принимает стадию, а `orchestrator-20-planner` запускает следующую; после замечаний цикл повторяется с исправлениями.
-6. Финальный цикл: `50 → 60 → 70 → 80 → 50` для `OPENAI_COLLABORATION` либо `50 → 60 → 70 → 50` для `SINGLE_MODEL`; product repairs повторяют authorization sequence из шага 4.
+4. Каждая стадия: `20 candidate → 50 AUTHORIZE_DISPATCH → 20 ACTIVATE_DISPATCH → 40 → 50 STAGE → 50 PREPARE_MINI_REVIEW → 20 ACTIVATE_REVIEW_EPOCH → 60` (параллельные lanes) `→ 70 → 20 MINI_REVIEW_RESULT → 45 → 20 CHECKPOINT_RESULT → 50 ACCEPT_STAGE → 20 ADVANCE`.
+5. После PASS checkpointer создаёт stage commit, validator принимает стадию, а `orchestrator-20-planner` запускает следующую; после замечаний текущая stage остаётся активной. После двух unresolved mini-review/repair cycles `75` Terra adjudicates только реальные открытые риски; подтверждённый риск возвращается в replan и новый mini cycle.
+6. Финальный цикл: `50 → PREPARE_MINI_REVIEW → 60 → 70 → 80 → 50` для `OPENAI_COLLABORATION` либо `50 → PREPARE_MINI_REVIEW → 60 → 70 → 50` для `SINGLE_MODEL`; repairable findings перезапускают видимый final cycle без numeric limit.
 
 - `agents/` — исходные prompt-файлы агентов.
-- `protocols/` — общий протокол Orchestrator v2.
+- `protocols/` — общий протокол Orchestrator v3.
 - `AGENTS.md` — правила сопровождения репозитория.
 - `CHANGELOG.md` — история изменений.
 - `VERSION` — версия конфигурации.
 
 Все filenames используют общий `orchestrator-` prefix и номер порядка. OpenCode хранит agents в flat-папке, поэтому связанная группа остаётся рядом при сортировке и ручной работе с Markdown. Primary agent имеет UI name `orchestrator`.
 
-## Что делает Orchestrator v2
+## Что делает Orchestrator v3
 
 - сохраняет неизменяемый запрос и baseline до изменения продукта;
 - проводит разведку и проверяет prototype references перед каждой стадией;
@@ -58,8 +62,18 @@ orchestrator-01-single-model-main (UI: orchestrator-single-model)
 - запускает targeted, affected и broad validation;
 - проводит независимые mini-review lanes;
 - передаёт финальный результат независимому Terra reviewer;
-- хранит планы, evidence, patches и логи в `.orchestrator/tasks/<workflow-id>/`;
-- не создаёт временные Git-коммиты и не изменяет историю или индекс.
+- хранит планы, evidence, patches, human-readable `status.md` и логи в `.orchestrator/tasks/<workflow-id>/`;
+- создаёт один stage commit после review PASS, сохраняя user-owned staged entries и не переписывая историю.
+
+## Статус workflow
+
+После установки v3 human-readable status будет находиться здесь:
+
+```text
+.orchestrator/tasks/<workflow-id>/status.md
+```
+
+Файл показывает текущую стадию и общее число стадий, текущий шаг, repair/final-cycle attempt, review epoch, checkpoint commit, следующий action и требуемое решение пользователя. Primary agent также выводит короткую progress-строку после каждой видимой границы. `status.md` — удобный view; источники истины для исполнения остаются в `plan/master.md`, validation и review artifacts.
 
 ## Caveman skill — рекомендуется
 
@@ -77,7 +91,7 @@ npx -y github:JuliusBrussee/caveman -- --only opencode
 
 Выберите primary agent для проекта:
 
-- `orchestrator` использует `OPENAI_COLLABORATION`: `orchestrator-30-planner-senior` и `orchestrator-80-final-reviewer` фиксированы на `openai/gpt-5.6-terra`.
+- `orchestrator` использует `OPENAI_COLLABORATION`: `orchestrator-30-planner-senior`, `orchestrator-75-escalation-reviewer` и `orchestrator-80-final-reviewer` фиксированы на `openai/gpt-5.6-terra`.
 - `orchestrator-single-model` использует `SINGLE_MODEL`: `orchestrator-25-planner-full` наследует выбранную модель, а Terra-pinned agents недоступны через permissions.
 
 Остальные агенты наследуют выбранную модель OpenCode. Profile фиксируется в workflow manifest до baseline capture и не меняется для follow-up requests.
