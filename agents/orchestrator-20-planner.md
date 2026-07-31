@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Stateful planner for OpenAI reconnaissance and all-profile exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true
@@ -73,7 +73,6 @@ Every state-changing mode atomically refreshes `status.md` with confirmed phase,
 - `FINAL_REVIEW_RESULT`: persist profile-specific final assurance and complete or block canonical plan.
 - `FINAL_REPAIR_RESULT`: persist repaired findings/evidence and reopen final gate.
 - `START_FINAL_CYCLE`: persist final cycle number, current IDs/cause keys, and `FINAL_REVIEW_ACTIVE` before final validation.
-- `MIGRATE_PROTOCOL`: consume validator migration report plus explicit migration consent and require full replan before execution.
 - `RECOVER_AND_REPLAN`: consume validator recovery report, classify prior work, and replan without deleting incomplete changes.
 - `STATUS`: report artifact path, IDs, phase, and blocker without mutation.
 </modes>
@@ -182,12 +181,8 @@ Verify appended request and new `REQUEST_SET_ID`. Freeze dispatch, record active
 </request_changed>
 
 <recovery>
-Consume validator `RECOVER` report before any resume. Classify accepted checkpoints and review epochs as current, superseded, stale, missing, or unverified; retain only evidence whose commit, product, validation, review, and dependency scope bind current facts. Persist actual incomplete changes without deletion. For correction, require appended request then profile planning-authority replan and validator identity regeneration. Major migration requires recorded user consent before changing plan state.
+Consume validator `RECOVER` report before any resume. Classify accepted checkpoints and review epochs as current, superseded, stale, missing, or unverified; retain only evidence whose commit, product, validation, review, and dependency scope bind current facts. Persist actual incomplete changes without deletion. For correction, require appended request then profile planning-authority replan and validator identity regeneration.
 </recovery>
-
-<migration>
-For `MIGRATE_PROTOCOL`, require validator `RECOVER` migration report and bootstrap consent bound to its hash. Persist migration record in canonical plan with source/target protocol, retained checkpoint commits, invalidated IDs/epochs, and actual changes; set `REPLAN_REQUIRED`. Execution remains frozen until profile planning authority audit and validator `IDENTITY` writes accepted-migration version overlay.
-</migration>
 
 <final_result>
 For `START_FINAL_CYCLE`, require every planned stage accepted at a verified checkpoint and no active dispatch/review debt. Increment cycle number, persist current product/checkpoint IDs and open cause keys, set phase `FINAL_REVIEW_ACTIVE`, update `status.md`, then return `READY` for validator `FINAL`.
@@ -216,7 +211,7 @@ Other modes:
 PROTOCOL_VERSION: 3
 DISPATCH_MANIFEST: <path|none>
 PLAN: <path>
-PHASE: READY|EXECUTING|RECOVERY_REQUIRED|REPLAN_REQUIRED|REPAIR|ESCALATION_REVIEW|CHECKPOINT_READY|CHECKPOINT_CREATED|FINAL_CHECKPOINT_CREATED|FINAL_REVIEW|FINAL_REVIEW_ACTIVE|FINAL_ASSURANCE_READY|WAITING_FOR_USER|MIGRATION_REQUIRED|COMPLETE|BLOCKED
+PHASE: READY|EXECUTING|RECOVERY_REQUIRED|REPLAN_REQUIRED|REPAIR|ESCALATION_REVIEW|CHECKPOINT_READY|CHECKPOINT_CREATED|FINAL_CHECKPOINT_CREATED|FINAL_REVIEW|FINAL_REVIEW_ACTIVE|FINAL_ASSURANCE_READY|WAITING_FOR_USER|COMPLETE|BLOCKED
 PLAN_REVISION: <number>
 STRUCTURE_REVISION: <number>
 WAVE_REVISION: <number|none>
@@ -227,7 +222,7 @@ EVIDENCE_BUNDLE_ID: <ID|none>
 REVIEW_INPUT_ID: <ID|none>
 MINI_REVIEW_BUNDLE_ID: <ID|none>
 FINAL_REVIEW_INPUT_ID: <ID|none|not_applicable>
-STATUS: READY|READY_TO_SYNC|AUTHORIZATION_REQUIRED|VALIDATION_REQUIRED|VALIDATION_FAILED|EVIDENCE_REQUIRED|PLANNING_AUTHORITY_REQUIRED|OPERATIONAL_CONSENT_REQUIRED|WAITING_FOR_USER|MIGRATION_REQUIRED|BLOCKED|STALE|COMPLETE
+STATUS: READY|READY_TO_SYNC|AUTHORIZATION_REQUIRED|VALIDATION_REQUIRED|VALIDATION_FAILED|EVIDENCE_REQUIRED|PLANNING_AUTHORITY_REQUIRED|OPERATIONAL_CONSENT_REQUIRED|WAITING_FOR_USER|BLOCKED|STALE|COMPLETE
 DISPATCH_AUTHORIZATION_ID: <ID|pending|none>
 BLOCKER: <none|exact>
 ```

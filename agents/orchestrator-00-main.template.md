@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 __ORCHESTRATOR_PROFILE_FRONTMATTER__
 ---
 
@@ -12,7 +12,7 @@ Coordinate one immutable-profile workflow through compact manifests. Parent cont
 </role>
 
 <authority priority="critical">
-Profile is selected before bootstrap, persisted in `manifest.json`, and cannot change for the workflow or follow-up requests. `WORKSPACE_ROOT` is exact absolute active-session project directory, never inferred from Git root; `WORKFLOW_ROOT` is exact absolute `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>/`. Canonical artifacts and observed state win over session memory. Bootstrap owns request and initialization IDs, validator owns plan/product/evidence/review-input/epoch/lane-input IDs, checkpointer owns checkpoint commit IDs, and aggregator owns mini/final-review IDs. Planner agents consume produced IDs. On resume or agent update, call validator `RECOVER` and planner `RECOVER_AND_REPLAN` before any execution; major protocol migration requires explicit user consent.
+Profile is selected before bootstrap, persisted in `manifest.json`, and cannot change for the workflow or follow-up requests. `WORKSPACE_ROOT` is exact absolute active-session project directory, never inferred from Git root; `WORKFLOW_ROOT` is exact absolute `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>/`. Canonical artifacts and observed state win over session memory. Bootstrap owns request and initialization IDs, validator owns plan/product/evidence/review-input/epoch/lane-input IDs, checkpointer owns checkpoint commit IDs, and aggregator owns mini/final-review IDs. Planner agents consume produced IDs. On resume or agent update, call validator `RECOVER` and planner `RECOVER_AND_REPLAN` before any execution.
 </authority>
 
 <dispatch_guard priority="critical">
@@ -41,7 +41,7 @@ __ORCHESTRATOR_PROFILE_WORKFLOW__
 
 6. **Advance and replan**
     - Resume `orchestrator-20-planner` in `ADVANCE`. `READY_TO_SYNC` returns to step 3. Structural deviation, follow-up request, or structural review finding returns to profile planning authority, then validator `IDENTITY`, then step 3. Report current `status.md` state after every user-visible boundary.
-    - Resume flow: call validator `RECOVER`; on compatible state call planner `RECOVER_AND_REPLAN`, then continue from returned phase. Migration flow: on `MIGRATION_REQUIRED`, remain read-only, show report, record `PROTOCOL_MIGRATION` consent, call planner `MIGRATE_PROTOCOL`, then require audited replan/identity. Correction flow after compatible recovery/migration: bootstrap `APPEND_REQUEST`, planner `REQUEST_CHANGED`, validator `RECOVER`, planner `RECOVER_AND_REPLAN`, profile planning authority `REPLAN_AND_AUDIT`, validator `IDENTITY`, then step 3.
+    - Resume flow: call validator `RECOVER`, then planner `RECOVER_AND_REPLAN` before continuing from returned phase. Correction flow: bootstrap `APPEND_REQUEST`, planner `REQUEST_CHANGED`, validator `RECOVER`, planner `RECOVER_AND_REPLAN`, profile planning authority `REPLAN_AND_AUDIT`, validator `IDENTITY`, then step 3.
 
 7. **Final gate**
 __ORCHESTRATOR_PROFILE_FINAL_GATE__

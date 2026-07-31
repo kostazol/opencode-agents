@@ -251,12 +251,9 @@ class CliTests(unittest.TestCase):
             validator = (target / "agents/orchestrator-50-validator.md").read_text(encoding="utf-8")
             escalation = (target / "agents/orchestrator-75-escalation-reviewer.md").read_text(encoding="utf-8")
             single_model = (target / "agents/orchestrator-01-single-model-main.md").read_text(encoding="utf-8")
-            for mode in ("MINI_REVIEW_RESULT", "ESCALATION_RESULT", "CHECKPOINT_RESULT", "FINAL_VALIDATION_RESULT", "FINAL_MINI_RESULT", "START_FINAL_CYCLE", "MIGRATE_PROTOCOL"):
+            for mode in ("MINI_REVIEW_RESULT", "ESCALATION_RESULT", "CHECKPOINT_RESULT", "FINAL_VALIDATION_RESULT", "FINAL_MINI_RESULT", "START_FINAL_CYCLE"):
                 self.assertIn(f"`{mode}`", primary)
                 self.assertIn(f"`{mode}`", planner)
-            self.assertIn("validation/migration/<source>-to-<target>.json", validator)
-            self.assertIn("validation/migration/accepted-<target-version>.json", validator)
-            self.assertIn("PROTOCOL_MIGRATION", primary)
             self.assertIn("prior Terra-directed replan/repair", escalation)
             self.assertNotIn("orchestrator-75-escalation-reviewer: allow", single_model)
             self.assertIn("without numeric limit", single_model)

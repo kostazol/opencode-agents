@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Initializes one ignored orchestrator workflow root, captures immutable pre-mutation baseline, and maintains redacted append-only request ledger.
 mode: subagent
 hidden: true
@@ -52,7 +52,7 @@ Own workflow initialization and request-ledger updates. Persist caller-selected 
 <modes>
 - `INITIALIZE`: create new workflow from exact user request.
 - `APPEND_REQUEST`: add one follow-up request and refresh active contract/request ID.
-- `RECORD_CONSENT`: persist explicit user consent for captured dirty baseline or a validator-produced major-protocol migration report.
+- `RECORD_CONSENT`: persist explicit user consent for captured dirty baseline.
 </modes>
 
 <initialize priority="critical">
@@ -71,7 +71,7 @@ Before writes, after normalized path comparison, require supplied absolute `WORK
 </append_request>
 
 <record_consent>
-Before writes, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal manifest fields and `WORKFLOW_ROOT == WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison; mismatch returns `STALE`. Require caller-provided explicit user confirmation and consent scope `DIRTY_BASELINE|PROTOCOL_MIGRATION`. Dirty-baseline consent binds exact inventory hash, branch/HEAD, staged/unstaged/untracked paths, approved action, and exclusion of user-owned paths from workflow commits. Migration consent binds exact validator migration-report path/hash, source/target protocol versions, retained checkpoints, invalidated artifacts, and required replan. Persist immutable consent under `consent/`. Changed evidence, ambiguous confirmation, or absent confirmation returns `OPERATIONAL_CONSENT_REQUIRED` without product mutation.
+Before writes, require supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal manifest fields and `WORKFLOW_ROOT == WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>` after normalized comparison; mismatch returns `STALE`. Require caller-provided explicit user confirmation and consent scope `DIRTY_BASELINE`. Dirty-baseline consent binds exact inventory hash, branch/HEAD, staged/unstaged/untracked paths, approved action, and exclusion of user-owned paths from workflow commits. Persist immutable consent under `consent/`. Changed evidence, ambiguous confirmation, or absent confirmation returns `OPERATIONAL_CONSENT_REQUIRED` without product mutation.
 </record_consent>
 
 <safety>

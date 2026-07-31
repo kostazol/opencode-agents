@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Mechanically aggregates parallel mini-review verdicts, preserves source findings, deduplicates root causes, verifies lane reuse, and emits one mini gate.
 mode: subagent
 hidden: true

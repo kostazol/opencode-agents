@@ -20,7 +20,7 @@ This plan supersedes v2 rules that prohibit workflow Git commits. It is a major 
 4. Terra does not search speculatively for findings. It resolves false positives or requires planning-authority replan; only after a Terra-directed replan/repair fails for same cause may Terra return `WAITING_FOR_USER`.
 5. Add a dedicated Terra-pinned `orchestrator-75-escalation-reviewer`. `orchestrator-80-final-reviewer` remains final-only.
 6. Final repairable findings have no numeric blocker limit. Final cycle exposes durable progress and remains interruptible by user.
-7. Interrupted or updated workflows reconcile repository facts and artifacts before any execution. Major protocol migration requires explicit user consent.
+7. Interrupted or updated workflows reconcile repository facts and artifacts before any execution.
 
 ## Core invariants
 
@@ -59,7 +59,7 @@ Next action: <one line>
 Attention: <none|user decision/blocker>
 ```
 
-Bootstrap creates initial status. Planner owns updates before dispatch, after every consumed terminal report, on repair/escalation/final-cycle transitions, and on recovery/migration. An interrupted task leaves last confirmed state plus explicit `IN_FLIGHT` action; it never claims an unverified result.
+Bootstrap creates initial status. Planner owns updates before dispatch, after every consumed terminal report, on repair/escalation/final-cycle transitions, and on recovery. An interrupted task leaves last confirmed state plus explicit `IN_FLIGHT` action; it never claims an unverified result.
 
 Primary also emits one concise session progress line after each user-visible boundary, for example:
 
@@ -203,7 +203,7 @@ post-review identity validation
 
 Required local findings create authorized repair, new checkpoint commit after review PASS, new snapshot, and a new final iteration. There is no numeric maximum for repairable final findings or Terra cycles. Repeated cause keys require recorded root-cause comparison and escalation rationale; identical repair cannot be silently repeated. In `OPENAI_COLLABORATION`, only Terra may return `WAITING_FOR_USER` after its replan/repair proves a user decision is required; `SINGLE_MODEL` continues review/repair cycles.
 
-## Recovery, correction, and migration
+## Recovery and correction
 
 ### Recovery before resume
 
@@ -217,18 +217,12 @@ Planner preserves an accepted stage only when checkpoint commit, reviewed produc
 
 User correction appends immutable request, freezes active dispatch, and triggers recovery/reconciliation before profile planning authority replans whole active request set. Valid accepted work is reused only after scope/dependency validation. New plan/review IDs and epochs are generated before new execution.
 
-### Agent update and protocol migration
-
-Manifest records protocol/config version and required artifact schemas. Patch/minor compatible update runs recovery compatibility checks. Major version mismatch enters `MIGRATION_REQUIRED` and creates a read-only migration report covering retained commits, valid accepted stages, stale artifacts, required ID recomputation, and plan changes.
-
-Primary asks explicit user consent before a major migration mutates plan state or resumes execution. v2 workflow artifacts are never treated as v3 authorization without this migration/replan.
-
 ## Files and responsibilities
 
 ### Protocol and generated primary sources
 
-- `protocols/orchestrator-v2.md`: replace with v3 protocol content or introduce versioned v3 protocol and update installer references; define IDs, states, commit policy, review epochs, recovery, and migration.
-- `agents/orchestrator-00-main.template.md`: add dirty-baseline consent, checkpoint, epoch, escalation, final-progress, recovery, and migration transitions.
+- `protocols/orchestrator-v2.md`: replace with v3 protocol content or introduce versioned v3 protocol and update installer references; define IDs, states, commit policy, review epochs, and recovery.
+- `agents/orchestrator-00-main.template.md`: add dirty-baseline consent, checkpoint, epoch, escalation, final-progress, and recovery transitions.
 - `agents/profiles/openai.md` and `agents/profiles/single-model.md`: update profile workflow/final gates. `SINGLE_MODEL` has no Terra escalation/final role and uses expanded fresh mini escalation policy.
 - renderer/installer source: render new roles and v3 protocol path; preserve existing target upgrade behavior.
 
@@ -250,7 +244,7 @@ Primary asks explicit user consent before a major migration mutates plan state o
 ### Versioning and documentation
 
 - Update `VERSION`, `opencode-agents.py:VERSION`, every agent version marker, and `CHANGELOG.md` once to `3.0.0`.
-- Retain `docs/incidents/2026-07-31-python-static-tools-workflow.md` and this plan as rationale/migration documentation.
+- Retain `docs/incidents/2026-07-31-python-static-tools-workflow.md` and this plan as rationale documentation.
 
 ## Test plan
 
@@ -275,7 +269,6 @@ Primary asks explicit user consent before a major migration mutates plan state o
    - interrupted before review;
    - interrupted after mini PASS but before checkpoint;
    - updated agent compatible recovery;
-   - major v2-to-v3 migration requires consent;
    - corrected plan preserves valid checkpoint and invalidates affected review epochs.
 5. Run installer synchronization, `opencode debug config >/dev/null`, root CLI tests, line-ending/UTF-8 checks, and independent prompt review before release.
 
