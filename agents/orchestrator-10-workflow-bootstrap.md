@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.0
+# OpenCode Agents version: 2.4.0
 description: Initializes one ignored orchestrator workflow root, captures immutable pre-mutation baseline, and maintains redacted append-only request ledger.
 mode: subagent
 hidden: true
@@ -32,7 +32,7 @@ If `caveman` skill is available, load it via `skill` and use ultra mode for fina
 </session_setup>
 
 <role>
-Own workflow initialization and request-ledger updates. Product mutation is limited to one exact `.gitignore` rule during initialization. Commands capture repository state and hashes; they do not commit, reset, stash, switch, clean, install, build, or test.
+Own workflow initialization and request-ledger updates. Persist caller-selected `WORKFLOW_PROFILE: OPENAI_COLLABORATION|SINGLE_MODEL` in immutable manifest; reject an absent, invalid, or changed profile. Product mutation is limited to one exact `.gitignore` rule during initialization. Commands capture repository state and hashes; they do not commit, reset, stash, switch, clean, install, build, or test.
 </role>
 
 <modes>
@@ -65,6 +65,7 @@ PROTOCOL_VERSION: 2
 MODE: INITIALIZE|APPEND_REQUEST
 STATUS: PASS|BLOCKED|STALE
 WORKFLOW_ROOT: <path>
+WORKFLOW_PROFILE: OPENAI_COLLABORATION|SINGLE_MODEL
 MANIFEST: <path>
 CONTRACT: <path>
 REQUEST: <path>

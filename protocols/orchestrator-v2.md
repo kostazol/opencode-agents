@@ -16,6 +16,15 @@ Evidence order:
 
 An unresolved normative conflict returns `BLOCKED`. An identity mismatch returns `STALE` without state transition.
 
+## Workflow profiles
+
+Select one profile before bootstrap and persist it as immutable `WORKFLOW_PROFILE` in `manifest.json`. Follow-up requests retain it:
+
+- `OPENAI_COLLABORATION`: bounded recon by `orchestrator-20-planner`, Terra-pinned structural planning by `orchestrator-30-planner-senior`, and Terra final review by `orchestrator-80-final-reviewer`.
+- `SINGLE_MODEL`: `orchestrator-25-planner-full` inherits caller model and owns recon, structural planning, audit, and replan. `orchestrator-20-planner` owns only dispatch/state work. No Terra-pinned role participates.
+
+Profile selection is a workflow contract. An absent, invalid, or changed profile returns `BLOCKED`. `SINGLE_MODEL` completion uses final validation, fresh cumulative mini review, and post-mini identity confirmation; `FINAL_REVIEW_INPUT_ID` and Terra verdict are `not_applicable`.
+
 ## Workflow root
 
 Use one stable workflow ID per user outcome. Follow-ups reuse it. Artifacts live under `<workspace>/.orchestrator/tasks/<workflow-id>/`:
@@ -54,7 +63,7 @@ Ordering counters:
 
 Content IDs:
 - `REQUEST_SET_ID`: ordered immutable request files plus supersession map;
-- `PLAN_STRUCTURE_ID`: canonical schema-versioned `plan/structure.json` hash covering goal, acceptance, constraints, exclusions, decisions, stages, dependencies, waves, barriers, reads/writes, consistency boundaries, prototype requirements/novelty, validation, review profiles, pass conditions, and senior-approved structural deviations;
+- `PLAN_STRUCTURE_ID`: canonical schema-versioned `plan/structure.json` hash covering goal, acceptance, constraints, exclusions, decisions, stages, dependencies, waves, barriers, reads/writes, consistency boundaries, prototype requirements/novelty, validation, review profiles, pass conditions, and planning-authority-approved structural deviations;
 - `BASE_PRODUCT_SNAPSHOT_ID`: immutable pre-setup product baseline;
 - `PRODUCT_SNAPSHOT_ID`: sorted path/type/mode/content/deletion/intended-untracked manifest hash, excluding workflow artifacts;
 - `EVIDENCE_BUNDLE_ID`: baseline classification, commands, toolchain, results, artifacts, and pre/post product IDs;
@@ -62,11 +71,11 @@ Content IDs:
 - `REVIEW_INPUT_ID`: request set, plan structure, product snapshot, evidence bundle, and review scope IDs;
 - `LANE_INPUT_ID`: lens-specific path, dependency, contract, prototype, prior-finding, and evidence hashes;
 - `MINI_REVIEW_BUNDLE_ID`: current lane verdict files plus aggregate hash;
-- `FINAL_REVIEW_INPUT_ID`: review input plus mini-review bundle IDs.
+- `FINAL_REVIEW_INPUT_ID`: `OPENAI_COLLABORATION` review input plus mini-review bundle IDs; `not_applicable` for `SINGLE_MODEL`.
 
 Compute IDs as lowercase SHA-256 of UTF-8 canonical JSON: schema/version domain tag, sorted object keys, preserved array order, no insignificant whitespace, and explicit relative paths. An artifact containing its own ID excludes that ID field from hashed payload. `MINI_REVIEW_BUNDLE_ID` hashes lane files plus aggregate payload with `MINI_REVIEW_BUNDLE_ID` and `FINAL_REVIEW_INPUT_ID` removed.
 
-Authoring agents write canonical unhashed inputs. Designated ID producers: bootstrap computes `REQUEST_SET_ID` and initialization base/current product IDs; validator `IDENTITY` computes plan, later product, evidence, review-scope, and review-input IDs; aggregator computes mini-review bundle and final-review-input IDs from validator-bound inputs. Each producer writes canonicalization/hash evidence. Planner agents consume produced IDs; they do not synthesize cryptographic hashes.
+Authoring agents write canonical unhashed inputs. Designated ID producers: bootstrap computes `REQUEST_SET_ID` and initialization base/current product IDs; validator `IDENTITY` computes plan, later product, evidence, review-scope, and review-input IDs; aggregator computes mini-review bundle and final-review-input IDs from validator-bound inputs. Aggregator records `FINAL_REVIEW_INPUT_ID: not_applicable` for `SINGLE_MODEL`. Each producer writes canonicalization/hash evidence. Planner agents consume produced IDs; they do not synthesize cryptographic hashes.
 
 Status-only plan updates preserve content IDs. Changed content recomputes affected IDs before further execution or review.
 
@@ -79,7 +88,7 @@ Baseline capture precedes product mutation. Read-only recon may then identify ca
 
 Run direct affected/prototype tests and affected project validation. Run full baseline when requested, required by acceptance, or justified by security, concurrency, persistence, migration, runner, or repository-wide contract risk. Record `NOT_REQUIRED` with rationale otherwise.
 
-A follow-up request appends the ledger, recomputes `REQUEST_SET_ID`, freezes new dispatch, and marks active dispatch stale. Inventory actual changes, then invoke senior replan against the whole request set. Reuse accepted evidence only when its content and contract scope remain valid.
+A follow-up request appends the ledger, recomputes `REQUEST_SET_ID`, freezes new dispatch, and marks active dispatch stale. Inventory actual changes, then invoke profile planning authority for replan against the whole request set. Reuse accepted evidence only when its content and contract scope remain valid.
 
 ## Verifiable planning units
 
@@ -91,7 +100,7 @@ Product-mutating stages execute sequentially in the shared worktree. Read-only v
 
 ## Prototype gate
 
-Recon records bounded candidates. Before every dispatch, cheap planner refines exact current references against audited stage and product state:
+Recon records bounded candidates. Before every dispatch, dispatcher planner refines exact current references against audited stage and product state:
 - primary implementation `path#symbol` or `none` for approved novelty;
 - primary test `path#symbol` or `none` for approved novelty;
 - optional integration reference;
@@ -105,11 +114,11 @@ Use at most one primary and two supplemental references. Store references, not c
 States:
 - `PASS`: applicable references and current GREEN evidence;
 - `VALIDATION_REQUIRED`: exact validation manifest emitted;
-- `VALIDATION_FAILED`: requested validation failed; return evidence for senior decision;
-- `NOVEL_APPROVED`: senior recorded search coverage, rationale, design source, and exact test strategy;
+- `VALIDATION_FAILED`: requested validation failed; return evidence for profile planning-authority decision;
+- `NOVEL_APPROVED`: profile planning authority recorded search coverage, rationale, design source, and exact test strategy;
 - `BLOCKED`: required reference, approval, or evidence absent.
 
-Only `PASS` or `NOVEL_APPROVED` permits implementation dispatch. One unchanged-input validation retry is allowed; repeated failure escalates senior or blocks.
+Only `PASS` or `NOVEL_APPROVED` permits implementation dispatch. One unchanged-input validation retry is allowed; repeated failure escalates profile planning authority or blocks.
 
 ## Execution and validation
 
@@ -135,11 +144,11 @@ Required findings are acceptance violations, reachable regressions, change-cause
 Finding format:
 `<ID> | required|optional | critical|high|medium|low | <path#symbol|artifact|contract> | criterion: <ID> | evidence: <fact> | impact: <concrete> | fix: <bounded>`
 
-Two stage repair batches are allowed per unchanged root cause. Remaining required findings trigger senior root-cause replan when structural; otherwise `BLOCKED`.
+Two stage repair batches are allowed per unchanged root cause. Remaining required findings trigger profile planning-authority root-cause replan when structural; otherwise `BLOCKED`.
 
 ## Deviations
 
-Executor reports facts, never self-approves variance. Cheap planner may record an implementation variance contained within existing result, ownership, contracts, and acceptance; include it in review scope. Contract, consistency boundary, security/persistence design, stage/DAG/wave/barrier/profile, or cross-stage ownership impact requires senior replan and updated plan structure ID.
+Executor reports facts, never self-approves variance. Dispatcher planner may record an implementation variance contained within existing result, ownership, contracts, and acceptance; include it in review scope. Contract, consistency boundary, security/persistence design, stage/DAG/wave/barrier/profile, or cross-stage ownership impact requires profile planning-authority replan and updated plan structure ID.
 
 ## Final gate
 
@@ -148,11 +157,12 @@ For each final product snapshot:
 2. Regenerate cumulative patch, inventory, evidence bundle, review scope, and review input IDs.
 3. Run fresh cumulative mini lanes and aggregation.
 4. Required mini findings get one consolidated repair batch; restart final gate at step 1 on repaired snapshot.
-5. `MINI_GATE: PASS` creates `FINAL_REVIEW_INPUT_ID`; run fresh Terra review.
-6. `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required Terra findings get one consolidated repair batch, then restart final gate at step 1.
-7. Terra PASS first runs validator `POST_REVIEW`. Unchanged product and mini bundle IDs then accompany PASS into canonical planner completion. Round 2 unresolved required findings block.
+5. For `OPENAI_COLLABORATION`, `MINI_GATE: PASS` creates `FINAL_REVIEW_INPUT_ID`; run fresh Terra review.
+6. For `OPENAI_COLLABORATION`, `STALE`, BLOCKED, or FAIL goes directly to canonical planner state. Recoverable input regenerates final validation, cumulative artifacts, fresh mini lanes, and final input from step 1 without consuming a Terra round. Required Terra findings get one consolidated repair batch, then restart final gate at step 1.
+7. For `OPENAI_COLLABORATION`, Terra PASS first runs validator `POST_REVIEW`. Unchanged product and mini bundle IDs then accompany PASS into canonical planner completion. Round 2 unresolved required findings block.
+8. For `SINGLE_MODEL`, `MINI_GATE: PASS` runs validator `POST_REVIEW` against current product and mini bundle. Unchanged identities create `FINAL_ASSURANCE: MINI_REVIEW_AND_IDENTITY_PASS` and permit canonical planner completion. Any mismatch restarts final gate at step 1.
 
-Final combined validation gets one same-cause repair batch; recurring local failure blocks, structural failure escalates senior. Final mini review gets one consolidated repair batch; recurring local required findings block, structural findings escalate senior. New user input or materially different evidence resets the applicable cause-keyed budget.
+Final combined validation gets one same-cause repair batch; recurring local failure blocks, structural failure escalates profile planning authority. Final mini review gets one consolidated repair batch; recurring local required findings block, structural findings escalate profile planning authority. New user input or materially different evidence resets the applicable cause-keyed budget.
 
 Final reviewers persist exact verdicts. Terra finding IDs are `T<round>-F###`.
 

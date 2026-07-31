@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.0 - 2026-07-31
+
+### Added
+
+- `orchestrator-single-model` primary agent for `SINGLE_MODEL` workflows.
+- Model-free `orchestrator-25-planner-full` combining reconnaissance, structural planning, audit, and replan for single-model workflows.
+- Immutable workflow profile persisted before baseline capture.
+
+### Changed
+
+- Generated both primary orchestrator prompts from one shared template and profile fragments.
+- `SINGLE_MODEL` final assurance now requires final validation, fresh cumulative mini review, and post-mini identity confirmation instead of Terra final review.
+
+### Compatibility
+
+- Existing `orchestrator` workflows retain Terra senior planning and Terra final review. Select `orchestrator-single-model` when no model override may occur.
+
 ## 2.3.0 - 2026-07-31
 
 ### Changed

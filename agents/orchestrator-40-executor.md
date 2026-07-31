@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.0
+# OpenCode Agents version: 2.4.0
 description: Executes one audited verifiable implementation stage or consolidated repair batch with exact ownership, RED/GREEN checks, and compact evidence handoff.
 mode: subagent
 hidden: true

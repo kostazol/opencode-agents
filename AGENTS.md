@@ -9,7 +9,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 - `protocols/orchestrator-v2.md` owns shared workflow invariants, IDs, gates, handoff schemas, and final-state rules.
 - Each file under `agents/` owns only its role, permissions, modes, procedure, and compact response contract.
 - Caveman is optional response compression support; workflow agents must continue when it is unavailable.
-- `agents/` contains only `orchestrator-00-main` and its eight direct Orchestrator v2 roles, ordered with `orchestrator-10` through `orchestrator-80` filename prefixes.
+- `agents/` contains generated `orchestrator-00-main` and `orchestrator-01-single-model-main` primary agents plus direct Orchestrator v2 roles, ordered with `orchestrator-10` through `orchestrator-80` filename prefixes. Maintain shared primary logic in `orchestrator-00-main.template.md` and `agents/profiles/` fragments; do not edit rendered output.
 - Agent frontmatter must remain valid OpenCode configuration.
 - Explicit user instructions and platform safety constraints outrank repository prototypes.
 
@@ -35,7 +35,8 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 ## Model policy
 
 - Pin Terra only for `orchestrator-30-planner-senior` and `orchestrator-80-final-reviewer` unless an explicit design decision changes this policy.
-- Leave bootstrap, cheap planner, executor, validator, mini reviewer, and aggregator model-agnostic so they inherit the selected/default model.
+- Leave bootstrap, planners other than senior, executor, validator, mini reviewer, and aggregator model-agnostic so they inherit the selected/default model.
+- `orchestrator-single-model` must deny `task` access to both Terra-pinned roles. `SINGLE_MODEL` completes through final validation, fresh cumulative mini review, and post-mini identity confirmation.
 - Model changes require rationale in `CHANGELOG.md`.
 
 ## Orchestrator invariants
@@ -50,7 +51,7 @@ This repository versions OpenCode agent prompts and shared protocols. Treat prom
 - Aggregation preserves source findings before deduplication.
 - Repairs regenerate affected validation and content IDs.
 - Final repair restarts complete final validation and cumulative mini review.
-- Terra PASS reaches completion only after post-review identity confirmation.
+- `OPENAI_COLLABORATION` reaches completion only after Terra PASS and post-review identity confirmation; `SINGLE_MODEL` uses fresh cumulative mini PASS and post-mini identity confirmation.
 - Repository history and user index remain unchanged.
 
 ## Cross-file checks

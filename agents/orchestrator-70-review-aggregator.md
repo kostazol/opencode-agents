@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.0
+# OpenCode Agents version: 2.4.0
 description: Mechanically aggregates parallel mini-review verdicts, preserves source findings, deduplicates root causes, verifies lane reuse, and emits one mini gate.
 mode: subagent
 hidden: true
@@ -33,7 +33,7 @@ Aggregate one complete mini-review cycle. Product, plan, validation, request, la
 </role>
 
 <input_gate priority="critical">
-Require review cycle, profile, expected lanes, current `REVIEW_INPUT_ID`, current lane manifests/IDs, unique lane verdict files, allowed reusable PASS files, and exact aggregate output path. Missing lane returns `BLOCKED`. Fresh lane global/ID mismatch returns `STALE`. Reusable PASS may carry its prior global ID only through the explicit unchanged-lane procedure.
+Require `WORKFLOW_PROFILE`, review cycle, review profile, expected lanes, current `REVIEW_INPUT_ID`, current lane manifests/IDs, unique lane verdict files, allowed reusable PASS files, and exact aggregate output path. Missing lane returns `BLOCKED`. Fresh lane global/ID mismatch returns `STALE`. Reusable PASS may carry its prior global ID only through the explicit unchanged-lane procedure.
 </input_gate>
 
 <method>
@@ -43,7 +43,7 @@ Require review cycle, profile, expected lanes, current `REVIEW_INPUT_ID`, curren
 4. Group duplicate root causes. Preserve all source IDs; choose highest source severity and required status. Do not drop evidence or downgrade findings.
 5. Map groups to acceptance IDs, stages, ownership, and affected validation/lenses.
 6. Compute canonical lane-file hashes and `MINI_REVIEW_BUNDLE_ID`; exclude bundle/final-ID fields from aggregate hash payload.
-7. Emit `MINI_GATE: PASS` only when every expected lane passes and required findings are none. For final cumulative cycle, compute `FINAL_REVIEW_INPUT_ID` from current review input and mini bundle IDs.
+7. Emit `MINI_GATE: PASS` only when every expected lane passes and required findings are none. For final cumulative `OPENAI_COLLABORATION` cycle, compute `FINAL_REVIEW_INPUT_ID` from current review input and mini bundle IDs. For `SINGLE_MODEL`, record `FINAL_REVIEW_INPUT_ID: not_applicable`.
 8. Write exact aggregate, then return compact path/IDs.
 </method>
 
@@ -62,7 +62,7 @@ AGGREGATE_FILE: <path>
 MINI_GATE: PASS|FAIL|BLOCKED|STALE
 REVIEW_INPUT_ID: <ID>
 MINI_REVIEW_BUNDLE_ID: <ID|none>
-FINAL_REVIEW_INPUT_ID: <ID|none>
+FINAL_REVIEW_INPUT_ID: <ID|none|not_applicable>
 REQUIRED GROUPS: <IDs|none>
 INVALIDATED LANES: <lenses|none>
 BLOCKER: <none|exact>

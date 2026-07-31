@@ -21,10 +21,19 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents", "protocols")
+ORCHESTRATOR_TEMPLATE = "orchestrator-00-main.template.md"
+ORCHESTRATOR_PROFILES = {
+    "orchestrator-00-main.md": "openai.md",
+    "orchestrator-01-single-model-main.md": "single-model.md",
+}
+ORCHESTRATOR_WORKFLOW_PROFILES = {
+    "orchestrator-00-main.md": "OPENAI_COLLABORATION",
+    "orchestrator-01-single-model-main.md": "SINGLE_MODEL",
+}
 GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
 GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
 GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
@@ -91,6 +100,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def source_files(source: Path, target: Path):
+    files = []
     for group in GROUPS:
         source_group = source / group
         if not source_group.is_dir():
@@ -98,7 +108,15 @@ def source_files(source: Path, target: Path):
                 continue
             raise RuntimeError(f"source missing {group}/: {source}")
         for source_file in sorted(source_group.glob("*.md")):
-            yield source_file, target / group / source_file.relative_to(source_group)
+            if group == "agents" and source_file.name == ORCHESTRATOR_TEMPLATE:
+                continue
+            files.append((source_file, target / group / source_file.relative_to(source_group)))
+        if group == "agents":
+            template = source_group / ORCHESTRATOR_TEMPLATE
+            if template.is_file():
+                for target_name in ORCHESTRATOR_PROFILES:
+                    files.append((template, target / group / target_name))
+    yield from sorted(files, key=lambda item: str(item[1]))
 
 
 def repository_name(repository: str) -> str:
@@ -232,8 +250,23 @@ def rendered_global_instructions(target: Path) -> bytes:
     return prefix + guidance + suffix
 
 
-def rendered_content(source: Path, target: Path) -> bytes:
+def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
     content = source.read_bytes()
+    if source.name == ORCHESTRATOR_TEMPLATE:
+        profile_name = ORCHESTRATOR_PROFILES.get(target_file.name)
+        workflow_profile = ORCHESTRATOR_WORKFLOW_PROFILES.get(target_file.name)
+        if profile_name is None or workflow_profile is None:
+            raise RuntimeError(f"unknown orchestrator template target: {target_file}")
+        profile = source.parent / "profiles" / profile_name
+        if not profile.is_file():
+            raise RuntimeError(f"orchestrator profile missing: {profile}")
+        profile_parts = profile.read_bytes().split(b"\n---\n", 1)
+        if len(profile_parts) != 2:
+            raise RuntimeError(f"invalid orchestrator profile: {profile}")
+        workflow_parts = profile_parts[1].split(b"\n<!-- final-gate -->\n", 1)
+        if len(workflow_parts) != 2:
+            raise RuntimeError(f"invalid orchestrator final gate profile: {profile}")
+        content = content.replace(b"__ORCHESTRATOR_PROFILE_FRONTMATTER__", profile_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_WORKFLOW__", workflow_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_FINAL_GATE__", workflow_parts[1]).replace(b"__WORKFLOW_PROFILE__", workflow_profile.encode())
     if source.parent.name != "agents":
         return content
     protocol_path = str(target / "protocols" / "orchestrator-v2.md")
@@ -377,7 +410,7 @@ def status(source: Path, target: Path) -> None:
         relative = target_file.relative_to(target)
         if not target_file.exists():
             state = "missing"
-        elif rendered_content(source_file, target) == target_file.read_bytes():
+        elif rendered_content(source_file, target, target_file) == target_file.read_bytes():
             state = "current"
         else:
             state = "changed"
@@ -409,7 +442,7 @@ def install(source: Path, target: Path, dry_run: bool) -> None:
         else:
             print(f"copy {source_file} -> {target_file}" if dry_run else f"install {relative}")
             if not dry_run:
-                atomic_write(source_file, rendered_content(source_file, target), target_file)
+                atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
             installed += 1
     instructions = global_instructions_path(target)
     validate_global_instructions(instructions)
@@ -437,7 +470,7 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
         for source_file, target_file in source_files(source, target):
             validate_target_file(target_file)
             relative = target_file.relative_to(target)
-            if target_file.exists() and rendered_content(source_file, target) == target_file.read_bytes():
+            if target_file.exists() and rendered_content(source_file, target, target_file) == target_file.read_bytes():
                 print(f"current {relative}")
                 counts["unchanged"] += 1
             elif target_file.exists():
@@ -446,14 +479,14 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
                     backup_file = backup / relative
                     backup_copy(target_file, backup_file)
                     updated_files.append((target_file, backup_file))
-                    atomic_write(source_file, rendered_content(source_file, target), target_file)
+                    atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
                 counts["backup"] += 1
                 counts["updated"] += 1
             else:
                 print(f"add {relative}")
                 if not dry_run:
                     added_files.append(target_file)
-                    atomic_write(source_file, rendered_content(source_file, target), target_file)
+                    atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
                 counts["added"] += 1
         if prune_legacy:
             for file_name in LEGACY_AGENT_FILES:

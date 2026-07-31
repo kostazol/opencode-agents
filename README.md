@@ -5,9 +5,11 @@
 ## Состав
 
 ```text
-orchestrator-00-main (UI: orchestrator)
+orchestrator-00-main (UI: orchestrator, OpenAI collaboration)
+orchestrator-01-single-model-main (UI: orchestrator-single-model)
 ├── orchestrator-10-workflow-bootstrap
 ├── orchestrator-20-planner
+├── orchestrator-25-planner-full (single-model)
 ├── orchestrator-30-planner-senior (Terra)
 ├── orchestrator-40-executor
 ├── orchestrator-50-validator
@@ -48,14 +50,14 @@ npx -y github:JuliusBrussee/caveman -- --only opencode
 
 Наш CLI не содержит копию Caveman. После своей установки он выводит эту команду и ссылку на официальный репозиторий. Если skill не установлен, внутренние workflow-агенты продолжают работу без него. Orchestrator не требует Caveman.
 
-## Модельная политика
+## Модельные профили
 
-Только роли, которым нужна независимость senior-уровня, используют фиксированную модель:
+Выберите primary agent для проекта:
 
-- `orchestrator-30-planner-senior`: `openai/gpt-5.6-terra`;
-- `orchestrator-80-final-reviewer`: `openai/gpt-5.6-terra`.
+- `orchestrator` использует `OPENAI_COLLABORATION`: `orchestrator-30-planner-senior` и `orchestrator-80-final-reviewer` фиксированы на `openai/gpt-5.6-terra`.
+- `orchestrator-single-model` использует `SINGLE_MODEL`: `orchestrator-25-planner-full` наследует выбранную модель, а Terra-pinned agents недоступны через permissions.
 
-Остальные агенты наследуют выбранную модель OpenCode.
+Остальные агенты наследуют выбранную модель OpenCode. Profile фиксируется в workflow manifest до baseline capture и не меняется для follow-up requests.
 
 ## Установка
 

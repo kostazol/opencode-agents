@@ -73,13 +73,20 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             prompts = sorted((target / "agents").glob("*.md"))
-            self.assertEqual(len(prompts), 9)
+            self.assertEqual(len(prompts), 11)
             for prompt in prompts:
                 content = prompt.read_text(encoding="utf-8")
                 self.assertNotIn("__OPENCODE_PROTOCOL_PATH_", content)
                 self.assertIn(str(target / "protocols/orchestrator-v2.md"), content)
-            self.assertEqual([prompt.name for prompt in prompts], ["orchestrator-00-main.md", "orchestrator-10-workflow-bootstrap.md", "orchestrator-20-planner.md", "orchestrator-30-planner-senior.md", "orchestrator-40-executor.md", "orchestrator-50-validator.md", "orchestrator-60-mini-reviewer.md", "orchestrator-70-review-aggregator.md", "orchestrator-80-final-reviewer.md"])
+            self.assertEqual([prompt.name for prompt in prompts], ["orchestrator-00-main.md", "orchestrator-01-single-model-main.md", "orchestrator-10-workflow-bootstrap.md", "orchestrator-20-planner.md", "orchestrator-25-planner-full.md", "orchestrator-30-planner-senior.md", "orchestrator-40-executor.md", "orchestrator-50-validator.md", "orchestrator-60-mini-reviewer.md", "orchestrator-70-review-aggregator.md", "orchestrator-80-final-reviewer.md"])
             self.assertIn("name: orchestrator", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
+            single_model = (target / "agents/orchestrator-01-single-model-main.md").read_text(encoding="utf-8")
+            self.assertIn("name: orchestrator-single-model", single_model)
+            self.assertIn("WORKFLOW_PROFILE: SINGLE_MODEL", single_model)
+            self.assertNotIn("orchestrator-30-planner-senior", single_model)
+            self.assertNotIn("orchestrator-80-final-reviewer", single_model)
+            self.assertNotIn("\nmodel:", single_model)
+            self.assertNotIn("\nmodel:", (target / "agents/orchestrator-25-planner-full.md").read_text(encoding="utf-8"))
             self.assertNotIn("Load `caveman`", (target / "agents/orchestrator-00-main.md").read_text(encoding="utf-8"))
             self.assertIn("caveman` skill is available", (target / "agents/orchestrator-40-executor.md").read_text(encoding="utf-8"))
 
