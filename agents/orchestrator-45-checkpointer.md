@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.4
+# OpenCode Agents version: 3.0.5
 description: Creates one exact workflow-owned Git checkpoint commit after mini-review or escalation PASS while preserving user-owned staged entries and Git history.
 mode: subagent
 hidden: true

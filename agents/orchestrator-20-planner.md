@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.4
+# OpenCode Agents version: 3.0.5
 description: Stateful planner for OpenAI reconnaissance and all-profile exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true

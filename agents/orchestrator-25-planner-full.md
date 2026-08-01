@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.4
+# OpenCode Agents version: 3.0.5
 description: Single-model structural planning authority that performs reconnaissance, complete prototype-aware planning, adversarial audit, and replanning without model overrides.
 mode: subagent
 hidden: true

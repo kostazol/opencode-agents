@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.4
+# OpenCode Agents version: 3.0.5
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -37,10 +37,12 @@ permission:
     "git rev-parse HEAD^": allow
     "git show-ref --head": allow
     "git status --porcelain=v1 -z": allow
+    "git status --porcelain=v1 --untracked-files=all": allow
     "git status --short --untracked-files=all": allow
     "git status --branch --short": allow
     "git submodule status": allow
     "git symbolic-ref --short HEAD": allow
+    "git for-each-ref --format='%(refname) %(objectname)'": allow
     "git diff --name-status HEAD": allow
     "git diff --cached --name-status": allow
     "git diff --no-ext-diff --no-textconv --binary": allow
@@ -113,7 +115,7 @@ Validate one supplied immutable scope. Product files, repository history, user i
 <method>
 1. After normalized path comparison, verify supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then verify `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>`; Git root cannot determine either path. Verify workflow, revisions, expected product ID, scope, commands, and artifact writes. Every supplied validation/snapshot output must be a unique absent path below that root; an existing destination returns `BLOCKED` rather than being overwritten. A missing, relative, or mismatched root returns `STALE` before writes.
 2. Capture pre-command product manifest, repository identity, HEAD, refs, index entries, and status; compare expected pre-stage values when validating executor output. For current-worktree binary deltas, use allowlisted `git diff --no-ext-diff --no-textconv --binary` form. From `GIT_REPOSITORY_ROOT`, run exactly installed `__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_TEXT__ --index-digest` on Linux/macOS or `__OPENCODE_CHECKPOINT_PY_COMMAND_TEXT__ --index-digest` on Windows and persist its lowercase SHA-256 output as `REVIEWED_INDEX_DIGEST`; never derive this field manually.
-3. Before command execution, reject unquoted shell control operators, fallback branches, backgrounding, command substitution, output redirection, or explicit exit rewriting. Run accepted exact commands directly in declared order and working directories with supplied timeouts.
+3. Before command execution, reject unquoted shell control operators, fallback branches, backgrounding, command substitution, output redirection, or explicit exit rewriting. Run every allowlisted Git inspection as one direct command; do not join commands with `&&`, `;`, or `|`, and calculate counts from captured output. Run accepted exact commands directly in declared order and working directories with supplied timeouts.
 4. Record command, toolchain, start/end, command exit, RED/GREEN classification, shortest decisive output, explicit skips, and environment limits without secret values.
 5. Capture post-command product manifest, repository identity, HEAD, refs, index entries, and status. Unexpected product/index/history mutation returns `BLOCKED` with changed paths.
 6. For IDENTITY, compute requested IDs using protocol canonical JSON/SHA-256 rules and persist input paths/hashes plus canonicalization evidence. For AUTHORIZE_DISPATCH, require `TARGET_PHASE: EXECUTING` and `ACTIVE: false`, verify workflow/profile, request/plan/expected-product IDs, current and target post-activation revisions, candidate eligibility, prototype gate/evidence, plan-bound validation manifest, declared writes including unique executor evidence paths, and repair budget when applicable. Resolve and bind capsule or repair-manifest plus prototype/evidence hashes, then compute `DISPATCH_AUTHORIZATION_ID` over canonical candidate and resolved hashes with `ACTIVE` and that ID field omitted; persist canonical authorization-payload hash, not raw candidate-file hash, as authorization evidence.

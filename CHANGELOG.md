@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.5 - 2026-08-01
+
+### Fixed
+
+- Allowed exact full-untracked porcelain status and reference-inventory forms; required validator to run each allowlisted Git inspection separately, preventing harmless commands from becoming approval-gated compound shell scripts.
+
+### Compatibility
+
+- Compound shell commands remain approval-gated, including `&&` and pipes. Restart OpenCode after updating agents.
+
 ## 3.0.4 - 2026-08-01
 
 ### Fixed
