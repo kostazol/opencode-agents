@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 - 2026-08-02
+
+### Changed
+
+- Fold bounded no-write reconnaissance into planner `CREATE`, removing one analyst handoff while preserving acceptance-first evidence discovery.
+- Require fresh plan reviewer to validate task evidence directly against repository source.
+- Define mode-specific planner inputs for `CREATE`, `REVISE`, `BLOCK`, and `FINALIZE`.
+- Back up and remove retired project-owned `orchestrator-recon.md` during update while preserving user agents.
+
 ## 2.0.0 - 2026-08-02
 
 ### Changed

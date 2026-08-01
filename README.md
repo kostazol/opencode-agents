@@ -6,14 +6,13 @@
 
 ```text
 orchestrator-analyst (run with Terra)
-  reconnaissance
-  model-inheriting task planning
-  model-inheriting plan review
+  model-inheriting evidence discovery and task planning
+  independent model-inheriting plan review
   independent Sol ultra plan review
   self-contained task Markdown files
 
 orchestrator-analyst-single-model
-  reconnaissance, planning, and review on caller model
+  evidence discovery, planning, and review on caller model
   no Sol ultra plan review
 
 orchestrator-executor <one-task.md> (run with Luna)
@@ -52,7 +51,7 @@ orchestrator-executor-single-model <one-task.md>
 - не менять публичный контракт других endpoints.
 ```
 
-Standard analyst выполнит reconnaissance, model-inheriting planning/review и independent Sol ultra plan review. Single-model analyst выполнит только reconnaissance, planning и review на выбранной модели. Результат:
+Standard analyst выполнит model-inheriting evidence discovery/planning, fresh model-inheriting review и independent Sol ultra plan review. Single-model analyst выполнит discovery, planning и review на выбранной модели. Результат:
 
 ```text
 Итог: READY
@@ -122,9 +121,9 @@ git commit -m "feat: add avatar storage operation"
 
 `1_orchestrator` всегда создаётся внутри working directory, из которой запущена текущая OpenCode-сессия. Non-hidden имя предотвращает пропуск workflow artifacts glob-поиском OpenCode, который исключает dot-prefixed hidden directories. Git root и родительские каталоги не меняют расположение. Например, при запуске из `/repo/src/MyProject` artifacts находятся в `/repo/src/MyProject/1_orchestrator/`, даже если Git root — `/repo`. Expected product paths остаются относительными к `/repo/src/MyProject`; Git status paths `src/MyProject/...` нормализуются снятием этого prefix. Изменения вне `/repo/src/MyProject` считаются user-owned overlap.
 
-Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Будущий `1_orchestrator/<request>/` target служит только routing metadata: до planner `CREATE` он ожидаемо отсутствует, и recon не читает его и не считает его отсутствие access blocker. Model-inheriting planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
+В `CREATE` model-inheriting planner сначала проводит bounded no-write evidence phase: раскладывает запрос на acceptance areas, ищет implementation/integration prototypes, существующие tests, test prototypes и applicable repository instructions. До завершения evidence phase будущий `1_orchestrator/<request>/` target обязан отсутствовать; planner не читает его и ничего не записывает. Затем planner создаёт working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, проверяемые prototypes, обязательную test work и validation commands. Для `none found` task фиксирует search basis, ожидаемую новую область и ближайшую convention.
 
-Fresh model-inheriting plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Standard analyst после его `PASS` запускает fresh Sol ultra reviewer. Любое исправимое замечание Sol возвращает planner, затем fresh model-inheriting review и новую Sol проверку. Ordering, dependency, test ownership, path allocation, decomposition и buildability findings на occurrences `1`–`3` всегда исправляются через `REVISE`; наличие нескольких технических вариантов само по себе не блокирует planning. Первое появление finding имеет progress `NOT_APPLICABLE`; при `NONE` на occurrences `2`–`3` planner обязан применить materially different correction. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Occurrence `4` или greater одной и той же проблемы блокирует planning независимо от ошибочно возвращённого reviewer verdict.
+Fresh model-inheriting plan reviewer независимо проверяет repository evidence, полное покрытие запроса, зависимости, buildability, scope и тесты. Standard analyst после его `PASS` запускает fresh Sol ultra reviewer. Любое исправимое замечание Sol возвращает planner, затем fresh model-inheriting review и новую Sol проверку. Ordering, dependency, test ownership, path allocation, decomposition, evidence accuracy и buildability findings на occurrences `1`–`3` всегда исправляются через `REVISE`; наличие нескольких технических вариантов само по себе не блокирует planning. Первое появление finding имеет progress `NOT_APPLICABLE`; при `NONE` на occurrences `2`–`3` planner обязан применить materially different correction. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Occurrence `4` или greater одной и той же проблемы блокирует planning независимо от ошибочно возвращённого reviewer verdict.
 
 Analyst возвращает только reviewed task paths. Index и manifest не создаются.
 
@@ -177,8 +176,7 @@ Primary agents сообщают только смену пользователь
 
 - `orchestrator-analyst` — primary анализа и подготовки задач.
 - `orchestrator-analyst-single-model` — primary анализа и подготовки задач только на модели caller.
-- `orchestrator-recon` — read-only поиск implementation/integration/test evidence.
-- `orchestrator-task-planner` — model-inheriting task planning и planning-journal maintenance.
+- `orchestrator-task-planner` — model-inheriting evidence discovery, task planning и planning-journal maintenance.
 - `orchestrator-plan-reviewer` — independent model-inheriting plan review.
 - `orchestrator-plan-ultra-reviewer` — independent Sol ultra plan review.
 - `orchestrator-executor` — primary выполнения одной задачи.
@@ -206,6 +204,8 @@ py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.github
 ```
 
 После install/update полностью перезапустите OpenCode: prompts и permissions загружаются при старте.
+
+При update устаревшие project-owned agent files архивируются в backup directory и удаляются точечно; пользовательские agents сохраняются.
 
 ## Проверка
 

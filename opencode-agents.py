@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 from datetime import datetime
+import hashlib
 import json
 import os
 import shutil
@@ -21,10 +22,22 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents",)
+RETIRED_FILE_HASHES = {
+    Path("agents/orchestrator-recon.md"): frozenset({
+        "18cbce96483f8b1ef7d2a90b2184853cd82af1f1bcd6158a457409f41742dd83",
+        "6fdfc984f4e23ab587ebe859214e0c7ecac26bf330009f8faf9cd29c72d65625",
+        "7264840d5622061486cc39275b14f9bcda96febbaa4009a7ae49ac28a336ae3a",
+        "cb79e48a24d199614e6f45e232630a59b17e43738f91ef792ec496f5887cb4e6",
+        "d3ced39fa05b99203950ae2bf48aee8abaaecf2971df73e332973a4e8240f900",
+        "1a0b6c87512fbf79ea77cd139ba6fd7d55d75227159259396980670cf7792e57",
+        "b7f55885c03cdbc268556b4911c3b53fd3815da0e1e55107e67e98afdd3ea41e",
+        "65b7ca216b9890b276e756c2e48a1ac052f9c4e495bcf56b528adeca2b07ae33",
+    }),
+}
 GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
 GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
 GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
@@ -343,7 +356,7 @@ def validate_global_instructions(path: Path) -> None:
 
 def status(source: Path, target: Path) -> None:
     validate_target(target)
-    counts = {"missing": 0, "changed": 0, "current": 0}
+    counts = {"missing": 0, "changed": 0, "current": 0, "retired": 0}
     for source_file, target_file in source_files(source, target):
         validate_target_file(target_file)
         relative = target_file.relative_to(target)
@@ -355,6 +368,12 @@ def status(source: Path, target: Path) -> None:
             state = "changed"
         counts[state] += 1
         print(f"{state} {relative}")
+    for relative, known_hashes in RETIRED_FILE_HASHES.items():
+        target_file = target / relative
+        validate_target_file(target_file)
+        if target_file.exists() and hashlib.sha256(target_file.read_bytes()).hexdigest() in known_hashes:
+            counts["retired"] += 1
+            print(f"retired {relative}")
     instructions = global_instructions_path(target)
     validate_global_instructions(instructions)
     if not instructions.exists():
@@ -402,9 +421,10 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
     if backup is None:
         backup = target.parent / f"opencode-agents-backup-{datetime.now():%Y%m%d-%H%M%S-%f}"
     backup = validate_backup(backup, source, target)
-    counts = {"updated": 0, "added": 0, "unchanged": 0, "backup": 0}
+    counts = {"updated": 0, "added": 0, "removed": 0, "unchanged": 0, "backup": 0}
     updated_files = []
     added_files = []
+    removed_files = []
     try:
         for source_file, target_file in source_files(source, target):
             validate_target_file(target_file)
@@ -427,6 +447,22 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
                     added_files.append(target_file)
                     atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
                 counts["added"] += 1
+        for relative, known_hashes in RETIRED_FILE_HASHES.items():
+            target_file = target / relative
+            validate_target_file(target_file)
+            if not target_file.exists():
+                continue
+            if hashlib.sha256(target_file.read_bytes()).hexdigest() not in known_hashes:
+                print(f"preserve user-owned {relative}")
+                continue
+            print(f"remove {relative}")
+            if not dry_run:
+                backup_file = backup / relative
+                backup_copy(target_file, backup_file)
+                removed_files.append((target_file, backup_file))
+                safe_remove(target_file)
+            counts["backup"] += 1
+            counts["removed"] += 1
         instructions = global_instructions_path(target)
         validate_global_instructions(instructions)
         rendered = rendered_global_instructions(target)
@@ -461,11 +497,16 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
                     safe_remove(target_file)
                 except OSError as rollback_error:
                     rollback_errors.append(str(rollback_error))
+            for target_file, backup_file in reversed(removed_files):
+                try:
+                    atomic_copy(backup_file, target_file)
+                except (OSError, RuntimeError) as rollback_error:
+                    rollback_errors.append(str(rollback_error))
             if rollback_errors:
                 raise RuntimeError(f"{error}; rollback failed: {'; '.join(rollback_errors)}") from error
         raise
     backup_text = "not-created" if dry_run else str(backup)
-    print(f"summary updated={counts['updated']} added={counts['added']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
+    print(f"summary updated={counts['updated']} added={counts['added']} removed={counts['removed']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
     print_caveman_next_step()
 
 
