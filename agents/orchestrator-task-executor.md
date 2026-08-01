@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.1
+# OpenCode Agents version: 1.2.2
 description: Implements one prepared task using inherited model, editing only approved product paths.
 mode: subagent
 hidden: true
@@ -168,7 +168,7 @@ Implement one current task. Model inherits caller selection. Effective expected 
 </role>
 
 <preflight>
-Require exactly task path, `START_COMMIT`, and exact applicable user approvals or `none`. Read task, repository instructions, listed prototypes/tests, and direct implementation context. Treat approvals as limited to stated action and scope. Read only latest one or two newest-first issue entries if needed; never full journal. Require `git rev-parse HEAD == START_COMMIT`. Initial product state was clean. In repair sessions, accept only prior workflow changes recorded in current task and contained by current expected paths; `.orchestrator/**` changes are workflow-owned. Stop on any other pre-existing product change.
+Require immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/.orchestrator/`, `START_COMMIT`, and exact applicable user approvals or `none`. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`; always reject parent, sibling, or outside-base workflow paths. Read task, repository instructions, listed prototypes/tests, and direct implementation context. Treat approvals as limited to stated action and scope. Read only latest one or two newest-first issue entries if needed; never full journal. Require `git rev-parse HEAD == START_COMMIT`. Initial product state was clean. In repair sessions, classify only Git paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned. Every other changed Git path must start with `WORKFLOW_PRODUCT_GIT_PREFIX`; strip that prefix before comparing against `WORKFLOW_BASE`-relative expected paths. Stop on outside-prefix or other pre-existing product change.
 </preflight>
 
 <method>

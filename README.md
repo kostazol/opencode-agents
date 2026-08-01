@@ -65,7 +65,7 @@ Standard analyst выполнит reconnaissance, model-inheriting planning/revi
 
 ### 2. Подготовить execution branch
 
-Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; `.orchestrator/**` может оставаться untracked или modified.
+Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; только `WORKFLOW_BASE/.orchestrator/**` может оставаться untracked или modified.
 
 ```bash
 git switch -c feature/avatar-storage
@@ -120,6 +120,8 @@ git commit -m "feat: add avatar storage operation"
 .orchestrator/<request>/planning-issues.md
 ```
 
+`.orchestrator` всегда создаётся внутри working directory, из которой запущена текущая OpenCode-сессия. Git root и родительские каталоги не меняют это расположение. Например, при запуске из `/repo/src/MyProject` artifacts находятся в `/repo/src/MyProject/.orchestrator/`, даже если Git root — `/repo`. Expected product paths остаются относительными к `/repo/src/MyProject`; Git status paths `src/MyProject/...` нормализуются снятием этого prefix. Изменения вне `/repo/src/MyProject` считаются user-owned overlap.
+
 Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Model-inheriting planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
 
 Fresh model-inheriting plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Standard analyst после его `PASS` запускает fresh Sol ultra reviewer. Любое исправимое замечание Sol возвращает planner, затем fresh model-inheriting review и новую Sol проверку. Ordering, dependency, test ownership, path allocation, decomposition и buildability findings на occurrences `1`–`3` всегда исправляются через `REVISE`; наличие нескольких технических вариантов само по себе не блокирует planning. Первое появление finding имеет progress `NOT_APPLICABLE`; при `NONE` на occurrences `2`–`3` planner обязан применить materially different correction. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Occurrence `4` или greater одной и той же проблемы блокирует planning независимо от ошибочно возвращённого reviewer verdict.
@@ -134,7 +136,7 @@ Analyst возвращает только reviewed task paths. Index и manifest
 - task status `READY` и planning review `PASS`;
 - завершённые prerequisite tasks;
 - отсутствие staged, unstaged и untracked product changes;
-- `.orchestrator/**` может оставаться workflow-owned dirty state.
+- только точный `WORKFLOW_BASE/.orchestrator/**` может оставаться workflow-owned dirty state; другая `.orchestrator` в Git worktree считается user/product state.
 
 Оба executor primary agents фиксируют `START_COMMIT`, но не меняют Git. Fresh implementation и ordinary reviewer чередуются. Standard finding проходит через Terra adjuster. В single-model workflow отдельного adjuster нет: специальный reviewer сам фиксирует bounded repair direction и при доказанной необходимости расширяет expected paths, но не меняет product code.
 

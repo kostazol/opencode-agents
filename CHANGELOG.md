@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 - 2026-08-01
+
+### Fixed
+
+- Anchor workflow `.orchestrator` artifacts to OpenCode session working directory instead of Git root or parent directories.
+- Preserve the same workflow base across planning, review, execution, adjustment, and final review handoffs.
+
 ## 1.2.1 - 2026-08-01
 
 ### Fixed
