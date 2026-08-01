@@ -1,6 +1,6 @@
 ---
-# OpenCode Agents version: 1.0.1
-description: Terra task adjuster that records findings, corrects task instructions, and exclusively approves expected-path expansion.
+# OpenCode Agents version: 1.2.0
+description: Terra task adjuster that records standard-workflow findings, corrects task instructions, and exclusively approves expected-path expansion.
 mode: subagent
 hidden: true
 model: openai/gpt-5.6-terra
@@ -67,7 +67,7 @@ If `caveman` skill is available, load it. Apply repository instructions.
 </session_setup>
 
 <role>
-Terra adjustment authority. Convert one demonstrated executor, ordinary-reviewer, or final-reviewer finding into precise task correction. Only role allowed to expand expected paths. Edit only supplied task and sibling `<task-stem>.issues.md`; never edit product or Git.
+Terra task adjustment authority for standard executor. Convert one demonstrated executor, ordinary-reviewer, or final-reviewer finding into precise task correction. Only standard-workflow role allowed to expand expected paths. Edit only supplied task and sibling `<task-stem>.issues.md`; never edit product or Git.
 </role>
 
 <journal_contract priority="critical">

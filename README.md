@@ -1,22 +1,32 @@
 # OpenCode Agents
 
-Два автономных primary workflow для анализа и выполнения задач в OpenCode.
+Четыре автономных primary workflow для standard и single-model анализа и выполнения задач в OpenCode.
 
 ## Архитектура
 
 ```text
-orchestrator-analyst
+orchestrator-analyst (run with Terra)
   reconnaissance
-  Terra task planning
-  independent Terra plan review
+  model-inheriting task planning
+  model-inheriting plan review
+  independent Sol ultra plan review
   self-contained task Markdown files
 
-orchestrator-executor <one-task.md>
+orchestrator-analyst-single-model
+  reconnaissance, planning, and review on caller model
+  no Sol ultra plan review
+
+orchestrator-executor <one-task.md> (run with Luna)
   fresh implementation
   independent ordinary review
   Terra task adjustment
   Terra final review or loop diagnosis
   validated uncommitted result
+
+orchestrator-executor-single-model <one-task.md>
+  implementation and corrective ordinary review on caller model
+  reviewer records task repair direction
+  no separate final review
 ```
 
 Других primary agents, aliases и profile variants нет. Analyst не запускает implementation. Executor принимает ровно один task file и не переключает ветки, не stage и не commit изменения.
@@ -29,7 +39,7 @@ orchestrator-executor <one-task.md>
 
 ### 1. Подготовить задачи через analyst
 
-Выберите `orchestrator-analyst` и отправьте полный запрос одним сообщением:
+Выберите `orchestrator-analyst` с Terra для Sol final plan review либо `orchestrator-analyst-single-model` для workflow только на выбранной модели. Отправьте полный запрос одним сообщением:
 
 ```text
 Добавь в API загрузку аватара пользователя.
@@ -42,7 +52,7 @@ orchestrator-executor <one-task.md>
 - не менять публичный контракт других endpoints.
 ```
 
-Analyst выполнит reconnaissance, Terra planning и independent Terra plan review. Результат:
+Standard analyst выполнит reconnaissance, model-inheriting planning/review и independent Sol ultra plan review. Single-model analyst выполнит только reconnaissance, planning и review на выбранной модели. Результат:
 
 ```text
 Итог: READY
@@ -66,13 +76,13 @@ Executor не выполняет `git switch`, `git add` или `git commit`.
 
 ### 3. Выполнить ровно одну задачу
 
-Выберите `orchestrator-executor`. Передайте только один task path, без второго task и дополнительных инструкций:
+Выберите `orchestrator-executor` с Luna для Luna implementation/review и Terra adjustment/final review либо `orchestrator-executor-single-model` для implementation/review loop только на выбранной модели. Передайте только один task path, без второго task и дополнительных инструкций:
 
 ```text
 .orchestrator/avatar-upload/tasks/01-add-storage-operation.md
 ```
 
-Executor:
+Standard executor:
 
 1. проверит branch, task status, prerequisites и clean product state;
 2. зафиксирует `START_COMMIT` в task file;
@@ -103,16 +113,16 @@ git commit -m "feat: add avatar storage operation"
 
 ## Analyst
 
-`orchestrator-analyst` создаёт задачи под `.orchestrator/<request>/tasks/`:
+Оба analyst primary agents создают задачи под `.orchestrator/<request>/tasks/`:
 
 ```text
 .orchestrator/<request>/tasks/<NN>-<slug>.md
 .orchestrator/<request>/planning-issues.md
 ```
 
-Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Terra planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
+Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Model-inheriting planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
 
-Fresh Terra plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Planner исправляет demonstrated findings. Четвёртое появление одной и той же проблемы блокирует planning; разные проблемы продолжают исправляться при измеримом прогрессе.
+Fresh model-inheriting plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Standard analyst после его `PASS` запускает fresh Sol ultra reviewer. Любое замечание Sol возвращает planner, затем fresh model-inheriting review и новую Sol проверку. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Четвёртое появление одной и той же проблемы блокирует planning; разные проблемы продолжают исправляться при измеримом прогрессе.
 
 Analyst возвращает только reviewed task paths. Index и manifest не создаются.
 
@@ -126,7 +136,7 @@ Analyst возвращает только reviewed task paths. Index и manifest
 - отсутствие staged, unstaged и untracked product changes;
 - `.orchestrator/**` может оставаться workflow-owned dirty state.
 
-Executor фиксирует `START_COMMIT`, но не меняет Git. Fresh implementation и ordinary reviewer чередуются. Любой finding проходит через Terra adjuster, который уточняет текущий task и единолично одобряет расширение expected paths.
+Оба executor primary agents фиксируют `START_COMMIT`, но не меняют Git. Fresh implementation и ordinary reviewer чередуются. Standard finding проходит через Terra adjuster. В single-model workflow отдельного adjuster нет: специальный reviewer сам фиксирует bounded repair direction и при доказанной необходимости расширяет expected paths, но не меняет product code.
 
 Execution findings хранятся newest-first рядом с task:
 
@@ -134,9 +144,9 @@ Execution findings хранятся newest-first рядом с task:
 .orchestrator/<request>/tasks/<NN>-<slug>.issues.md
 ```
 
-Обычные роли читают только последние одну-две записи. После трёх неудачных repairs одной semantic finding Terra выполняет full-history loop diagnosis и либо даёт одну конкретную корректировку, либо завершает task как blocked. Разные findings продолжаются только при измеримом прогрессе.
+Обычные роли читают только последние одну-две записи. Standard executor после трёх неудачных repairs одной semantic finding вызывает Terra full-history loop diagnosis; single-model executor завершает task как blocked. Разные findings продолжаются только при измеримом прогрессе.
 
-После ordinary review PASS fresh Terra final reviewer проверяет полный результат. Его finding возвращается через adjuster, fresh executor и ordinary reviewer. Task получает `COMPLETE` только после Terra PASS. Product diff остаётся пользователю без commit.
+Standard executor после ordinary review PASS запускает fresh Terra final reviewer. Его finding возвращается через adjuster, fresh executor и ordinary reviewer. Standard task получает `COMPLETE` только после Terra PASS; single-model task получает `COMPLETE` после ordinary review PASS. Product diff остаётся пользователю без commit.
 
 ## Автономность и безопасность
 
@@ -164,13 +174,17 @@ Primary agents сообщают только смену пользователь
 ## Состав
 
 - `orchestrator-analyst` — primary анализа и подготовки задач.
+- `orchestrator-analyst-single-model` — primary анализа и подготовки задач только на модели caller.
 - `orchestrator-recon` — read-only поиск implementation/integration/test evidence.
-- `orchestrator-task-planner` — Terra task planning и planning-journal maintenance.
-- `orchestrator-plan-reviewer` — independent Terra plan review.
+- `orchestrator-task-planner` — model-inheriting task planning и planning-journal maintenance.
+- `orchestrator-plan-reviewer` — independent model-inheriting plan review.
+- `orchestrator-plan-ultra-reviewer` — independent Sol ultra plan review.
 - `orchestrator-executor` — primary выполнения одной задачи.
+- `orchestrator-executor-single-model` — primary выполнения одной задачи только на модели caller.
 - `orchestrator-task-executor` — model-inheriting implementation role.
-- `orchestrator-task-reviewer` — model-inheriting ordinary reviewer.
-- `orchestrator-task-adjuster` — Terra task correction and scope authority.
+- `orchestrator-task-reviewer` — model-inheriting read-only ordinary reviewer standard workflow.
+- `orchestrator-task-reviewer-single-model` — model-inheriting ordinary reviewer и task correction authority single-model workflow.
+- `orchestrator-task-adjuster` — Terra task correction and scope authority standard workflow.
 - `orchestrator-final-reviewer` — Terra final review and loop diagnosis.
 
 ## Установка

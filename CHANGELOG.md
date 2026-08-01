@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 - 2026-08-01
+
+### Added
+
+- Separate single-model analyst and executor primary workflows without Sol or Terra final review roles.
+
+### Changed
+
+- Planning and plan review inherit caller model selection.
+- Standard executor uses Terra task adjustment; single-model reviewer records its own bounded task corrections without a separate adjuster.
+
+## 1.1.0 - 2026-08-01
+
+### Added
+
+- Independent Sol ultra plan review after Terra plan review PASS.
+- Bounded Terra planning and review rerun after every Sol plan finding before another Sol review.
+
 ## 1.0.1 - 2026-08-01
 
 ### Fixed

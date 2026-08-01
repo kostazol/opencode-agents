@@ -7,8 +7,8 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 ## Sources of truth
 
 - Primary prompts own orchestration loops and user contracts. Each subagent prompt owns only its role-specific inputs, permissions, procedure, artifact fields, and compact output.
-- Exactly two user-facing primary agents exist: `orchestrator-analyst` and `orchestrator-executor`. Do not add aliases, compatibility primaries, or profile-generated variants.
-- Analyst support roles own reconnaissance, Terra task planning, and independent Terra plan review. Executor support roles own implementation, ordinary review, Terra adjustment, and Terra final review or loop diagnosis.
+- Exactly four user-facing primary agents exist: `orchestrator-analyst`, `orchestrator-analyst-single-model`, `orchestrator-executor`, and `orchestrator-executor-single-model`. Do not add aliases, compatibility primaries, or profile-generated variants.
+- Analyst support roles own reconnaissance and model-inheriting task planning and review; standard analyst adds independent Sol ultra plan review. Executor support roles own model-inheriting implementation and review; standard executor uses Terra adjustment and final review or loop diagnosis, while single-model reviewer records bounded task corrections itself.
 - Each agent file owns only role-specific inputs, permissions, procedure, and compact output.
 - Explicit current user instruction outranks prior workflow state. Platform safety constraints always apply.
 
@@ -16,11 +16,11 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 
 - Analyst creates self-contained task Markdown files under `.orchestrator/<request>/tasks/` and one separate newest-first planning issue journal. It creates no index, manifest, ledger, hash, checkpoint, or product change.
 - Every task is a working vertical slice. It may name ordered prerequisite task paths, expected product paths, acceptance criteria, implementation and integration evidence, test work, and validation commands.
-- Terra performs planning. A fresh, independent Terra role reviews every task set before analyst returns task paths.
+- Standard analyst runs on user-selected Terra and adds fresh independent Sol review after model-inheriting plan review PASS; every Sol finding returns through fresh planning and review before another Sol review. Single-model analyst dispatches only model-inheriting roles and has no Sol review.
 - Executor accepts exactly one task file. User prepares and selects execution branch. Executor never creates or changes branches and never stages or commits.
 - Executor requires `HEAD` and product worktree clean at start; workflow-owned `.orchestrator/**` changes are allowed. It records immutable `START_COMMIT` after preflight.
-- Fresh implementation and ordinary-review roles alternate. Terra adjuster converts findings into bounded task corrections and approves any expected-path expansion before product edits. Terra final reviewer alone can complete task.
-- Same demonstrated finding gets at most three ordinary repair attempts before Terra loop diagnosis. Different findings may continue only while measurable progress occurs. Any Terra finding returns through adjuster, fresh executor, and fresh ordinary reviewer before another Terra final review.
+- Fresh implementation and ordinary-review roles alternate. Standard executor runs on user-selected Luna, sends findings through Terra adjuster before repair, and requires Terra final review to complete. Single-model reviewer records bounded task corrections and approved path expansion before fresh implementation; single-model executor completes after reviewer PASS.
+- Same demonstrated finding gets at most three ordinary repair attempts. Standard executor then invokes Terra loop diagnosis; single-model executor blocks. Different findings may continue only while measurable progress occurs. Any Terra finding returns through adjuster, fresh executor, and fresh ordinary reviewer before another Terra final review.
 - Standard build, test, restore, and localhost test activity runs autonomously in trusted repositories. Secret use, deploy, publish, destructive action, unrelated external effect, material product choice, and overlap with user-owned changes require user decision.
 - Preserve user-owned staged, unstaged, and untracked changes. Never stage, commit, reset, restore, clean, checkout, switch, rebase, merge, stash, push, or rewrite history.
 - Report concise Russian phase updates. Never expose journals, finding IDs, internal handoffs, or other workflow internals to user; analyst may return task paths and executor may repeat supplied task path.
@@ -31,7 +31,7 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 - Git read-only inspection may be allowed. Deny all Git mutation in permissions and prompts.
 - Analyst roles write only `.orchestrator/**/*.md`. They do not edit product files or Git state.
 - Only implementation role edits product files; it cannot edit `.orchestrator/**`. Executor primary records factual execution status in supplied task. No executor-side role may edit another task or planning journal.
-- Planning reviewer, ordinary reviewer, Terra adjuster, and Terra final reviewer do not edit product files. Reviewers are read-only; planner records planning findings, and adjuster may edit only supplied task and its execution journal.
+- Planning reviewer, standard ordinary reviewer, Terra adjuster, single-model ordinary reviewer, and Terra final reviewer do not edit product files. Standard reviewers are read-only; planner records planning findings, Terra adjuster and single-model ordinary reviewer may edit only supplied task and its execution journal.
 - Standard trusted build, test, restore, and localhost commands may be allowed. Deny secret-bearing commands, deployment, publication, destructive commands, and unrelated external effects pending user approval.
 
 ## Change process
@@ -39,7 +39,7 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 1. Read `README.md`, this file, and every affected agent.
 2. Identify every producer and consumer of changed task fields, issue fields, verdicts, and permissions.
 3. Keep one responsibility per role; update every producer and consumer of a changed contract and remove superseded rules rather than layering exceptions.
-4. Verify exactly two primaries, model assignments, least-privilege permissions, autonomous command boundaries, and response contracts.
+4. Verify exactly four primaries, model assignments, least-privilege permissions, autonomous command boundaries, and response contracts.
 5. Run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, and `opencode debug config`.
 6. Obtain independent workflow and permission review before release.
 

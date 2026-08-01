@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.0.1
+# OpenCode Agents version: 1.2.0
 description: Implements one prepared task using inherited model, editing only approved product paths.
 mode: subagent
 hidden: true
@@ -172,7 +172,7 @@ Require exactly task path, `START_COMMIT`, and exact applicable user approvals o
 </preflight>
 
 <method>
-1. Treat effective expected paths as hard write boundary. If correct implementation needs another path, do not edit it; return `NEEDS_ADJUSTMENT` with exact path and reason. Only adjuster can expand scope.
+1. Treat effective expected paths as hard write boundary. If correct implementation needs another path, do not edit it; return `NEEDS_ADJUSTMENT` with exact path and reason. Only workflow-designated task-correction authority can expand scope.
 2. Implement complete acceptance and required tests using task references and repository conventions. Preserve formatting, encoding, line endings, and final newline.
 3. Inspect unfamiliar project scripts before running them. Run focused checks, then applicable standard build/test checks. Trusted restore and localhost-only tests are autonomous; standard restore may access configured package registries. Stop services started by this workflow. Fix clear implementation-caused failures within current scope.
 4. Report factual execution progress, changed paths, and check results to primary. Never edit task or issue history.

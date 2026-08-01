@@ -13,21 +13,24 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
 AGENT_NAMES = [
+    "orchestrator-analyst-single-model.md",
     "orchestrator-analyst.md",
+    "orchestrator-executor-single-model.md",
     "orchestrator-executor.md",
     "orchestrator-final-reviewer.md",
     "orchestrator-plan-reviewer.md",
+    "orchestrator-plan-ultra-reviewer.md",
     "orchestrator-recon.md",
     "orchestrator-task-adjuster.md",
     "orchestrator-task-executor.md",
     "orchestrator-task-planner.md",
+    "orchestrator-task-reviewer-single-model.md",
     "orchestrator-task-reviewer.md",
 ]
-TERRA_AGENTS = {
-    "orchestrator-final-reviewer.md",
-    "orchestrator-plan-reviewer.md",
-    "orchestrator-task-adjuster.md",
-    "orchestrator-task-planner.md",
+PINNED_AGENTS = {
+    "orchestrator-final-reviewer.md": "openai/gpt-5.6-terra",
+    "orchestrator-plan-ultra-reviewer.md": "openai/gpt-5.6-sol",
+    "orchestrator-task-adjuster.md": "openai/gpt-5.6-terra",
 }
 SPEC = importlib.util.spec_from_file_location("opencode_agents", CLI)
 if SPEC is None or SPEC.loader is None:
@@ -86,22 +89,24 @@ class CliTests(unittest.TestCase):
             self.run_cli(ROOT, target, "install")
             agents = self.installed_agents(target)
             self.assertEqual(sorted(agents), AGENT_NAMES)
-            self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst.md", "orchestrator-executor.md"])
+            self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst-single-model.md", "orchestrator-analyst.md", "orchestrator-executor-single-model.md", "orchestrator-executor.md"])
+            version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+            self.assertEqual(OPENCODE_AGENTS.VERSION, version)
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
-                self.assertIn("# OpenCode Agents version: 1.0.1", content)
+                self.assertIn(f"# OpenCode Agents version: {version}", content)
                 self.assertNotIn("protocols/orchestrator.md", content)
                 self.assertNotIn("Read `__OPENCODE", content)
             self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
 
-    def test_models_match_two_primary_architecture(self):
+    def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
         pinned = {name for name, content in source_agents.items() if re.search(r"^model:", content, re.MULTILINE)}
-        self.assertEqual(pinned, TERRA_AGENTS)
-        for name in TERRA_AGENTS:
-            self.assertIsNotNone(re.search(r"^model: openai/gpt-5\.6-terra$", source_agents[name], re.MULTILINE))
-        for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md"):
+        self.assertEqual(pinned, set(PINNED_AGENTS))
+        for name, model in PINNED_AGENTS.items():
+            self.assertIsNotNone(re.search(rf"^model: {re.escape(model)}$", source_agents[name], re.MULTILINE))
+        for name in ("orchestrator-plan-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-planner.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-reviewer.md"):
             self.assertIsNone(re.search(r"^model:", source_agents[name], re.MULTILINE))
             self.assertIn("Model inherits caller selection", source_agents[name])
 
@@ -117,19 +122,46 @@ class CliTests(unittest.TestCase):
             self.assertIn(field, adjuster)
         self.assertIn("Do not expose or quote journals", executor)
         self.assertIn("Do not expose or quote journals", (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8"))
-        for name in ("orchestrator-task-planner.md", "orchestrator-plan-reviewer.md"):
+        for name in ("orchestrator-task-planner.md", "orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
         self.assertIn("pass only exact paths to `read`", planner)
         reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
         self.assertIn("Use `glob` with `.orchestrator/<request>/tasks/[0-9][0-9]-*.md`", reviewer)
         self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
+        ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
+        self.assertIn("Terra plan review `PASS`", ultra_reviewer)
+        self.assertIn("Count prior matching entries regardless of reviewer source", ultra_reviewer)
+        self.assertIn("current finding occurrence is prior count plus one", ultra_reviewer)
+        self.assertEqual(self.evaluate(self.permission_rules(ultra_reviewer, "grep"), "src/Program.cs"), "deny")
+        analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
+        self.assertIn("On Terra reviewer `PASS`, call fresh `orchestrator-plan-ultra-reviewer`", analyst)
+        self.assertIn("On ultra reviewer `REVISE`, apply the progress and repair rules from step 5, then restart at a fresh Terra reviewer", analyst)
+        self.assertIn("On ultra reviewer `PASS`, call planner once in `FINALIZE` mode with both review PASS responses", analyst)
+        self.assertIn("plan reviewer only for single-model analyst, plan reviewer and ultra reviewer for standard analyst", planner)
+        single_analyst = (ROOT / "agents/orchestrator-analyst-single-model.md").read_text(encoding="utf-8")
+        self.assertNotIn("orchestrator-plan-ultra-reviewer", single_analyst)
+        self.assertIn("All dispatched roles inherit caller model selection", single_analyst)
+        self.assertIn("with current plan-reviewer PASS response", single_analyst)
+        single_executor = (ROOT / "agents/orchestrator-executor-single-model.md").read_text(encoding="utf-8")
+        self.assertNotIn("orchestrator-final-reviewer", single_executor)
+        self.assertNotIn("orchestrator-task-adjuster", single_executor)
+        self.assertIn("Only reviewer `MODE: REVIEW` with `SINGLE_REVIEW: PASS` completes this workflow", single_executor)
+        self.assertIn("read full sibling journal only to count matching semantic-signature entries", single_executor)
+        single_reviewer = (ROOT / "agents/orchestrator-task-reviewer-single-model.md").read_text(encoding="utf-8")
+        self.assertIn("SINGLE_REVIEW: PASS|FINDING_ADJUSTED|BLOCKED", single_reviewer)
+        self.assertIn("SINGLE_REVIEW: FINDING_ADJUSTED|BLOCKED", single_reviewer)
+        self.assertNotIn("SINGLE_REVIEW: PASS|FINDING_ADJUSTED|BLOCKED\nMODE: ADJUST_EXECUTOR_FINDING", single_reviewer)
+        self.assertIn("update only task `Current repair direction`", single_reviewer)
+        self.assertIn("Only workflow-designated task-correction authority can expand scope", (ROOT / "agents/orchestrator-task-executor.md").read_text(encoding="utf-8"))
         self.assertIn("Search only active repository", (ROOT / "agents/orchestrator-recon.md").read_text(encoding="utf-8"))
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)
         expected = {
-            "orchestrator-analyst.md": {"orchestrator-recon", "orchestrator-task-planner", "orchestrator-plan-reviewer"},
+            "orchestrator-analyst-single-model.md": {"orchestrator-recon", "orchestrator-task-planner", "orchestrator-plan-reviewer"},
+            "orchestrator-analyst.md": {"orchestrator-recon", "orchestrator-task-planner", "orchestrator-plan-reviewer", "orchestrator-plan-ultra-reviewer"},
+            "orchestrator-executor-single-model.md": {"orchestrator-task-executor", "orchestrator-task-reviewer-single-model"},
             "orchestrator-executor.md": {"orchestrator-task-executor", "orchestrator-task-reviewer", "orchestrator-task-adjuster", "orchestrator-final-reviewer"},
         }
         for name, allowlist in expected.items():
@@ -139,7 +171,7 @@ class CliTests(unittest.TestCase):
 
     def test_write_boundaries_and_read_only_reviewers(self):
         agents = self.installed_agents(ROOT)
-        for name in ("orchestrator-task-planner.md", "orchestrator-task-adjuster.md"):
+        for name in ("orchestrator-task-planner.md", "orchestrator-task-adjuster.md", "orchestrator-task-reviewer-single-model.md"):
             rules = self.permission_rules(agents[name], "edit")
             self.assertEqual(self.evaluate(rules, ".orchestrator/request/tasks/01-task.md"), "allow")
             self.assertEqual(self.evaluate(rules, "src/Program.cs"), "deny")
@@ -149,7 +181,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.evaluate(planner_edits, ".orchestrator/nested/request/tasks/01-task.md"), "deny")
         self.assertEqual(self.evaluate(planner_edits, ".orchestrator/request/tasks/nested/01-task.md"), "deny")
         self.assertIn("Edit only supplied task and sibling", agents["orchestrator-task-adjuster.md"])
-        for name in ("orchestrator-plan-reviewer.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
+        for name in ("orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
             self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), ".orchestrator/request/tasks/01-task.md"), "deny")
             self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "src/Program.cs"), "deny")
         executor_edits = self.permission_rules(agents["orchestrator-task-executor.md"], "edit")
@@ -166,14 +198,14 @@ class CliTests(unittest.TestCase):
             for path in ("private.pem", "identity.key", ".npmrc", ".netrc", "id_rsa", "id_ed25519"):
                 self.assertEqual(self.evaluate(rules, path), "deny", f"{name}: {path}")
             self.assertEqual(self.evaluate(rules, "/tmp/secrets-config/nested/file.txt"), "deny", name)
-        for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md"):
+        for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md"):
             rules = self.permission_rules(agents[name], "read")
             for path in (".env", "prod.env", "settings.env.local", ".npmrc", ".netrc", "service-credentials.json"):
                 self.assertEqual(self.evaluate(rules, path), "deny", f"{name}: {path}")
 
     def test_command_permissions_allow_safe_work_and_deny_unsafe_shell(self):
         agents = self.installed_agents(ROOT)
-        command_agents = ("orchestrator-executor.md", "orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md")
+        command_agents = ("orchestrator-executor.md", "orchestrator-executor-single-model.md", "orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md")
         mutation_commands = ("git add .", "git commit -m unsafe", "git reset --hard", "git checkout main", "git switch main", "git clean -fd", "git stash", "git merge topic", "git rebase main", "git push")
         for name in command_agents:
             rules = self.permission_rules(agents[name], "bash")
@@ -183,7 +215,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(self.evaluate(rules, command), "deny", f"{name}: {command}")
             for command in ("git diff --no-ext-diff --no-textconv -- src/app.py; git add .", "git diff --no-ext-diff --no-textconv -- src/app.py && git commit -m unsafe", "git diff --no-ext-diff --no-textconv -- src/app.py\ngit add .", "git diff --no-ext-diff --no-textconv -- src/app.py\rgit add ."):
                 self.assertEqual(self.evaluate(rules, command), "deny", f"{name}: separator")
-        for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
+        for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-final-reviewer.md"):
             rules = self.permission_rules(agents[name], "bash")
             for command in ("dotnet test Tests.csproj", "npm test", "pytest tests", "cargo test"):
                 self.assertEqual(self.evaluate(rules, command), "allow", f"{name}: {command}")
@@ -211,7 +243,7 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             result = self.run_cli(ROOT, target, "status", capture_output=True)
-            self.assertIn("summary missing=0 changed=0 current=10", result.stdout)
+            self.assertIn("summary missing=0 changed=0 current=14", result.stdout)
             instructions = (target / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(instructions.count(OPENCODE_AGENTS.GLOBAL_INSTRUCTIONS_START), 1)
             self.assertIn("caveman", instructions)
