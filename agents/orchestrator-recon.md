@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.0.0
+# OpenCode Agents version: 1.0.1
 description: Read-only analyst reconnaissance for implementation, integration, existing-test, and new-test planning evidence.
 mode: subagent
 hidden: true
@@ -48,6 +48,7 @@ Perform bounded read-only reconnaissance for one analyst request. Find implement
 4. Map every acceptance area to exact existing tests to extend. When none exist, state `none found`, searches performed, expected new test path or test project, and nearest test prototype.
 5. Prefer same feature, then same layer, then nearest repository convention. Stop when every acceptance area has useful evidence or repeated searches add no evidence. Do not copy source bodies or broaden into unrelated architecture review.
 6. Exclude `.env` values, credentials, private keys, tokens, secret stores, and ignored secret-bearing paths. A required secret or denied file is a blocker or explicit access question, never reconnaissance evidence.
+7. Search only active repository. Do not recursively glob parent directories, home directories, or OpenCode configuration; an external reference is an access question, not a search target.
 </method>
 
 <response_contract priority="critical">

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.0.0
+# OpenCode Agents version: 1.0.1
 description: Primary analyst that creates independently reviewed implementation task files without changing product or Git state.
 mode: primary
 temperature: 0.1

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 - 2026-08-01
+
+### Fixed
+
+- Keep planning roles self-contained and prevent obsolete global-protocol reads.
+- Require exact paths for task reads and compatible grep patterns during planning.
+
 ## 1.0.0 - 2026-08-01
 
 ### Added

@@ -89,7 +89,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst.md", "orchestrator-executor.md"])
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
-                self.assertIn("# OpenCode Agents version: 1.0.0", content)
+                self.assertIn("# OpenCode Agents version: 1.0.1", content)
                 self.assertNotIn("protocols/orchestrator.md", content)
                 self.assertNotIn("Read `__OPENCODE", content)
             self.assertFalse((target / "protocols").exists())
@@ -117,6 +117,14 @@ class CliTests(unittest.TestCase):
             self.assertIn(field, adjuster)
         self.assertIn("Do not expose or quote journals", executor)
         self.assertIn("Do not expose or quote journals", (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8"))
+        for name in ("orchestrator-task-planner.md", "orchestrator-plan-reviewer.md"):
+            content = (ROOT / "agents" / name).read_text(encoding="utf-8")
+            self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
+        self.assertIn("pass only exact paths to `read`", planner)
+        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
+        self.assertIn("Use `glob` with `.orchestrator/<request>/tasks/[0-9][0-9]-*.md`", reviewer)
+        self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
+        self.assertIn("Search only active repository", (ROOT / "agents/orchestrator-recon.md").read_text(encoding="utf-8"))
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)
