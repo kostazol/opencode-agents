@@ -21,6 +21,8 @@ orchestrator-executor <one-task.md>
 
 Других primary agents, aliases и profile variants нет. Analyst не запускает implementation. Executor принимает ровно один task file и не переключает ветки, не stage и не commit изменения.
 
+Каждый agent prompt self-contained и содержит только нужные ему workflow contracts. Runtime protocol file не устанавливается и не читается; согласованность producer/consumer fields проверяется tests.
+
 ## Как пользоваться
 
 После установки полностью перезапустите OpenCode. В agent selector выберите нужный primary agent.
@@ -170,7 +172,6 @@ Primary agents сообщают только смену пользователь
 - `orchestrator-task-reviewer` — model-inheriting ordinary reviewer.
 - `orchestrator-task-adjuster` — Terra task correction and scope authority.
 - `orchestrator-final-reviewer` — Terra final review and loop diagnosis.
-- `protocols/orchestrator.md` — shared protocol.
 
 ## Установка
 

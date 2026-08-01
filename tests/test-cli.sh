@@ -9,9 +9,8 @@ trap 'rm -rf "$tmp_root"' EXIT
 source_root="$tmp_root/source"
 target_root="$tmp_root/config"
 backup_root="$tmp_root/backup"
-mkdir -p "$source_root/agents" "$source_root/protocols"
+mkdir -p "$source_root/agents"
 printf 'agent-v1\n' > "$source_root/agents/example.md"
-printf 'protocol-v1\n' > "$source_root/protocols/example.md"
 test ! -e "$source_root/AGENTS.md"
 test ! -e "$source_root/helpers"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and update OpenCode agents and shared protocols."""
+"""Install and update OpenCode agents."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 VERSION = "1.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
-GROUPS = ("agents", "protocols")
+GROUPS = ("agents",)
 GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
 GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
 GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
@@ -46,7 +46,7 @@ def default_target() -> Path:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Install and update OpenCode agents and protocols.")
+    result = argparse.ArgumentParser(description="Install and update OpenCode agents.")
     result.add_argument("command", choices=("install", "update", "status"))
     result.add_argument("--source", type=Path, help="Use a local source directory instead of GitHub API.")
     result.add_argument("--repository", default=None, help="GitHub repository URL or owner/name.")
@@ -201,14 +201,7 @@ def rendered_global_instructions(target: Path) -> bytes:
 
 
 def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
-    content = source.read_bytes()
-    if source.parent.name != "agents":
-        return content
-    protocol_directory = str(target / "protocols")
-    protocol_path = str(target / "protocols" / "orchestrator.md")
-    yaml_directory = protocol_directory.replace("'", "''")
-    yaml_path = protocol_path.replace("'", "''")
-    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode())
+    return source.read_bytes()
 
 
 def validate_target_group(path: Path) -> None:
@@ -342,12 +335,6 @@ def validate_target(target: Path) -> None:
         raise RuntimeError(f"refusing symlink target root: {target}")
     for group in GROUPS:
         validate_target_group(target / group)
-
-
-def validate_permission_target(target: Path) -> None:
-    value = str(target)
-    if any(character in value for character in ("*", "?", "[", "]", "`")) or any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise RuntimeError(f"target path contains unsupported permission-pattern character: {target}")
 
 
 def validate_global_instructions(path: Path) -> None:
@@ -487,8 +474,6 @@ def main() -> int:
     expanded_target = arguments.target.expanduser()
     target = expanded_target.resolve()
     try:
-        validate_permission_target(expanded_target)
-        validate_permission_target(target)
         reject_symlink_components(expanded_target, "target path")
         with prepared_source(arguments.source, arguments.repository, arguments.ref, arguments.github_api) as source:
             if arguments.command == "status":

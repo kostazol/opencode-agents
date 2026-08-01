@@ -80,7 +80,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.evaluate(rules, "unsafe\rcommand"), "deny")
         self.assertEqual(self.evaluate(rules, "safe"), "allow")
 
-    def test_fresh_install_has_current_agents_and_rendered_placeholders(self):
+    def test_fresh_install_has_self_contained_agents(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
@@ -89,12 +89,10 @@ class CliTests(unittest.TestCase):
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst.md", "orchestrator-executor.md"])
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
-                self.assertIn(str(target / "protocols/orchestrator.md"), content)
                 self.assertIn("# OpenCode Agents version: 1.0.0", content)
-                self.assertEqual(self.evaluate(self.permission_rules(content, "read"), str(target / "protocols/orchestrator.md")), "allow")
-            executor_edits = self.permission_rules(agents["orchestrator-task-executor.md"], "edit")
-            self.assertEqual(self.evaluate(executor_edits, str(target / "protocols/orchestrator.md")), "deny")
-            self.assertNotRegex((target / "protocols/orchestrator.md").read_text(encoding="utf-8"), r"__[A-Z][A-Z0-9_]+__")
+                self.assertNotIn("protocols/orchestrator.md", content)
+                self.assertNotIn("Read `__OPENCODE", content)
+            self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
 
     def test_models_match_two_primary_architecture(self):
@@ -107,13 +105,18 @@ class CliTests(unittest.TestCase):
             self.assertIsNone(re.search(r"^model:", source_agents[name], re.MULTILINE))
             self.assertIn("Model inherits caller selection", source_agents[name])
 
-    def test_task_schema_is_shared_by_protocol_and_planner(self):
-        protocol = (ROOT / "protocols/orchestrator.md").read_text(encoding="utf-8")
+    def test_agent_local_contracts_are_complete(self):
         planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
         sections = ("## Goal", "## Acceptance criteria", "## Ordered prerequisites", "## Branch preconditions", "## Repository context", "## Scope", "## Implementation", "## Test work", "## Validation", "## Approved scope amendments", "## Current repair direction", "## Execution record")
         for section in sections:
-            self.assertIn(section, protocol)
             self.assertIn(section, planner)
+        executor = (ROOT / "agents/orchestrator-executor.md").read_text(encoding="utf-8")
+        adjuster = (ROOT / "agents/orchestrator-task-adjuster.md").read_text(encoding="utf-8")
+        for field in ("Finding:", "Source:", "Cycle:", "Ordinary repair attempt:", "Status:", "Evidence:", "Requirement:", "Scope impact:", "Supersedes:"):
+            self.assertIn(field, executor)
+            self.assertIn(field, adjuster)
+        self.assertIn("Do not expose or quote journals", executor)
+        self.assertIn("Do not expose or quote journals", (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8"))
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)
@@ -154,7 +157,7 @@ class CliTests(unittest.TestCase):
             rules = self.permission_rules(content, "read")
             for path in ("private.pem", "identity.key", ".npmrc", ".netrc", "id_rsa", "id_ed25519"):
                 self.assertEqual(self.evaluate(rules, path), "deny", f"{name}: {path}")
-            self.assertEqual(self.evaluate(rules, "/tmp/secrets-config/protocols/orchestrator.md"), "deny", name)
+            self.assertEqual(self.evaluate(rules, "/tmp/secrets-config/nested/file.txt"), "deny", name)
         for name in ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md"):
             rules = self.permission_rules(agents[name], "read")
             for path in (".env", "prod.env", "settings.env.local", ".npmrc", ".netrc", "service-credentials.json"):
@@ -200,13 +203,13 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             result = self.run_cli(ROOT, target, "status", capture_output=True)
-            self.assertIn("summary missing=0 changed=0 current=11", result.stdout)
+            self.assertIn("summary missing=0 changed=0 current=10", result.stdout)
             instructions = (target / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(instructions.count(OPENCODE_AGENTS.GLOBAL_INSTRUCTIONS_START), 1)
             self.assertIn("caveman", instructions)
 
-    def test_complete_github_api_source_installation_needs_no_helpers(self):
-        files = [ROOT / "AGENTS.md", *sorted((ROOT / "agents").glob("*.md")), *sorted((ROOT / "protocols").glob("*.md"))]
+    def test_complete_github_api_source_installs_agents_only(self):
+        files = [ROOT / "AGENTS.md", *sorted((ROOT / "agents").glob("*.md"))]
         tree = {"tree": []}
         blobs = {}
         for index, path in enumerate(files):
@@ -227,7 +230,7 @@ class CliTests(unittest.TestCase):
             with patch.object(OPENCODE_AGENTS, "github_json", side_effect=github_response), patch.object(sys, "argv", arguments):
                 self.assertEqual(OPENCODE_AGENTS.main(), 0)
             self.assertEqual(sorted(self.installed_agents(target)), AGENT_NAMES)
-            self.assertTrue((target / "protocols/orchestrator.md").is_file())
+            self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
 
     def test_repository_urls_and_invalid_github_json(self):
@@ -262,20 +265,6 @@ class CliTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("refusing symlink target path", result.stderr)
             self.assertEqual(list(actual.iterdir()), [])
-
-    def test_permission_pattern_target_is_rejected(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            for suffix in ("config-*", "config-?", "config-[x]", "config-`prompt`"):
-                target = Path(temporary) / suffix
-                result = subprocess.run([sys.executable, str(CLI), "--source", str(ROOT), "--target", str(target), "install"], capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("unsupported permission-pattern character", result.stderr)
-            metacharacter_cwd = Path(temporary) / "cwd-`prompt`"
-            metacharacter_cwd.mkdir()
-            result = subprocess.run([sys.executable, str(CLI), "--source", str(ROOT), "--target", "config", "install"], cwd=metacharacter_cwd, capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("unsupported permission-pattern character", result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()

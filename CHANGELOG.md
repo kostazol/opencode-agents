@@ -12,6 +12,7 @@
 - Terra task adjustment, expected-path expansion authority, final review, and repair-loop diagnosis.
 - Newest-first planning and execution issue journals optimized for reading only recent findings.
 - Autonomous trusted build, test, restore, and localhost validation without Git mutation.
+- Self-contained role prompts without runtime shared-protocol dependency.
 
 ### Safety
 

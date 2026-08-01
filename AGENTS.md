@@ -2,11 +2,11 @@
 
 ## Scope
 
-This repository versions OpenCode agent prompts and shared protocol. Prompts are executable workflow. Keep roles small, autonomous, least-privileged, and understandable from repository files alone.
+This repository versions OpenCode agent prompts. Prompts are executable workflow. Keep roles small, autonomous, least-privileged, self-contained, and understandable from repository files alone.
 
 ## Sources of truth
 
-- `protocols/orchestrator.md` owns shared workflow, artifact schemas, retry rules, safety gates, progress, and response contracts.
+- Primary prompts own orchestration loops and user contracts. Each subagent prompt owns only its role-specific inputs, permissions, procedure, artifact fields, and compact output.
 - Exactly two user-facing primary agents exist: `orchestrator-analyst` and `orchestrator-executor`. Do not add aliases, compatibility primaries, or profile-generated variants.
 - Analyst support roles own reconnaissance, Terra task planning, and independent Terra plan review. Executor support roles own implementation, ordinary review, Terra adjustment, and Terra final review or loop diagnosis.
 - Each agent file owns only role-specific inputs, permissions, procedure, and compact output.
@@ -33,13 +33,12 @@ This repository versions OpenCode agent prompts and shared protocol. Prompts are
 - Only implementation role edits product files; it cannot edit `.orchestrator/**`. Executor primary records factual execution status in supplied task. No executor-side role may edit another task or planning journal.
 - Planning reviewer, ordinary reviewer, Terra adjuster, and Terra final reviewer do not edit product files. Reviewers are read-only; planner records planning findings, and adjuster may edit only supplied task and its execution journal.
 - Standard trusted build, test, restore, and localhost commands may be allowed. Deny secret-bearing commands, deployment, publication, destructive commands, and unrelated external effects pending user approval.
-- Shared protocol consumers use `__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__`, `__OPENCODE_PROTOCOL_PATH_YAML__`, and `__OPENCODE_PROTOCOL_PATH_TEXT__`. Do not commit installed paths.
 
 ## Change process
 
-1. Read `README.md`, this file, protocol, and every affected agent.
+1. Read `README.md`, this file, and every affected agent.
 2. Identify every producer and consumer of changed task fields, issue fields, verdicts, and permissions.
-3. Keep one responsibility per role; update shared protocol once and remove superseded rules rather than layering exceptions.
+3. Keep one responsibility per role; update every producer and consumer of a changed contract and remove superseded rules rather than layering exceptions.
 4. Verify exactly two primaries, model assignments, least-privilege permissions, autonomous command boundaries, and response contracts.
 5. Run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, and `opencode debug config`.
 6. Obtain independent workflow and permission review before release.
@@ -52,4 +51,4 @@ This repository versions OpenCode agent prompts and shared protocol. Prompts are
 
 ## Repository exclusions
 
-Do not add provider config, auth/session databases, MCP tokens, `.env`, user source, patches, logs, or generated target-repository `.orchestrator/` artifacts to this repository. Protocol examples and approved repository-local plans remain allowed.
+Do not add provider config, auth/session databases, MCP tokens, `.env`, user source, patches, logs, or generated target-repository `.orchestrator/` artifacts to this repository. Approved repository-local plans remain allowed.

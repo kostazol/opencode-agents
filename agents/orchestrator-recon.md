@@ -6,9 +6,7 @@ hidden: true
 temperature: 0.1
 permission:
   "*": deny
-  external_directory:
-    "*": deny
-    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
+  external_directory: deny
   read:
     "*": allow
     "*.env": deny
@@ -25,8 +23,6 @@ permission:
     "*.netrc": deny
     "*.npmrc": deny
     "*.pypirc": deny
-    "*protocols/*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
   glob: allow
   grep: allow
   bash: deny
@@ -38,7 +34,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-If `caveman` skill is available, load it. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once and apply it.
+If `caveman` skill is available, load it. Apply repository instructions.
 </session_setup>
 
 <role>

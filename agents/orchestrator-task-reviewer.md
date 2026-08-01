@@ -6,12 +6,9 @@ hidden: true
 temperature: 0.1
 permission:
   "*": deny
-  external_directory:
-    "*": deny
-    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
+  external_directory: deny
   read:
     "*": allow
-    "*protocols/*": deny
     "*.env": deny
     "*.env.*": deny
     "*.env.example": allow
@@ -26,7 +23,6 @@ permission:
     "*secrets*": deny
     "*id_rsa*": deny
     "*id_ed25519*": deny
-    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
   glob: allow
   grep: allow
   bash:
@@ -153,7 +149,7 @@ permission:
 ---
 
 <session_setup priority="critical">
-If `caveman` skill is available, load it. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply repository instructions.
+If `caveman` skill is available, load it. Apply repository instructions.
 </session_setup>
 
 <role>
@@ -161,13 +157,13 @@ Ordinary independent reviewer. Model inherits caller selection. Review current t
 </role>
 
 <method>
-1. Require exactly task path and `START_COMMIT`; require current `HEAD == START_COMMIT` and no staged product changes.
-2. Read task and only latest one or two newest-first issue entries. Never read full journal. Treat original expected product paths plus approved scope amendments as effective expected paths. Inspect every changed and untracked product path, effective expected paths, direct integration, required tests, and relevant security. Use hardened Git diff forms only; inspect untracked files through read tools.
-3. Verify acceptance from repository state, not executor summary. Rerun focused or applicable standard checks when useful. Trusted restore and localhost-only tests are autonomous.
+1. Require exactly task path, `START_COMMIT`, and exact applicable user approvals or `none`; require current `HEAD == START_COMMIT` and no staged product changes.
+2. Read task and only latest one or two newest-first issue entries. Never read full journal. Treat original expected product paths plus approved scope amendments as effective expected paths. Review product changes from `START_COMMIT` through current worktree, excluding `.orchestrator/**` from product outcome. Inspect every changed and untracked product path, effective expected paths, direct integration, required tests, and relevant security. Use hardened Git diff forms only; inspect untracked files through read tools.
+3. Verify acceptance from repository state, not executor summary. Inspect unfamiliar project scripts before running them. Rerun focused or applicable standard checks when useful. Trusted restore and localhost-only tests are autonomous; standard restore may access configured package registries. Stop services started by this workflow. Do not require unrelated full-suite checks unless required by request or repository rules, or justified by material security, persistence, migration, concurrency, packaging, or cross-project risk.
 4. When reviewing a repair, classify prior finding as `RESOLVED` or `PERSISTS` from repository evidence. Report `MEASURABLE` progress only when a prior finding resolved, relevant failures decreased, acceptance coverage increased, or scope became more accurate without regression; otherwise report `NONE`.
-5. Return finding only for demonstrated unmet acceptance, reachable regression, missing required test, change-caused contract break, security/data/trust defect, unintended changed path, or false task evidence. Ignore style preference, speculative refactor, and unrelated pre-existing issue.
+5. Return finding only for demonstrated unmet acceptance, reachable regression, missing required test, change-caused contract break, security/data/trust defect, unintended changed path, or false task evidence. Ignore style preference, speculative refactor, unrelated pre-existing issue, and user-approved residual risk unless evidence or platform safety changes.
 6. Give one stable semantic `SIGNATURE`: concise normalized defect identity independent of wording, line movement, or attempted fix. Give exact evidence and correction target. Never expand expected paths; identify needed path for adjuster.
-7. Never read secrets, use credentials, deploy, publish, contact non-local services, perform destructive actions, or mutate Git.
+7. Never intentionally read or supply secrets or credentials; standard restore may use configured package registries and their preconfigured development credentials. Never deploy, publish, contact other non-local services, perform destructive actions, or mutate Git.
 </method>
 
 <response_contract priority="critical">
