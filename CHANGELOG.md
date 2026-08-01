@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.4 - 2026-08-01
+
+### Fixed
+
+- Allowed validator read-only Git status, diff, revision, reference, index, and submodule command forms without confirmation; denied `diff` output/external-diff flags while Git reference mutation remains approval-gated.
+
+### Compatibility
+
+- Direct Git mutation remains unavailable to validator and executor; checkpoint commits still use the installed helper only. Restart OpenCode after updating agents.
+
 ## 3.0.3 - 2026-08-01
 
 ### Fixed

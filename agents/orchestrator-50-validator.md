@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.3
+# OpenCode Agents version: 3.0.4
 description: Independently runs baseline, prototype, stage, final, and post-review validation while writing only immutable validation and snapshot artifacts.
 mode: subagent
 hidden: true
@@ -29,18 +29,54 @@ permission:
     "*/git *": ask
     "*/git.exe": ask
     "*/git.exe *": ask
-    "git diff": allow
-    "git diff --binary": allow
-    "git diff --cached --binary": allow
-    "git diff --check": allow
-    "git ls-files -s": allow
+    "git ls-files --stage": allow
     "git rev-parse --show-toplevel": allow
     "git rev-parse HEAD": allow
+    "git rev-parse --abbrev-ref HEAD": allow
+    "git rev-parse HEAD^{tree}": allow
+    "git rev-parse HEAD^": allow
     "git show-ref --head": allow
     "git status --porcelain=v1 -z": allow
-    "git status --short": allow
+    "git status --short --untracked-files=all": allow
+    "git status --branch --short": allow
     "git submodule status": allow
     "git symbolic-ref --short HEAD": allow
+    "git diff --name-status HEAD": allow
+    "git diff --cached --name-status": allow
+    "git diff --no-ext-diff --no-textconv --binary": allow
+    "git diff --cached --no-ext-diff --no-textconv --binary": allow
+    "git diff *--ext-diff*": deny
+    "git diff *--output=*": deny
+    "git diff --output *": deny
+    "git diff * --output *": deny
+    "git diff -o *": deny
+    "git diff * -o *": deny
+    "git diff -o*": deny
+    "git diff * -o*": deny
+    "git.exe diff *--ext-diff*": deny
+    "git.exe diff *--output=*": deny
+    "git.exe diff --output *": deny
+    "git.exe diff * --output *": deny
+    "git.exe diff -o *": deny
+    "git.exe diff * -o *": deny
+    "git.exe diff -o*": deny
+    "git.exe diff * -o*": deny
+    "*/git diff *--ext-diff*": deny
+    "*/git diff *--output=*": deny
+    "*/git diff --output *": deny
+    "*/git diff * --output *": deny
+    "*/git diff -o *": deny
+    "*/git diff * -o *": deny
+    "*/git diff -o*": deny
+    "*/git diff * -o*": deny
+    "*/git.exe diff *--ext-diff*": deny
+    "*/git.exe diff *--output=*": deny
+    "*/git.exe diff --output *": deny
+    "*/git.exe diff * --output *": deny
+    "*/git.exe diff -o *": deny
+    "*/git.exe diff * -o *": deny
+    "*/git.exe diff -o*": deny
+    "*/git.exe diff * -o*": deny
   skill:
     "*": deny
     caveman: allow
@@ -76,7 +112,7 @@ Validate one supplied immutable scope. Product files, repository history, user i
 
 <method>
 1. After normalized path comparison, verify supplied absolute `WORKSPACE_ROOT` and `WORKFLOW_ROOT` equal their corresponding manifest fields, then verify `WORKFLOW_ROOT` equals `WORKSPACE_ROOT/.orchestrator/tasks/<workflow-id>`; Git root cannot determine either path. Verify workflow, revisions, expected product ID, scope, commands, and artifact writes. Every supplied validation/snapshot output must be a unique absent path below that root; an existing destination returns `BLOCKED` rather than being overwritten. A missing, relative, or mismatched root returns `STALE` before writes.
-2. Capture pre-command product manifest, repository identity, HEAD, refs, index entries, and status; compare expected pre-stage values when validating executor output. From `GIT_REPOSITORY_ROOT`, run exactly installed `__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_TEXT__ --index-digest` on Linux/macOS or `__OPENCODE_CHECKPOINT_PY_COMMAND_TEXT__ --index-digest` on Windows and persist its lowercase SHA-256 output as `REVIEWED_INDEX_DIGEST`; never derive this field manually.
+2. Capture pre-command product manifest, repository identity, HEAD, refs, index entries, and status; compare expected pre-stage values when validating executor output. For current-worktree binary deltas, use allowlisted `git diff --no-ext-diff --no-textconv --binary` form. From `GIT_REPOSITORY_ROOT`, run exactly installed `__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_TEXT__ --index-digest` on Linux/macOS or `__OPENCODE_CHECKPOINT_PY_COMMAND_TEXT__ --index-digest` on Windows and persist its lowercase SHA-256 output as `REVIEWED_INDEX_DIGEST`; never derive this field manually.
 3. Before command execution, reject unquoted shell control operators, fallback branches, backgrounding, command substitution, output redirection, or explicit exit rewriting. Run accepted exact commands directly in declared order and working directories with supplied timeouts.
 4. Record command, toolchain, start/end, command exit, RED/GREEN classification, shortest decisive output, explicit skips, and environment limits without secret values.
 5. Capture post-command product manifest, repository identity, HEAD, refs, index entries, and status. Unexpected product/index/history mutation returns `BLOCKED` with changed paths.
@@ -98,7 +134,7 @@ STAGE PASS requires applicable build/validator, changed-symbol-to-test mapping, 
 </readiness>
 
 <safety>
-Allowlisted exact read-only Git commands run directly; every other Git command requires runtime user approval and remains subject to this role's prohibitions. Commands do not commit, reset, restore, checkout, stash, clean, merge, rebase, cherry-pick, apply, am, switch branches, push, revert, update refs/index, install unapproved dependencies, or rewrite product files. Search and artifacts exclude credentials, private keys, tokens, `.env` values, and secret-bearing ignored paths. Expected ignored test caches are recorded, not product-scoped.
+Allowlisted read-only Git command forms run directly; every other Git command requires runtime user approval and remains subject to this role's prohibitions. Commands do not commit, reset, restore, checkout, stash, clean, merge, rebase, cherry-pick, apply, am, switch branches, push, revert, update refs/index, install unapproved dependencies, or rewrite product files. Search and artifacts exclude credentials, private keys, tokens, `.env` values, and secret-bearing ignored paths. Expected ignored test caches are recorded, not product-scoped.
 </safety>
 
 <response_contract priority="critical">
