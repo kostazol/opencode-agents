@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.2
+# OpenCode Agents version: 3.0.3
 description: Terra structural planning authority that builds and adversarially audits complete prototype-aware plans of verifiable implementation stages.
 mode: subagent
 hidden: true

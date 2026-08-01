@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.3 - 2026-08-01
+
+### Fixed
+
+- Defined activation as an operational transition outside canonical dispatch authorization hashing, so expected `ACTIVE`, authorization-ID, and plan-state updates no longer stale a dispatch before executor commands begin.
+- Required validator, planner, and executor to bind the same canonical authorization payload and authorized post-activation revisions rather than mutable raw artifact hashes.
+
+### Compatibility
+
+- Existing dispatches stopped before execution may be recovered and re-authorized; restart OpenCode after updating agents.
+
 ## 3.0.2 - 2026-08-01
 
 ### Fixed

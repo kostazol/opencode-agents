@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.2
+# OpenCode Agents version: 3.0.3
 description: Stateful planner for OpenAI reconnaissance and all-profile exact pre-dispatch prototype gates, dispatch manifests, evidence synchronization, and minor plan-state maintenance.
 mode: subagent
 hidden: true
@@ -151,7 +151,7 @@ For `SYNC_AND_DISPATCH`, verify current workflow artifacts and IDs, compute next
 
 Candidate manifest contains workflow/profile paths, request/plan/expected-product IDs, current and target post-activation revisions, candidate stage or repair cycle, workspace, capsule or repair-manifest path, prototype references, exact plan-bound validation commands with working directories/timeouts, declared product/artifact writes including unique `stages/executor/<dispatch-id>/` evidence paths, barrier, `TARGET_PHASE: EXECUTING`, `ACTIVE: false`, and `DISPATCH_AUTHORIZATION_ID: pending`. Validator resolves and binds artifact/prototype hashes; planner does not produce them. Authorization canonicalization omits only `ACTIVE` and `DISPATCH_AUTHORIZATION_ID`. Return `AUTHORIZATION_REQUIRED` without changing canonical phase or revisions.
 
-For `ACTIVATE_DISPATCH`, reread candidate and validator authorization artifact, verify its candidate hash and bound fields, require matching `DISPATCH_AUTHORIZATION_ID`, unchanged expected product ID, authorized target revisions, active-stage eligibility, and no competing active wave. Persist the ID into candidate, set `ACTIVE: true`, then atomically advance canonical revisions and persist phase `EXECUTING` last. Executor independently recomputes authorization hashes before mutation. Missing, stale, or contradictory authorization returns `BLOCKED|STALE` without activation.
+For `ACTIVATE_DISPATCH`, reread candidate and validator authorization artifact, verify its canonical authorization-payload hash and bound fields, require matching `DISPATCH_AUTHORIZATION_ID`, unchanged expected product ID, authorized target revisions, active-stage eligibility, and no competing active wave. Never compare raw candidate-file hash: persisting the ID and `ACTIVE: true` changes only omitted operational fields. Atomically advance canonical revisions and persist phase `EXECUTING` last. Executor independently recomputes authorization hashes before mutation. Missing, stale, or contradictory authorization returns `BLOCKED|STALE` without activation.
 
 For `ACTIVATE_REVIEW_EPOCH`, reread current validator epoch manifest and every expected lane or escalation input, require matching current review/product IDs and unique output paths, record epoch `ACTIVE` in canonical plan state, and mark prior active epoch `SUPERSEDED` before review dispatch. Aggregation, repair, checkpoint, acceptance, and completion consume only canonical active epoch.
 

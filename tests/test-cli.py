@@ -211,6 +211,9 @@ class CliTests(unittest.TestCase):
             self.assertIn("Orchestrator Protocol v3", protocol)
             self.assertIn("REVIEW_EPOCH_ID", protocol)
             self.assertIn("CHECKPOINT_COMMIT_ID", protocol)
+            self.assertIn("Raw `plan/master.md` and dispatch-file hashes may therefore change during activation", protocol)
+            self.assertIn("canonical authorization-payload hash", validator)
+            self.assertIn("Raw pre-activation dispatch or plan-file hash differences alone are expected", executor)
 
     def test_nested_workspace_workflow_root_contract(self):
         with tempfile.TemporaryDirectory() as temporary:
