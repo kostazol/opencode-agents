@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.2
+# OpenCode Agents version: 1.2.3
 description: Read-only analyst reconnaissance for implementation, integration, existing-test, and new-test planning evidence.
 mode: subagent
 hidden: true
@@ -42,7 +42,7 @@ Perform bounded read-only reconnaissance for one analyst request inside supplied
 </role>
 
 <method>
-1. Require exact immutable `WORKFLOW_BASE` and target `WORKFLOW_BASE/.orchestrator/<request>/`. Read instructions applicable inside `WORKFLOW_BASE` and user request. Split request into observable acceptance areas without inventing scope.
+1. Require exact immutable `WORKFLOW_BASE` and future planner target directly under `WORKFLOW_BASE/.orchestrator/<request>/`. The target is routing metadata, is expected not to exist before planner `CREATE`, and must not be read, globbed, or treated as an access blocker. Read instructions applicable inside `WORKFLOW_BASE` and user request. Split request into observable acceptance areas without inventing scope.
 2. Trace likely implementation paths, direct callers, registrations, configuration, boundaries, and integration points. For each acceptance area, identify closest reusable implementation and integration prototypes as `path#symbol`, with one sentence naming applicable practice and material difference.
 3. Find existing tests that exercise requested behavior or nearest contract. Separately find test-structure prototypes showing fixture, setup, assertion, and integration conventions.
 4. Map every acceptance area to exact existing tests to extend. When none exist, state `none found`, searches performed, expected new test path or test project, and nearest test prototype.

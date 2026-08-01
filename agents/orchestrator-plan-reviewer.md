@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.2
+# OpenCode Agents version: 1.2.3
 description: Fresh read-only model-inheriting reviewer for complete request coverage and executable task-file quality.
 mode: subagent
 hidden: true

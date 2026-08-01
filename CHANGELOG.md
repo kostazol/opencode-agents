@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3 - 2026-08-02
+
+### Fixed
+
+- Treat the future analyst planning target as routing metadata that is expected to be absent before planner creation.
+- Prevent reconnaissance from reading or blocking on absent planning artifacts, with one corrected retry for malformed responses.
+
 ## 1.2.2 - 2026-08-01
 
 ### Fixed

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.2
+# OpenCode Agents version: 1.2.3
 description: Model-inheriting task planner that writes self-contained implementation tasks and newest-first planning issues only under .orchestrator.
 mode: subagent
 hidden: true

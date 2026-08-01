@@ -202,7 +202,10 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("SINGLE_REVIEW: PASS|FINDING_ADJUSTED|BLOCKED\nMODE: ADJUST_EXECUTOR_FINDING", single_reviewer)
         self.assertIn("update only task `Current repair direction`", single_reviewer)
         self.assertIn("Only workflow-designated task-correction authority can expand scope", (ROOT / "agents/orchestrator-task-executor.md").read_text(encoding="utf-8"))
-        self.assertIn("Search only `WORKFLOW_BASE` and descendants", (ROOT / "agents/orchestrator-recon.md").read_text(encoding="utf-8"))
+        recon = (ROOT / "agents/orchestrator-recon.md").read_text(encoding="utf-8")
+        self.assertIn("Search only `WORKFLOW_BASE` and descendants", recon)
+        self.assertIn("is expected not to exist before planner `CREATE`", recon)
+        self.assertIn("must not be read, globbed, or treated as an access blocker", recon)
         workflow_base_agents = ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md", "orchestrator-executor.md", "orchestrator-executor-single-model.md", "orchestrator-recon.md", "orchestrator-task-planner.md", "orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md")
         for name in workflow_base_agents:
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
@@ -211,6 +214,11 @@ class CliTests(unittest.TestCase):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Capture OpenCode session working directory as immutable `WORKFLOW_BASE`", content)
             self.assertIn("Never target `.orchestrator` at Git root or any parent", content)
+            self.assertIn("expected to be absent before planner `CREATE`", content)
+            self.assertIn("must not be read, globbed, or treated as an access blocker", content)
+            self.assertIn("blocked only by absent target or absent planning artifacts is malformed", content)
+            self.assertIn("reject it and call one fresh recon with this correction", content)
+            self.assertIn("If fresh retry repeats that malformed blocker, stop", content)
         self.assertIn("Reject Git-root or repository-root substitution only when that root differs from `WORKFLOW_BASE`", planner)
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")

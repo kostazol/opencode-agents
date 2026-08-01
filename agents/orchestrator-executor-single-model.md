@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.2
+# OpenCode Agents version: 1.2.3
 description: Primary single-model workflow that implements and ordinarily reviews exactly one prepared .orchestrator task without committing.
 mode: primary
 temperature: 0.1

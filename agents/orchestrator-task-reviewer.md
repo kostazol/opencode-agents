@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.2
+# OpenCode Agents version: 1.2.3
 description: Independently reviews one implemented task using inherited model and read-only repository access.
 mode: subagent
 hidden: true
