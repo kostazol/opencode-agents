@@ -1,0 +1,199 @@
+---
+# OpenCode Agents version: 1.0.0
+description: Implements one prepared task using inherited model, editing only approved product paths.
+mode: subagent
+hidden: true
+temperature: 0.1
+permission:
+  "*": deny
+  external_directory:
+    "*": deny
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': allow
+  read:
+    "*": allow
+    "*protocols/*": deny
+    "*.env": deny
+    "*.env.*": deny
+    "*.env.example": allow
+    "*.pem": deny
+    "*.key": deny
+    "*.p12": deny
+    "*.pfx": deny
+    "*.netrc": deny
+    "*.npmrc": deny
+    "*.pypirc": deny
+    "*credentials*": deny
+    "*secrets*": deny
+    "*id_rsa*": deny
+    "*id_ed25519*": deny
+    '__OPENCODE_PROTOCOL_PATH_YAML__': allow
+  glob: allow
+  grep: allow
+  bash:
+    "*": deny
+    "git rev-parse --show-toplevel": allow
+    "git rev-parse HEAD": allow
+    "git status --short": allow
+    "git diff --no-ext-diff --no-textconv --name-only --": allow
+    "git diff --no-ext-diff --no-textconv --check --": allow
+    "git diff --no-ext-diff --no-textconv -- *": allow
+    "dotnet restore": allow
+    "dotnet restore *": allow
+    "dotnet build": allow
+    "dotnet build *": allow
+    "dotnet test": allow
+    "dotnet test *": allow
+    "dotnet run": allow
+    "dotnet run *": allow
+    "npm ci": allow
+    "npm ci *": allow
+    "npm install": allow
+    "npm test": allow
+    "npm test *": allow
+    "npm run build": allow
+    "npm run build *": allow
+    "npm run test": allow
+    "npm run test *": allow
+    "npm start": allow
+    "npm start *": allow
+    "npm run dev": allow
+    "npm run dev *": allow
+    "pnpm install": allow
+    "pnpm install --frozen-lockfile": allow
+    "pnpm build": allow
+    "pnpm build *": allow
+    "pnpm test": allow
+    "pnpm test *": allow
+    "pnpm start": allow
+    "pnpm start *": allow
+    "pnpm run dev": allow
+    "pnpm run dev *": allow
+    "yarn install": allow
+    "yarn install --immutable": allow
+    "yarn install --frozen-lockfile": allow
+    "yarn build": allow
+    "yarn build *": allow
+    "yarn test": allow
+    "yarn test *": allow
+    "yarn start": allow
+    "yarn start *": allow
+    "yarn dev": allow
+    "yarn dev *": allow
+    "pytest": allow
+    "pytest *": allow
+    "python -m pytest": allow
+    "python -m pytest *": allow
+    "python3 -m pytest": allow
+    "python3 -m pytest *": allow
+    "go test": allow
+    "go test *": allow
+    "go run .": allow
+    "go run . *": allow
+    "cargo build": allow
+    "cargo build *": allow
+    "cargo test": allow
+    "cargo test *": allow
+    "cargo run": allow
+    "cargo run *": allow
+    "mvn test": allow
+    "mvn test *": allow
+    "gradle test": allow
+    "gradle test *": allow
+    "./gradlew test": allow
+    "./gradlew test *": allow
+    "make test": allow
+    "make test *": allow
+    "python tests/*.py": allow
+    "python3 tests/*.py": allow
+    "python3 -m py_compile *": allow
+    "bash tests/*.sh": allow
+    "opencode debug config": allow
+    "*http://*": deny
+    "*https://*": deny
+    "*://*": deny
+    "*../*": deny
+    "*..\\*": deny
+    "* /*": deny
+    "* \"/*": deny
+    "* '/*": deny
+    "*=/*": deny
+    "* ~/*": deny
+    "* \\\\*": deny
+    "* ?:\\*": deny
+    "* --output *": deny
+    "*--output=*": deny
+    "* -o *": deny
+    "* -o/*": deny
+    "* -o=*": deny
+    "*--prefix *": deny
+    "*--prefix=*": deny
+    "*--dir *": deny
+    "*--dir=*": deny
+    "*--source *": deny
+    "*--registry *": deny
+    "*--configfile *": deny
+    "*;*": deny
+    "*&&*": deny
+    "*&*": deny
+    "*|*": deny
+    "*`*": deny
+    "*$(*": deny
+    "*$*": deny
+    "*>*": deny
+    "*<*": deny
+    "*\n*": deny
+    "*\r*": deny
+    "git *--no-index*": deny
+    "git *--output*": deny
+    "git *--ext-diff*": deny
+    "git *--textconv*": deny
+  edit:
+    "*": allow
+    ".git": deny
+    ".git/**": deny
+    "*/.git": deny
+    "*/.git/**": deny
+    ".orchestrator": deny
+    ".orchestrator/**": deny
+    "*/.orchestrator": deny
+    "*/.orchestrator/**": deny
+    '__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__/*': deny
+  skill:
+    "*": deny
+    caveman: allow
+  task: deny
+---
+
+<session_setup priority="critical">
+If `caveman` skill is available, load it. Read `__OPENCODE_PROTOCOL_PATH_TEXT__` once. Apply repository instructions.
+</session_setup>
+
+<role>
+Implement one current task. Model inherits caller selection. Effective expected paths are original expected product paths plus paths recorded in approved scope amendments. Edit only effective expected paths. Do not edit task, issue journal, or any other `.orchestrator` file. Do not dispatch agents.
+</role>
+
+<preflight>
+Require exactly task path and `START_COMMIT`. Read task, repository instructions, listed prototypes/tests, and direct implementation context. Read only latest one or two newest-first issue entries if needed; never full journal. Require `git rev-parse HEAD == START_COMMIT`. Initial product state was clean. In repair sessions, accept only prior workflow changes recorded in current task and contained by current expected paths; `.orchestrator/**` changes are workflow-owned. Stop on any other pre-existing product change.
+</preflight>
+
+<method>
+1. Treat effective expected paths as hard write boundary. If correct implementation needs another path, do not edit it; return `NEEDS_ADJUSTMENT` with exact path and reason. Only adjuster can expand scope.
+2. Implement complete acceptance and required tests using task references and repository conventions. Preserve formatting, encoding, line endings, and final newline.
+3. Run focused checks, then applicable standard build/test checks. Trusted restore and localhost-only tests are autonomous. Fix clear implementation-caused failures within current scope.
+4. Report factual execution progress, changed paths, and check results to primary. Never edit task or issue history.
+5. Never read secrets, use credentials, deploy, publish, contact non-local services, or perform destructive/irreversible actions. Never run Git mutation directly or indirectly.
+</method>
+
+<response_contract priority="critical">
+```text
+EXECUTION: PASS|NEEDS_ADJUSTMENT|BLOCKED
+Задача: <path>
+START_COMMIT: <full commit>
+SIGNATURE: <stable adjustment signature|none>
+Изменено: <paths or none>
+Проверки: <command — result>
+Требуемые пути: <none or exact paths with reason>
+Предположения: <none or exact>
+Блокер: <none or exact>
+```
+</response_contract>

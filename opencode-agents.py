@@ -8,7 +8,6 @@ import base64
 from datetime import datetime
 import json
 import os
-import shlex
 import shutil
 import stat
 import sys
@@ -22,20 +21,10 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "3.0.5"
+VERSION = "1.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
-GROUPS = ("agents", "protocols", "helpers")
-OPTIONAL_GROUPS = ("helpers",)
-ORCHESTRATOR_TEMPLATE = "orchestrator-00-main.template.md"
-ORCHESTRATOR_PROFILES = {
-    "orchestrator-00-main.md": "openai.md",
-    "orchestrator-01-single-model-main.md": "single-model.md",
-}
-ORCHESTRATOR_WORKFLOW_PROFILES = {
-    "orchestrator-00-main.md": "OPENAI_COLLABORATION",
-    "orchestrator-01-single-model-main.md": "SINGLE_MODEL",
-}
+GROUPS = ("agents", "protocols")
 GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
 GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
 GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
@@ -43,37 +32,6 @@ GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
 
 def global_instructions(newline: str = "\n") -> bytes:
     return f"{GLOBAL_INSTRUCTIONS_START}{newline}When `caveman` skill is installed, load it and use it for concise technically complete responses. If skill is unavailable, continue normally.{newline}{GLOBAL_INSTRUCTIONS_END}{newline}".encode()
-LEGACY_AGENT_FILES = (
-    "orchestrator-caveman-hardcode.md",
-    "orchestrator-caveman.md",
-    "orchestrator-00-main-caveman.md",
-    "orchestrator-10-workflow-bootstrap-caveman.md",
-    "orchestrator-20-planner-caveman.md",
-    "orchestrator-30-planner-senior-caveman.md",
-    "orchestrator-40-executor-caveman.md",
-    "orchestrator-50-validator-caveman.md",
-    "orchestrator-60-mini-reviewer-caveman.md",
-    "orchestrator-70-review-aggregator-caveman.md",
-    "orchestrator-80-final-reviewer-caveman.md",
-    "orchestrator-v2-00-orchestrator-caveman.md",
-    "orchestrator-v2-10-workflow-bootstrap-caveman.md",
-    "orchestrator-v2-20-planner-caveman.md",
-    "orchestrator-v2-30-planner-senior-caveman.md",
-    "orchestrator-v2-40-executor-caveman.md",
-    "orchestrator-v2-50-validator-caveman.md",
-    "orchestrator-v2-60-mini-reviewer-caveman.md",
-    "orchestrator-v2-70-review-aggregator-caveman.md",
-    "orchestrator-v2-80-final-reviewer-caveman.md",
-    "planner-caveman-hardcode.md",
-    "executor-caveman.md",
-    "final-reviewer-caveman.md",
-    "mini-reviewer-caveman.md",
-    "planner-caveman.md",
-    "planner-senior-caveman.md",
-    "review-aggregator-caveman.md",
-    "validator-caveman.md",
-    "workflow-bootstrap-caveman.md",
-)
 
 
 def default_target() -> Path:
@@ -97,7 +55,6 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--target", type=Path, default=default_target())
     result.add_argument("--backup-dir", type=Path)
     result.add_argument("--dry-run", action="store_true")
-    result.add_argument("--prune-legacy", action="store_true", help="Remove only legacy agents formerly shipped by this repository.")
     return result
 
 
@@ -106,19 +63,9 @@ def source_files(source: Path, target: Path):
     for group in GROUPS:
         source_group = source / group
         if not source_group.is_dir():
-            if group in OPTIONAL_GROUPS:
-                continue
             raise RuntimeError(f"source missing {group}/: {source}")
-        pattern = "*.py" if group == "helpers" else "*.md"
-        for source_file in sorted(source_group.glob(pattern)):
-            if group == "agents" and source_file.name == ORCHESTRATOR_TEMPLATE:
-                continue
+        for source_file in sorted(source_group.glob("*.md")):
             files.append((source_file, target / group / source_file.relative_to(source_group)))
-        if group == "agents":
-            template = source_group / ORCHESTRATOR_TEMPLATE
-            if template.is_file():
-                for target_name in ORCHESTRATOR_PROFILES:
-                    files.append((template, target / group / target_name))
     yield from sorted(files, key=lambda item: str(item[1]))
 
 
@@ -255,43 +202,13 @@ def rendered_global_instructions(target: Path) -> bytes:
 
 def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
     content = source.read_bytes()
-    if source.name == ORCHESTRATOR_TEMPLATE:
-        profile_name = ORCHESTRATOR_PROFILES.get(target_file.name)
-        workflow_profile = ORCHESTRATOR_WORKFLOW_PROFILES.get(target_file.name)
-        if profile_name is None or workflow_profile is None:
-            raise RuntimeError(f"unknown orchestrator template target: {target_file}")
-        profile = source.parent / "profiles" / profile_name
-        if not profile.is_file():
-            raise RuntimeError(f"orchestrator profile missing: {profile}")
-        profile_parts = profile.read_bytes().split(b"\n---\n", 1)
-        if len(profile_parts) != 2:
-            raise RuntimeError(f"invalid orchestrator profile: {profile}")
-        workflow_parts = profile_parts[1].split(b"\n<!-- final-gate -->\n", 1)
-        if len(workflow_parts) != 2:
-            raise RuntimeError(f"invalid orchestrator final gate profile: {profile}")
-        content = content.replace(b"__ORCHESTRATOR_PROFILE_FRONTMATTER__", profile_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_WORKFLOW__", workflow_parts[0]).replace(b"__ORCHESTRATOR_PROFILE_FINAL_GATE__", workflow_parts[1]).replace(b"__WORKFLOW_PROFILE__", workflow_profile.encode())
     if source.parent.name != "agents":
         return content
     protocol_directory = str(target / "protocols")
-    helper_directory = str(target / "helpers")
-    protocol_path = str(target / "protocols" / "orchestrator-v2.md")
-    yaml_path = protocol_path.replace("'", "''")
+    protocol_path = str(target / "protocols" / "orchestrator.md")
     yaml_directory = protocol_directory.replace("'", "''")
-    yaml_helper_directory = helper_directory.replace("'", "''")
-    checkpoint_helper_path = str(target / "helpers" / "checkpoint.py")
-    python3_command, py_command = checkpoint_commands(checkpoint_helper_path)
-    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_HELPER_DIRECTORY_PATH_YAML__", yaml_helper_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode()).replace(b"__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_YAML__", json.dumps(python3_command, ensure_ascii=False).encode()).replace(b"__OPENCODE_CHECKPOINT_PY_COMMAND_YAML__", json.dumps(py_command, ensure_ascii=False).encode()).replace(b"__OPENCODE_CHECKPOINT_PYTHON3_COMMAND_TEXT__", python3_command.encode()).replace(b"__OPENCODE_CHECKPOINT_PY_COMMAND_TEXT__", py_command.encode())
-
-
-def checkpoint_commands(helper_path: str):
-    if any(character in helper_path for character in ('*', '?', '\r', '\n')):
-        raise RuntimeError(f"checkpoint helper path contains unsupported permission-pattern character: {helper_path}")
-    if os.name == "nt":
-        if any(character in helper_path for character in ('"', '%', '!', '$', '`', '\r', '\n')):
-            raise RuntimeError(f"checkpoint helper path contains unsupported Windows shell character: {helper_path}")
-        quoted_path = f'"{helper_path}"'
-        return f"python3 {quoted_path}", f"py -3 {quoted_path}"
-    return shlex.join(["python3", helper_path]), shlex.join(["py", "-3", helper_path])
+    yaml_path = protocol_path.replace("'", "''")
+    return content.replace(b"__OPENCODE_PROTOCOL_DIRECTORY_PATH_YAML__", yaml_directory.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_YAML__", yaml_path.encode()).replace(b"__OPENCODE_PROTOCOL_PATH_TEXT__", protocol_path.encode())
 
 
 def validate_target_group(path: Path) -> None:
@@ -427,6 +344,12 @@ def validate_target(target: Path) -> None:
         validate_target_group(target / group)
 
 
+def validate_permission_target(target: Path) -> None:
+    value = str(target)
+    if any(character in value for character in ("*", "?", "[", "]", "`")) or any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise RuntimeError(f"target path contains unsupported permission-pattern character: {target}")
+
+
 def validate_global_instructions(path: Path) -> None:
     validate_target_file(path)
 
@@ -487,12 +410,12 @@ def install(source: Path, target: Path, dry_run: bool) -> None:
     print_caveman_next_step()
 
 
-def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, prune_legacy: bool) -> None:
+def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) -> None:
     validate_target(target)
     if backup is None:
         backup = target.parent / f"opencode-agents-backup-{datetime.now():%Y%m%d-%H%M%S-%f}"
     backup = validate_backup(backup, source, target)
-    counts = {"updated": 0, "added": 0, "unchanged": 0, "backup": 0, "pruned": 0}
+    counts = {"updated": 0, "added": 0, "unchanged": 0, "backup": 0}
     updated_files = []
     added_files = []
     try:
@@ -517,20 +440,6 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
                     added_files.append(target_file)
                     atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
                 counts["added"] += 1
-        if prune_legacy:
-            for file_name in LEGACY_AGENT_FILES:
-                target_file = target / "agents" / file_name
-                validate_target_file(target_file)
-                if not target_file.exists():
-                    continue
-                print(f"prune agents/{file_name}")
-                if not dry_run:
-                    backup_file = backup / "agents" / file_name
-                    backup_copy(target_file, backup_file)
-                    updated_files.append((target_file, backup_file))
-                    safe_remove(target_file)
-                counts["backup"] += 1
-                counts["pruned"] += 1
         instructions = global_instructions_path(target)
         validate_global_instructions(instructions)
         rendered = rendered_global_instructions(target)
@@ -569,28 +478,27 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool, pr
                 raise RuntimeError(f"{error}; rollback failed: {'; '.join(rollback_errors)}") from error
         raise
     backup_text = "not-created" if dry_run else str(backup)
-    print(f"summary updated={counts['updated']} added={counts['added']} pruned={counts['pruned']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
+    print(f"summary updated={counts['updated']} added={counts['added']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
     print_caveman_next_step()
 
 
 def main() -> int:
     arguments = parser().parse_args()
-    target = arguments.target.expanduser().resolve()
+    expanded_target = arguments.target.expanduser()
+    target = expanded_target.resolve()
     try:
-        reject_symlink_components(arguments.target.expanduser(), "target path")
+        validate_permission_target(expanded_target)
+        validate_permission_target(target)
+        reject_symlink_components(expanded_target, "target path")
         with prepared_source(arguments.source, arguments.repository, arguments.ref, arguments.github_api) as source:
             if arguments.command == "status":
                 if arguments.dry_run:
                     raise RuntimeError("--dry-run cannot be used with status")
-                if arguments.prune_legacy:
-                    raise RuntimeError("--prune-legacy can be used only with update")
                 status(source, target)
             elif arguments.command == "install":
-                if arguments.prune_legacy:
-                    raise RuntimeError("--prune-legacy can be used only with update")
                 install(source, target, arguments.dry_run)
             else:
-                update(source, target, arguments.backup_dir.expanduser() if arguments.backup_dir else None, arguments.dry_run, arguments.prune_legacy)
+                update(source, target, arguments.backup_dir.expanduser() if arguments.backup_dir else None, arguments.dry_run)
     except (OSError, RuntimeError) as error:
         print(f"opencode-agents: {error}", file=sys.stderr)
         return 1

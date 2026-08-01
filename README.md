@@ -1,155 +1,202 @@
 # OpenCode Agents
 
-Набор агентов и протоколов для OpenCode. Репозиторий ориентирован на управляемую разработку через Orchestrator v3: фиксация запроса, планирование, последовательная реализация, checkpoint commits, валидация и независимое ревью.
+Два автономных primary workflow для анализа и выполнения задач в OpenCode.
+
+## Архитектура
+
+```text
+orchestrator-analyst
+  reconnaissance
+  Terra task planning
+  independent Terra plan review
+  self-contained task Markdown files
+
+orchestrator-executor <one-task.md>
+  fresh implementation
+  independent ordinary review
+  Terra task adjustment
+  Terra final review or loop diagnosis
+  validated uncommitted result
+```
+
+Других primary agents, aliases и profile variants нет. Analyst не запускает implementation. Executor принимает ровно один task file и не переключает ветки, не stage и не commit изменения.
+
+## Как пользоваться
+
+После установки полностью перезапустите OpenCode. В agent selector выберите нужный primary agent.
+
+### 1. Подготовить задачи через analyst
+
+Выберите `orchestrator-analyst` и отправьте полный запрос одним сообщением:
+
+```text
+Добавь в API загрузку аватара пользователя.
+
+Требования:
+- принимать JPEG и PNG до 5 MB;
+- сохранять файл через существующий storage abstraction;
+- возвращать URL загруженного изображения;
+- добавить unit и integration tests;
+- не менять публичный контракт других endpoints.
+```
+
+Analyst выполнит reconnaissance, Terra planning и independent Terra plan review. Результат:
+
+```text
+Итог: READY
+Задачи:
+- .orchestrator/avatar-upload/tasks/01-add-storage-operation.md
+- .orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
+```
+
+Каждый task file self-contained. `Ordered prerequisites` показывает, какие более ранние задачи должны быть завершены до выбранной задачи. Analyst не создаёт ветки и не меняет product code.
+
+### 2. Подготовить execution branch
+
+Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; `.orchestrator/**` может оставаться untracked или modified.
+
+```bash
+git switch -c feature/avatar-storage
+git status --short
+```
+
+Executor не выполняет `git switch`, `git add` или `git commit`.
+
+### 3. Выполнить ровно одну задачу
+
+Выберите `orchestrator-executor`. Передайте только один task path, без второго task и дополнительных инструкций:
+
+```text
+.orchestrator/avatar-upload/tasks/01-add-storage-operation.md
+```
+
+Executor:
+
+1. проверит branch, task status, prerequisites и clean product state;
+2. зафиксирует `START_COMMIT` в task file;
+3. запустит fresh implementation role;
+4. запустит independent ordinary reviewer;
+5. при findings вызовет Terra adjuster и fresh repair cycle;
+6. завершит работу только после Terra final review `PASS`.
+
+Product changes останутся uncommitted. После `DONE` пользователь проверяет diff и самостоятельно делает commit:
+
+```bash
+git status --short
+git diff --check
+git diff
+git add <нужные-файлы>
+git commit -m "feat: add avatar storage operation"
+```
+
+### 4. Выполнить следующую зависимую задачу
+
+Сначала обеспечьте присутствие результата prerequisite task в подготовленной ветке: merge, cherry-pick или новая ветка от уже завершённой работы выполняются пользователем. Затем выберите `orchestrator-executor` и передайте следующий task path:
+
+```text
+.orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
+```
+
+Не передавайте executor весь каталог, несколько task paths или исходный пользовательский запрос. Он работает только с выбранной задачей и перечисленными в ней prerequisites.
+
+## Analyst
+
+`orchestrator-analyst` создаёт задачи под `.orchestrator/<request>/tasks/`:
+
+```text
+.orchestrator/<request>/tasks/<NN>-<slug>.md
+.orchestrator/<request>/planning-issues.md
+```
+
+Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Terra planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
+
+Fresh Terra plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Planner исправляет demonstrated findings. Четвёртое появление одной и той же проблемы блокирует planning; разные проблемы продолжают исправляться при измеримом прогрессе.
+
+Analyst возвращает только reviewed task paths. Index и manifest не создаются.
+
+## Executor
+
+Пользователь выбирает один task и заранее создаёт или переключает execution branch. Executor требует:
+
+- существующий non-detached `HEAD`;
+- task status `READY` и planning review `PASS`;
+- завершённые prerequisite tasks;
+- отсутствие staged, unstaged и untracked product changes;
+- `.orchestrator/**` может оставаться workflow-owned dirty state.
+
+Executor фиксирует `START_COMMIT`, но не меняет Git. Fresh implementation и ordinary reviewer чередуются. Любой finding проходит через Terra adjuster, который уточняет текущий task и единолично одобряет расширение expected paths.
+
+Execution findings хранятся newest-first рядом с task:
+
+```text
+.orchestrator/<request>/tasks/<NN>-<slug>.issues.md
+```
+
+Обычные роли читают только последние одну-две записи. После трёх неудачных repairs одной semantic finding Terra выполняет full-history loop diagnosis и либо даёт одну конкретную корректировку, либо завершает task как blocked. Разные findings продолжаются только при измеримом прогрессе.
+
+После ordinary review PASS fresh Terra final reviewer проверяет полный результат. Его finding возвращается через adjuster, fresh executor и ordinary reviewer. Task получает `COMPLETE` только после Terra PASS. Product diff остаётся пользователю без commit.
+
+## Автономность и безопасность
+
+- Standard build, test, package restore и localhost-only testing через project commands выполняются автономно в trusted development repository. Raw network clients не выдаются как универсальный localhost escape hatch.
+- Repository-controlled checks выполняются с обычными правами текущего пользователя. Production secrets не должны присутствовать в development environment.
+- Agent prompts и direct-read permissions запрещают целевое использование common secret files, но search tools и запущенный repository code не являются OS sandbox.
+- Secrets, credentials, deploy, publish, release, destructive actions, unrelated external effects и overlap с user-owned changes требуют решения пользователя.
+- Git mutation полностью запрещена: нет branch creation, checkout, stage, commit, reset, restore, clean, stash, merge, rebase или push.
+
+## Сообщения пользователю
+
+Primary agents сообщают только смену пользовательской фазы:
+
+```text
+Планирование: ...
+Анализ и реализация: ...
+Проверка: ...
+Финальное ревью: ...
+Готово: ...
+Стоп: <что требуется от пользователя>
+```
+
+Внутренние signatures, cycle counts, issue journals и handoffs не выводятся. Analyst возвращает task paths; executor возвращает изменённые product paths, проверки, риски и blocker.
 
 ## Состав
 
-```text
-orchestrator-00-main (UI: orchestrator, OpenAI collaboration)
-orchestrator-01-single-model-main (UI: orchestrator-single-model)
-├── orchestrator-10-workflow-bootstrap
-├── orchestrator-20-planner
-├── orchestrator-25-planner-full (single-model)
-├── orchestrator-30-planner-senior (Terra)
-├── orchestrator-40-executor
-├── orchestrator-45-checkpointer
-├── orchestrator-50-validator
-├── orchestrator-60-mini-reviewer
-├── orchestrator-70-review-aggregator
-├── orchestrator-75-escalation-reviewer (Terra)
-└── orchestrator-80-final-reviewer (Terra)
-```
-
-### Назначение агентов
-
-- `orchestrator` — управляет workflow с Terra-планированием и финальным Terra-ревью.
-- `orchestrator-single-model` — управляет workflow одной выбранной моделью без Terra.
-- `orchestrator-10-workflow-bootstrap` — фиксирует запрос, профиль и исходный baseline.
-- `orchestrator-20-planner` — уточняет прототипы, формирует dispatch и ведёт состояние плана.
-- `orchestrator-25-planner-full` — исследует, планирует и перепланирует в `SINGLE_MODEL`.
-- `orchestrator-30-planner-senior` — строит и проверяет план в `OPENAI_COLLABORATION`.
-- `orchestrator-40-executor` — реализует одну стадию или пакет исправлений.
-- `orchestrator-45-checkpointer` — создаёт точный stage checkpoint commit после review PASS.
-- `orchestrator-50-validator` — проверяет baseline, стадии, итог и идентичность артефактов.
-- `orchestrator-60-mini-reviewer` — независимо проверяет один аспект изменений.
-- `orchestrator-70-review-aggregator` — объединяет mini-review и формирует общий verdict.
-- `orchestrator-75-escalation-reviewer` — независимо проверяет post-budget escalation в `OPENAI_COLLABORATION`.
-- `orchestrator-80-final-reviewer` — выполняет финальное независимое Terra-ревью.
-
-### Порядок запуска
-
-1. Пользователь запускает `orchestrator` или `orchestrator-single-model`.
-2. `orchestrator-10-workflow-bootstrap` фиксирует запрос и baseline.
-3. Планирование: `20 → 50 → 30 → 50` для `OPENAI_COLLABORATION` либо `25 → 50 → 25 → 50` для `SINGLE_MODEL`.
-4. Каждая стадия: `20 candidate → 50 AUTHORIZE_DISPATCH → 20 ACTIVATE_DISPATCH → 40 → 50 STAGE → 50 PREPARE_MINI_REVIEW → 20 ACTIVATE_REVIEW_EPOCH → 60` (параллельные lanes) `→ 70 → 20 MINI_REVIEW_RESULT → 45 → 20 CHECKPOINT_RESULT → 50 ACCEPT_STAGE → 20 ADVANCE`.
-5. После PASS checkpointer создаёт stage commit, validator принимает стадию, а `orchestrator-20-planner` запускает следующую; после замечаний текущая stage остаётся активной. После двух unresolved mini-review/repair cycles `75` Terra adjudicates только реальные открытые риски; подтверждённый риск возвращается в replan и новый mini cycle.
-6. Финальный цикл: `50 → PREPARE_MINI_REVIEW → 60 → 70 → 80 → 50` для `OPENAI_COLLABORATION` либо `50 → PREPARE_MINI_REVIEW → 60 → 70 → 50` для `SINGLE_MODEL`; repairable findings перезапускают видимый final cycle без numeric limit.
-
-- `agents/` — исходные prompt-файлы агентов.
-- `protocols/` — общий протокол Orchestrator v3.
-- `AGENTS.md` — правила сопровождения репозитория.
-- `CHANGELOG.md` — история изменений.
-- `VERSION` — версия конфигурации.
-
-Все filenames используют общий `orchestrator-` prefix и номер порядка. OpenCode хранит agents в flat-папке, поэтому связанная группа остаётся рядом при сортировке и ручной работе с Markdown. Primary agent имеет UI name `orchestrator`.
-
-## Что делает Orchestrator v3
-
-- сохраняет неизменяемый запрос и baseline до изменения продукта;
-- проводит разведку и проверяет prototype references перед каждой стадией;
-- выполняет product-mutating stages последовательно;
-- требует buildable/testable границы каждой стадии;
-- запускает targeted, affected и broad validation;
-- проводит независимые mini-review lanes;
-- передаёт финальный результат независимому Terra reviewer;
-- хранит планы, evidence, patches, human-readable `status.md` и логи в `.orchestrator/tasks/<workflow-id>/`;
-- создаёт один stage commit после review PASS, сохраняя user-owned staged entries и не переписывая историю.
-
-## Статус workflow
-
-После установки v3 human-readable status будет находиться здесь:
-
-```text
-.orchestrator/tasks/<workflow-id>/status.md
-```
-
-Файл показывает текущую стадию и общее число стадий, текущий шаг, repair/final-cycle attempt, review epoch, checkpoint commit, следующий action и требуемое решение пользователя. Primary agent также выводит короткую progress-строку после каждой видимой границы. `status.md` — удобный view; источники истины для исполнения остаются в `plan/master.md`, validation и review artifacts.
-
-## Caveman skill — рекомендуется
-
-[Caveman](https://github.com/JuliusBrussee/caveman) — официальный skill для коротких, но технически полных ответов. Его рекомендуется установить для экономии output-токенов и уменьшения лишнего текста.
-
-Основной официальный installer:
-
-```bash
-npx -y github:JuliusBrussee/caveman -- --only opencode
-```
-
-Наш CLI не содержит копию Caveman. После своей установки он выводит эту команду и ссылку на официальный репозиторий. Если skill не установлен, внутренние workflow-агенты продолжают работу без него. Orchestrator не требует Caveman.
-
-## Модельные профили
-
-Выберите primary agent для проекта:
-
-- `orchestrator` использует `OPENAI_COLLABORATION`: `orchestrator-30-planner-senior`, `orchestrator-75-escalation-reviewer` и `orchestrator-80-final-reviewer` фиксированы на `openai/gpt-5.6-terra`.
-- `orchestrator-single-model` использует `SINGLE_MODEL`: `orchestrator-25-planner-full` наследует выбранную модель, а Terra-pinned agents недоступны через permissions.
-
-Остальные агенты наследуют выбранную модель OpenCode. Profile фиксируется в workflow manifest до baseline capture и не меняется для follow-up requests.
+- `orchestrator-analyst` — primary анализа и подготовки задач.
+- `orchestrator-recon` — read-only поиск implementation/integration/test evidence.
+- `orchestrator-task-planner` — Terra task planning и planning-journal maintenance.
+- `orchestrator-plan-reviewer` — independent Terra plan review.
+- `orchestrator-executor` — primary выполнения одной задачи.
+- `orchestrator-task-executor` — model-inheriting implementation role.
+- `orchestrator-task-reviewer` — model-inheriting ordinary reviewer.
+- `orchestrator-task-adjuster` — Terra task correction and scope authority.
+- `orchestrator-final-reviewer` — Terra final review and loop diagnosis.
+- `protocols/orchestrator.md` — shared protocol.
 
 ## Установка
 
-Клонирование не требуется. CLI получает файлы через GitHub Contents/Git Trees API. Для private repository задайте `GITHUB_TOKEN`.
-
-### Linux и macOS
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - install
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - update --prune-legacy
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - update
 curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - status
 ```
 
-### Windows
+Windows:
 
 ```powershell
 py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" install
-py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" update --prune-legacy
+py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" update
 py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" status
 ```
 
-`install` добавляет отсутствующие файлы. `update` заменяет изменённые файлы и создаёт backup. `update --prune-legacy` удаляет только прежние имена Orchestrator и его workflow-подагентов. Built-in и неизвестные пользовательские prompt-файлы не удаляются.
-
-Для другого fork или версии используйте `--repository owner/name` либо URL и `--ref branch-or-tag`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - install --repository owner/name --ref main
-```
-
-Полезные параметры:
-
-- `--dry-run` — показать изменения без записи;
-- `--target DIR` — выбрать другой OpenCode config root;
-- `--backup-dir DIR` — выбрать каталог backup.
-
-CLI также добавляет управляемый блок рекомендации Caveman в глобальный `AGENTS.md`, не затрагивая остальное содержимое файла.
-
-После установки перезапустите OpenCode: agent, protocol и instruction-файлы читаются при запуске процесса.
+После install/update полностью перезапустите OpenCode: prompts и permissions загружаются при старте.
 
 ## Проверка
 
 ```bash
-# Linux/macOS
 python3 tests/test-cli.py
-
-# Windows
-py -3 tests/test-cli.py
-```
-
-После установки конфигурации:
-
-```bash
 opencode debug config >/dev/null
 ```
 
-## Безопасность
+## Repository safety
 
-Репозиторий не содержит `opencode.json`, credentials, auth/session databases, MCP tokens, `.env`, tool output или workflow artifacts пользователя. Не добавляйте секреты, private keys и содержимое пользовательских репозиториев.
+Репозиторий не содержит provider config, production credentials, auth/session databases, MCP tokens, `.env`, пользовательские workflow artifacts или tool logs.

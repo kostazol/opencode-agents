@@ -12,16 +12,23 @@ backup_root="$tmp_root/backup"
 mkdir -p "$source_root/agents" "$source_root/protocols"
 printf 'agent-v1\n' > "$source_root/agents/example.md"
 printf 'protocol-v1\n' > "$source_root/protocols/example.md"
+test ! -e "$source_root/AGENTS.md"
+test ! -e "$source_root/helpers"
 
 "$cli" --source "$source_root" --target "$target_root" install
 test "$(cat "$target_root/agents/example.md")" = agent-v1
+test -f "$target_root/AGENTS.md"
+grep -q 'caveman' "$target_root/AGENTS.md"
+test ! -e "$target_root/helpers"
 "$cli" --source "$source_root" --target "$target_root" install | grep -q 'skip agents/example.md'
 
 printf 'local-change\n' > "$target_root/agents/example.md"
+printf 'user-agent\n' > "$target_root/agents/user-agent.md"
 printf 'agent-v2\n' > "$source_root/agents/example.md"
 "$cli" --source "$source_root" --target "$target_root" --backup-dir "$backup_root" update
 test "$(cat "$target_root/agents/example.md")" = agent-v2
 test "$(cat "$backup_root/agents/example.md")" = local-change
+test "$(cat "$target_root/agents/user-agent.md")" = user-agent
 
 "$cli" --source "$source_root" --target "$target_root" status | grep -q 'current agents/example.md'
 printf 'protected\n' > "$tmp_root/protected.txt"
