@@ -21,7 +21,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUPS = ("agents",)

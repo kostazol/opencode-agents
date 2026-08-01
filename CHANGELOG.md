@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 - 2026-08-01
+
+### Fixed
+
+- Route repairable plan ordering, dependency, test-ownership, and buildability findings through revision instead of terminal blocking.
+- Treat first occurrence of every planning finding as not applicable for progress accounting.
+- Require materially different corrections for no-progress occurrences two and three, then block occurrence four or greater regardless reviewer verdict.
+- Restrict immediate planning blockers to access, safety, and unresolved user-visible product choices.
+
 ## 1.2.0 - 2026-08-01
 
 ### Added
