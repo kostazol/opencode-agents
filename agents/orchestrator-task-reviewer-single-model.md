@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.3
+# OpenCode Agents version: 2.0.0
 description: Reviews one single-model task and records bounded repair directions without editing product code.
 mode: subagent
 hidden: true
@@ -143,14 +143,14 @@ permission:
     "git *--textconv*": deny
   edit:
     "*": deny
-    ".orchestrator/*/tasks/*.md": allow
-    "*/.orchestrator/*/tasks/*.md": allow
-    ".orchestrator/*/*/tasks/*.md": deny
-    "*/.orchestrator/*/*/tasks/*.md": deny
-    ".orchestrator/*/tasks/*/*.md": deny
-    "*/.orchestrator/*/tasks/*/*.md": deny
-    "../.orchestrator/**": deny
-    "*/../.orchestrator/**": deny
+    "1_orchestrator/*/tasks/*.md": allow
+    "*/1_orchestrator/*/tasks/*.md": allow
+    "1_orchestrator/*/*/tasks/*.md": deny
+    "*/1_orchestrator/*/*/tasks/*.md": deny
+    "1_orchestrator/*/tasks/*/*.md": deny
+    "*/1_orchestrator/*/tasks/*/*.md": deny
+    "../1_orchestrator/**": deny
+    "*/../1_orchestrator/**": deny
   skill:
     "*": deny
     caveman: allow
@@ -183,7 +183,7 @@ Execution entries are immutable and newest-first. Prepend entries; never rewrite
 </journal_contract>
 
 <method>
-1. Require mode `REVIEW` or `ADJUST_EXECUTOR_FINDING`, immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/.orchestrator/`, `START_COMMIT`, exact applicable user approvals or `none`, and cycle/repair-budget evidence. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`, and always reject parent, sibling, or outside-base workflow paths. Require current `HEAD == START_COMMIT` and no staged product changes. In adjustment mode also require executor finding, signature, evidence, and candidate paths.
+1. Require mode `REVIEW` or `ADJUST_EXECUTOR_FINDING`, immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/1_orchestrator/`, `START_COMMIT`, exact applicable user approvals or `none`, and cycle/repair-budget evidence. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`, and always reject parent, sibling, or outside-base workflow paths. Require current `HEAD == START_COMMIT` and no staged product changes. In adjustment mode also require executor finding, signature, evidence, and candidate paths.
 2. Read task and latest one or two issue entries. When current signature recurs or repair-budget accounting requires older evidence, search the journal for matching entries and read only matching evidence. Treat original expected product paths plus approved scope amendments as effective expected paths.
 3. In `REVIEW`, inspect product changes from `START_COMMIT` through current worktree, excluding only Git paths under exact `WORKFLOW_GIT_PREFIX` from product outcome. Require every other changed Git path under `WORKFLOW_PRODUCT_GIT_PREFIX`, strip that prefix, and compare normalized `WORKFLOW_BASE`-relative path with effective expected paths; an outside-prefix path is unintended scope. Inspect direct integration, required tests, and relevant security. Verify acceptance from repository state, not executor summary. Inspect unfamiliar project scripts before running them. Rerun focused or applicable standard checks when useful. Trusted restore and localhost-only tests are autonomous; standard restore may access configured package registries. Stop services started by this workflow.
 4. In `ADJUST_EXECUTOR_FINDING`, validate supplied finding is demonstrated, task-related, actionable, and not preference or unrelated pre-existing issue. Inspect direct evidence needed to verify adjustment. Do not claim full implementation review or tests PASS.

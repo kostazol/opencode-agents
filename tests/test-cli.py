@@ -91,6 +91,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(sorted(agents), AGENT_NAMES)
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst-single-model.md", "orchestrator-analyst.md", "orchestrator-executor-single-model.md", "orchestrator-executor.md"])
             version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+            self.assertEqual(version, "2.0.0")
             self.assertEqual(OPENCODE_AGENTS.VERSION, version)
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
@@ -99,6 +100,22 @@ class CliTests(unittest.TestCase):
                 self.assertNotIn("Read `__OPENCODE", content)
             self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
+
+    def test_breaking_workflow_rename_documentation(self):
+        maintenance = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        hidden_workflow = "." + "orchestrator"
+        current_contracts = [ROOT / "AGENTS.md", ROOT / "README.md", ROOT / ".gitignore", ROOT / "opencode-agents.py", *sorted((ROOT / "agents").glob("*.md"))]
+        for path in current_contracts:
+            self.assertNotIn(hidden_workflow, path.read_text(encoding="utf-8"), path.name)
+        self.assertIn("1_orchestrator/<request>/tasks/", maintenance)
+        self.assertIn("Non-hidden имя предотвращает пропуск workflow artifacts glob-поиском OpenCode", readme)
+        self.assertTrue(changelog.startswith("# Changelog\n\n## 2.0.0 - 2026-08-02\n"))
+        self.assertIn("Rename workflow artifact directory", changelog)
+        self.assertIn("Support only `1_orchestrator` workflow artifacts; no compatibility or migration path is provided", changelog)
+        self.assertIn("1_orchestrator/\n", gitignore)
 
     def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
@@ -127,7 +144,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
         self.assertIn("pass only exact paths to `read`", planner)
         reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("Run `glob` from `WORKFLOW_BASE` with `.orchestrator/<request>/tasks/[0-9][0-9]-*.md`", reviewer)
+        self.assertIn("Run `glob` from `WORKFLOW_BASE` with `1_orchestrator/<request>/tasks/[0-9][0-9]-*.md`", reviewer)
         self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
         ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
         self.assertIn("Terra plan review `PASS`", ultra_reviewer)
@@ -213,7 +230,7 @@ class CliTests(unittest.TestCase):
         for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Capture OpenCode session working directory as immutable `WORKFLOW_BASE`", content)
-            self.assertIn("Never target `.orchestrator` at Git root or any parent", content)
+            self.assertIn("Never target `1_orchestrator` at Git root or any parent", content)
             self.assertIn("expected to be absent before planner `CREATE`", content)
             self.assertIn("must not be read, globbed, or treated as an access blocker", content)
             self.assertIn("blocked only by absent target or absent planning artifacts is malformed", content)
@@ -223,17 +240,17 @@ class CliTests(unittest.TestCase):
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Git root is separate and may be used only for Git-state inspection", content)
-            self.assertIn("Reject Git-root or parent `.orchestrator` when it differs from `WORKFLOW_BASE`", content)
+            self.assertIn("Reject Git-root or parent `1_orchestrator` when it differs from `WORKFLOW_BASE`", content)
             self.assertIn("Compute immutable `WORKFLOW_GIT_PREFIX`", content)
             self.assertIn("Compute immutable `WORKFLOW_PRODUCT_GIT_PREFIX`", content)
             self.assertIn("empty when roots match", content)
-            self.assertIn("WORKFLOW_PRODUCT_GIT_PREFIX + .orchestrator/", content)
+            self.assertIn("WORKFLOW_PRODUCT_GIT_PREFIX + 1_orchestrator/", content)
             self.assertIn("Classify only Git status paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned", content)
             self.assertIn("Pass immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, and `WORKFLOW_GIT_PREFIX` explicitly to every subagent", content)
             self.assertIn("strip that prefix before comparing with `WORKFLOW_BASE`-relative expected product paths", content)
             self.assertIn("Git root `/repo` and base `/repo/src/App` produce product prefix `src/App/`", content)
             self.assertIn("Git path `src/App/lib/a.cs` normalizes to `lib/a.cs`", content)
-            self.assertIn("Git-root `.orchestrator/` is outside workflow scope", content)
+            self.assertIn("Git-root `1_orchestrator/` is outside workflow scope", content)
             self.assertGreaterEqual(content.count("all three immutable workflow values"), 3, name)
         git_prefix_consumers = ("orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md")
         for name in git_prefix_consumers:
@@ -265,30 +282,34 @@ class CliTests(unittest.TestCase):
         agents = self.installed_agents(ROOT)
         for name in ("orchestrator-task-planner.md", "orchestrator-task-adjuster.md", "orchestrator-task-reviewer-single-model.md"):
             rules = self.permission_rules(agents[name], "edit")
-            self.assertEqual(self.evaluate(rules, ".orchestrator/request/tasks/01-task.md"), "allow")
+            self.assertEqual(self.evaluate(rules, "1_orchestrator/request/tasks/01-task.md"), "allow")
             self.assertEqual(self.evaluate(rules, "src/Program.cs"), "deny")
             self.assertEqual(self.evaluate(rules, ".git/config"), "deny")
         planner_edits = self.permission_rules(agents["orchestrator-task-planner.md"], "edit")
-        self.assertEqual(self.evaluate(planner_edits, ".orchestrator/request/tasks/01-task.issues.md"), "deny")
-        self.assertEqual(self.evaluate(planner_edits, ".orchestrator/nested/request/tasks/01-task.md"), "deny")
-        self.assertEqual(self.evaluate(planner_edits, ".orchestrator/request/tasks/nested/01-task.md"), "deny")
-        self.assertEqual(self.evaluate(planner_edits, "../.orchestrator/request/tasks/01-task.md"), "deny")
+        self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/request/tasks/01-task.issues.md"), "deny")
+        self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/nested/request/tasks/01-task.md"), "deny")
+        self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/request/tasks/nested/01-task.md"), "deny")
+        self.assertEqual(self.evaluate(planner_edits, "../1_orchestrator/request/tasks/01-task.md"), "deny")
         self.assertIn("Edit only supplied task and sibling", agents["orchestrator-task-adjuster.md"])
         for name in ("orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
-            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), ".orchestrator/request/tasks/01-task.md"), "deny")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "1_orchestrator/request/tasks/01-task.md"), "deny")
             self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "src/Program.cs"), "deny")
         executor_edits = self.permission_rules(agents["orchestrator-task-executor.md"], "edit")
         self.assertEqual(self.evaluate(executor_edits, "src/Program.cs"), "allow")
         self.assertEqual(self.evaluate(executor_edits, ".git"), "deny")
         self.assertEqual(self.evaluate(executor_edits, ".git/index"), "deny")
         self.assertEqual(self.evaluate(executor_edits, "repo/.git/config"), "deny")
-        self.assertEqual(self.evaluate(executor_edits, ".orchestrator/request/tasks/01-task.md"), "deny")
+        self.assertEqual(self.evaluate(executor_edits, "1_orchestrator/request/tasks/01-task.md"), "deny")
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
-            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "read"), "../.orchestrator/request/tasks/01-task.md"), "deny")
-            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "../.orchestrator/request/tasks/*.md"), "deny")
-            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "../.orchestrator/request/tasks/01-task.md"), "deny")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "read"), "1_orchestrator/request/tasks/01-task.md"), "allow")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "1_orchestrator/request/tasks/*.md"), "allow")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "1_orchestrator/request/tasks/01-task.md"), "allow")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "read"), "../1_orchestrator/request/tasks/01-task.md"), "deny")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "../1_orchestrator/request/tasks/*.md"), "deny")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "../1_orchestrator/request/tasks/01-task.md"), "deny")
         for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
-            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "../.orchestrator/request/tasks/*.md"), "deny")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "1_orchestrator/request/tasks/*.md"), "allow")
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "glob"), "../1_orchestrator/request/tasks/*.md"), "deny")
 
     def test_secret_reads_are_denied(self):
         agents = self.installed_agents(ROOT)

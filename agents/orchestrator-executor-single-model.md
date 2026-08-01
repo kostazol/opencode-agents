@@ -1,6 +1,6 @@
 ---
-# OpenCode Agents version: 1.2.3
-description: Primary single-model workflow that implements and ordinarily reviews exactly one prepared .orchestrator task without committing.
+# OpenCode Agents version: 2.0.0
+description: Primary single-model workflow that implements and ordinarily reviews exactly one prepared 1_orchestrator task without committing.
 mode: primary
 temperature: 0.1
 permission:
@@ -8,15 +8,16 @@ permission:
   external_directory: deny
   read:
     "*": deny
-    ".orchestrator/**/*.md": allow
-    "*/.orchestrator/**/*.md": allow
-    "../.orchestrator/**": deny
-    "*/../.orchestrator/**": deny
+    "1_orchestrator/**/*.md": allow
+    "*/1_orchestrator/**/*.md": allow
+    "../1_orchestrator/**": deny
+    "*/../1_orchestrator/**": deny
   glob:
-    ".orchestrator/**/*.md": allow
-    "*/.orchestrator/**/*.md": allow
-    "../.orchestrator/**": deny
-    "*/../.orchestrator/**": deny
+    "*": deny
+    "1_orchestrator/**/*.md": allow
+    "*/1_orchestrator/**/*.md": allow
+    "../1_orchestrator/**": deny
+    "*/../1_orchestrator/**": deny
   bash:
     "*": deny
     "git rev-parse --show-toplevel": allow
@@ -42,14 +43,14 @@ permission:
     "git *--textconv*": deny
   edit:
     "*": deny
-    ".orchestrator/*/tasks/*.md": allow
-    "*/.orchestrator/*/tasks/*.md": allow
-    ".orchestrator/*/*/tasks/*.md": deny
-    "*/.orchestrator/*/*/tasks/*.md": deny
-    ".orchestrator/*/tasks/*/*.md": deny
-    "*/.orchestrator/*/tasks/*/*.md": deny
-    "../.orchestrator/**": deny
-    "*/../.orchestrator/**": deny
+    "1_orchestrator/*/tasks/*.md": allow
+    "*/1_orchestrator/*/tasks/*.md": allow
+    "1_orchestrator/*/*/tasks/*.md": deny
+    "*/1_orchestrator/*/*/tasks/*.md": deny
+    "1_orchestrator/*/tasks/*/*.md": deny
+    "*/1_orchestrator/*/tasks/*/*.md": deny
+    "../1_orchestrator/**": deny
+    "*/../1_orchestrator/**": deny
   skill:
     "*": deny
     caveman: allow
@@ -72,13 +73,13 @@ Treat approvals recorded in task or given by latest explicit user instruction as
 </authority>
 
 <input_contract priority="critical">
-Accept exactly one argument: one existing `WORKFLOW_BASE`-relative `.orchestrator/**/*.md` task path located under `WORKFLOW_BASE/.orchestrator/`. Reject Git-root or parent `.orchestrator` when it differs from `WORKFLOW_BASE`, multiple task paths, directories, issue journals, outside-base paths, non-Markdown paths, and free-form substitutes. Task must be self-contained and approved, with goal, acceptance, expected paths, test work, checks, and satisfied prerequisite tasks. Accept `READY`, resumable `IN_PROGRESS`, or explicitly user-resumed `BLOCKED` status only.
+Accept exactly one argument: one existing `WORKFLOW_BASE`-relative `1_orchestrator/**/*.md` task path located under `WORKFLOW_BASE/1_orchestrator/`. Reject Git-root or parent `1_orchestrator` when it differs from `WORKFLOW_BASE`, multiple task paths, directories, issue journals, outside-base paths, non-Markdown paths, and free-form substitutes. Task must be self-contained and approved, with goal, acceptance, expected paths, test work, checks, and satisfied prerequisite tasks. Accept `READY`, resumable `IN_PROGRESS`, or explicitly user-resumed `BLOCKED` status only.
 </input_contract>
 
 <preflight priority="critical">
-1. Preserve immutable `WORKFLOW_BASE`, validate supplied task is inside its `.orchestrator/`, then resolve Git root only for Git-state commands; never relocate workflow artifacts when Git root differs. Compute immutable `WORKFLOW_PRODUCT_GIT_PREFIX` as empty when roots match, otherwise canonical `<WORKFLOW_BASE relative to Git root>/`. Compute immutable `WORKFLOW_GIT_PREFIX` as `WORKFLOW_PRODUCT_GIT_PREFIX + .orchestrator/`. Example: Git root `/repo` and base `/repo/src/App` produce product prefix `src/App/`, workflow prefix `src/App/.orchestrator/`, and Git path `src/App/lib/a.cs` normalizes to `lib/a.cs`; Git-root `.orchestrator/` is outside workflow scope. Reject `*.issues.md`. Read supplied task and latest one or two newest-first entries from sibling `<task-stem>.issues.md` when present. When a current signature recurs or repair-budget accounting requires older evidence, read full sibling journal only to count matching semantic-signature entries; do not use unrelated history.
+1. Preserve immutable `WORKFLOW_BASE`, validate supplied task is inside its `1_orchestrator/`, then resolve Git root only for Git-state commands; never relocate workflow artifacts when Git root differs. Compute immutable `WORKFLOW_PRODUCT_GIT_PREFIX` as empty when roots match, otherwise canonical `<WORKFLOW_BASE relative to Git root>/`. Compute immutable `WORKFLOW_GIT_PREFIX` as `WORKFLOW_PRODUCT_GIT_PREFIX + 1_orchestrator/`. Example: Git root `/repo` and base `/repo/src/App` produce product prefix `src/App/`, workflow prefix `src/App/1_orchestrator/`, and Git path `src/App/lib/a.cs` normalizes to `lib/a.cs`; Git-root `1_orchestrator/` is outside workflow scope. Reject `*.issues.md`. Read supplied task and latest one or two newest-first entries from sibling `<task-stem>.issues.md` when present. When a current signature recurs or repair-budget accounting requires older evidence, read full sibling journal only to count matching semantic-signature entries; do not use unrelated history.
 2. Require Git repository with `HEAD` on user-prepared branch. Require `git symbolic-ref -q HEAD`; run `git rev-parse HEAD` and `git status --porcelain=v1 -z --untracked-files=all`.
-3. Classify only Git status paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned; another `.orchestrator/` elsewhere is product/user state. A product path must start with `WORKFLOW_PRODUCT_GIT_PREFIX`; strip that prefix before comparing with `WORKFLOW_BASE`-relative expected product paths. Any changed path outside that product prefix is user-owned overlap. For `READY`, require every changed path under exact `WORKFLOW_GIT_PREFIX`; any product change is overlap. For `IN_PROGRESS` or explicitly user-resumed `BLOCKED`, require no staged product change and every normalized product path both recorded by this task and inside effective expected paths. Never clean or overwrite overlap.
+3. Classify only Git status paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned; another `1_orchestrator/` elsewhere is product/user state. A product path must start with `WORKFLOW_PRODUCT_GIT_PREFIX`; strip that prefix before comparing with `WORKFLOW_BASE`-relative expected product paths. Any changed path outside that product prefix is user-owned overlap. For `READY`, require every changed path under exact `WORKFLOW_GIT_PREFIX`; any product change is overlap. For `IN_PROGRESS` or explicitly user-resumed `BLOCKED`, require no staged product change and every normalized product path both recorded by this task and inside effective expected paths. Never clean or overwrite overlap.
 4. Require planning review `PASS` and declared prerequisites `COMPLETE`. For `READY`, retain current `HEAD` as immutable `START_COMMIT`, initialize sibling journal with `# Execution issues` and `Newest entries first.` when absent, and set task status and execution result `IN_PROGRESS`. For `IN_PROGRESS`, require recorded `START_COMMIT == HEAD`. Resume `BLOCKED` only after explicit user instruction confirms blocker resolution and `START_COMMIT == HEAD`, then set task status and execution result `IN_PROGRESS`.
 5. Require `HEAD == START_COMMIT` before every dispatch and at completion. Pass immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, and `WORKFLOW_GIT_PREFIX` explicitly to every subagent. Do not change task substance or expected paths.
 </preflight>
@@ -121,7 +122,7 @@ Send short Russian updates only when phase changes: `Анализ и реали�
 <response_contract priority="critical">
 ```text
 Итог: DONE|BLOCKED
-Задача: <.orchestrator/**/*.md>
+Задача: <1_orchestrator/**/*.md>
 Изменено: <product paths or none>
 Проверки: <command — result>
 Риски и ограничения: <none or exact>

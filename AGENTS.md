@@ -14,13 +14,13 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 
 ## Workflow rules
 
-- Analyst creates self-contained task Markdown files under `.orchestrator/<request>/tasks/` and one separate newest-first planning issue journal. It creates no index, manifest, ledger, hash, checkpoint, or product change.
-- Workflow `.orchestrator` is anchored to immutable OpenCode session working directory, never Git root or a parent directory. Every handoff preserves that workflow base; Git root is only for Git-state inspection. Nested-cwd execution maps Git-root-relative status paths through a canonical product prefix, excludes only the exact workflow `.orchestrator` prefix, and treats outside-base paths as user-owned overlap.
+- Analyst creates self-contained task Markdown files under `1_orchestrator/<request>/tasks/` and one separate newest-first planning issue journal. It creates no index, manifest, ledger, hash, checkpoint, or product change.
+- Workflow `1_orchestrator` is anchored to immutable OpenCode session working directory, never Git root or a parent directory. Every handoff preserves that workflow base; Git root is only for Git-state inspection. Nested-cwd execution maps Git-root-relative status paths through a canonical product prefix, excludes only the exact workflow `1_orchestrator` prefix, and treats outside-base paths as user-owned overlap.
 - Every task is a working vertical slice. It may name ordered prerequisite task paths, expected product paths, acceptance criteria, implementation and integration evidence, test work, and validation commands.
 - Standard analyst runs on user-selected Terra and adds fresh independent Sol review after model-inheriting plan review PASS; every Sol finding returns through fresh planning and review before another Sol review. Single-model analyst dispatches only model-inheriting roles and has no Sol review.
 - Repairable plan-internal findings at occurrences `1` through `3`, including ordering, dependency, test ownership, path allocation, decomposition, and buildability, always return through planning revision. First occurrence has progress `NOT_APPLICABLE`; occurrences `2` and `3` with `NONE` require a materially different correction. `BLOCKED` requires access, safety, unresolved user-visible product choice, or occurrence `4` or greater.
 - Executor accepts exactly one task file. User prepares and selects execution branch. Executor never creates or changes branches and never stages or commits.
-- Executor requires `HEAD` and product worktree clean at start; workflow-owned `.orchestrator/**` changes are allowed. It records immutable `START_COMMIT` after preflight.
+- Executor requires `HEAD` and product worktree clean at start; workflow-owned `1_orchestrator/**` changes are allowed. It records immutable `START_COMMIT` after preflight.
 - Fresh implementation and ordinary-review roles alternate. Standard executor runs on user-selected Luna, sends findings through Terra adjuster before repair, and requires Terra final review to complete. Single-model reviewer records bounded task corrections and approved path expansion before fresh implementation; single-model executor completes after reviewer PASS.
 - Same demonstrated execution finding gets at most three ordinary repair attempts. Standard executor then invokes Terra loop diagnosis; single-model executor blocks. Different execution findings may continue only while measurable progress occurs. Any Terra finding returns through adjuster, fresh executor, and fresh ordinary reviewer before another Terra final review.
 - Standard build, test, restore, and localhost test activity runs autonomously in trusted repositories. Secret use, deploy, publish, destructive action, unrelated external effect, material product choice, and overlap with user-owned changes require user decision.
@@ -31,8 +31,8 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 
 - Keep default deny and grant least privilege. Put broad permission rules before narrower exceptions because last match wins.
 - Git read-only inspection may be allowed. Deny all Git mutation in permissions and prompts.
-- Analyst roles write only `.orchestrator/**/*.md`. They do not edit product files or Git state.
-- Only implementation role edits product files; it cannot edit `.orchestrator/**`. Executor primary records factual execution status in supplied task. No executor-side role may edit another task or planning journal.
+- Analyst roles write only `1_orchestrator/**/*.md`. They do not edit product files or Git state.
+- Only implementation role edits product files; it cannot edit `1_orchestrator/**`. Executor primary records factual execution status in supplied task. No executor-side role may edit another task or planning journal.
 - Planning reviewer, standard ordinary reviewer, Terra adjuster, single-model ordinary reviewer, and Terra final reviewer do not edit product files. Standard reviewers are read-only; planner records planning findings, Terra adjuster and single-model ordinary reviewer may edit only supplied task and its execution journal.
 - Standard trusted build, test, restore, and localhost commands may be allowed. Deny secret-bearing commands, deployment, publication, destructive commands, and unrelated external effects pending user approval.
 
@@ -53,4 +53,4 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 
 ## Repository exclusions
 
-Do not add provider config, auth/session databases, MCP tokens, `.env`, user source, patches, logs, or generated target-repository `.orchestrator/` artifacts to this repository. Approved repository-local plans remain allowed.
+Do not add provider config, auth/session databases, MCP tokens, `.env`, user source, patches, logs, or generated target-repository `1_orchestrator/` artifacts to this repository. Approved repository-local plans remain allowed.

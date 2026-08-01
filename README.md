@@ -57,15 +57,15 @@ Standard analyst выполнит reconnaissance, model-inheriting planning/revi
 ```text
 Итог: READY
 Задачи:
-- .orchestrator/avatar-upload/tasks/01-add-storage-operation.md
-- .orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
+- 1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
+- 1_orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
 ```
 
 Каждый task file self-contained. `Ordered prerequisites` показывает, какие более ранние задачи должны быть завершены до выбранной задачи. Analyst не создаёт ветки и не меняет product code.
 
 ### 2. Подготовить execution branch
 
-Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; только `WORKFLOW_BASE/.orchestrator/**` может оставаться untracked или modified.
+Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; только `WORKFLOW_BASE/1_orchestrator/**` может оставаться untracked или modified.
 
 ```bash
 git switch -c feature/avatar-storage
@@ -79,7 +79,7 @@ Executor не выполняет `git switch`, `git add` или `git commit`.
 Выберите `orchestrator-executor` с Luna для Luna implementation/review и Terra adjustment/final review либо `orchestrator-executor-single-model` для implementation/review loop только на выбранной модели. Передайте только один task path, без второго task и дополнительных инструкций:
 
 ```text
-.orchestrator/avatar-upload/tasks/01-add-storage-operation.md
+1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
 ```
 
 Standard executor:
@@ -106,23 +106,23 @@ git commit -m "feat: add avatar storage operation"
 Сначала обеспечьте присутствие результата prerequisite task в подготовленной ветке: merge, cherry-pick или новая ветка от уже завершённой работы выполняются пользователем. Затем выберите `orchestrator-executor` и передайте следующий task path:
 
 ```text
-.orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
+1_orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
 ```
 
 Не передавайте executor весь каталог, несколько task paths или исходный пользовательский запрос. Он работает только с выбранной задачей и перечисленными в ней prerequisites.
 
 ## Analyst
 
-Оба analyst primary agents создают задачи под `.orchestrator/<request>/tasks/`:
+Оба analyst primary agents создают задачи под `1_orchestrator/<request>/tasks/`:
 
 ```text
-.orchestrator/<request>/tasks/<NN>-<slug>.md
-.orchestrator/<request>/planning-issues.md
+1_orchestrator/<request>/tasks/<NN>-<slug>.md
+1_orchestrator/<request>/planning-issues.md
 ```
 
-`.orchestrator` всегда создаётся внутри working directory, из которой запущена текущая OpenCode-сессия. Git root и родительские каталоги не меняют это расположение. Например, при запуске из `/repo/src/MyProject` artifacts находятся в `/repo/src/MyProject/.orchestrator/`, даже если Git root — `/repo`. Expected product paths остаются относительными к `/repo/src/MyProject`; Git status paths `src/MyProject/...` нормализуются снятием этого prefix. Изменения вне `/repo/src/MyProject` считаются user-owned overlap.
+`1_orchestrator` всегда создаётся внутри working directory, из которой запущена текущая OpenCode-сессия. Non-hidden имя предотвращает пропуск workflow artifacts glob-поиском OpenCode, который исключает dot-prefixed hidden directories. Git root и родительские каталоги не меняют расположение. Например, при запуске из `/repo/src/MyProject` artifacts находятся в `/repo/src/MyProject/1_orchestrator/`, даже если Git root — `/repo`. Expected product paths остаются относительными к `/repo/src/MyProject`; Git status paths `src/MyProject/...` нормализуются снятием этого prefix. Изменения вне `/repo/src/MyProject` считаются user-owned overlap.
 
-Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Будущий `.orchestrator/<request>/` target служит только routing metadata: до planner `CREATE` он ожидаемо отсутствует, и recon не читает его и не считает его отсутствие access blocker. Model-inheriting planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
+Reconnaissance ищет implementation/integration prototypes, существующие тесты и test prototypes для новых тестов. Будущий `1_orchestrator/<request>/` target служит только routing metadata: до planner `CREATE` он ожидаемо отсутствует, и recon не читает его и не считает его отсутствие access blocker. Model-inheriting planner раскладывает запрос на working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, prototypes, обязательную test work и validation commands.
 
 Fresh model-inheriting plan reviewer проверяет полное покрытие запроса, зависимости, buildability, scope и тесты. Standard analyst после его `PASS` запускает fresh Sol ultra reviewer. Любое исправимое замечание Sol возвращает planner, затем fresh model-inheriting review и новую Sol проверку. Ordering, dependency, test ownership, path allocation, decomposition и buildability findings на occurrences `1`–`3` всегда исправляются через `REVISE`; наличие нескольких технических вариантов само по себе не блокирует planning. Первое появление finding имеет progress `NOT_APPLICABLE`; при `NONE` на occurrences `2`–`3` planner обязан применить materially different correction. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Occurrence `4` или greater одной и той же проблемы блокирует planning независимо от ошибочно возвращённого reviewer verdict.
 
@@ -136,14 +136,14 @@ Analyst возвращает только reviewed task paths. Index и manifest
 - task status `READY` и planning review `PASS`;
 - завершённые prerequisite tasks;
 - отсутствие staged, unstaged и untracked product changes;
-- только точный `WORKFLOW_BASE/.orchestrator/**` может оставаться workflow-owned dirty state; другая `.orchestrator` в Git worktree считается user/product state.
+- только точный `WORKFLOW_BASE/1_orchestrator/**` может оставаться workflow-owned dirty state; другой `1_orchestrator` в Git worktree считается user/product state.
 
 Оба executor primary agents фиксируют `START_COMMIT`, но не меняют Git. Fresh implementation и ordinary reviewer чередуются. Standard finding проходит через Terra adjuster. В single-model workflow отдельного adjuster нет: специальный reviewer сам фиксирует bounded repair direction и при доказанной необходимости расширяет expected paths, но не меняет product code.
 
 Execution findings хранятся newest-first рядом с task:
 
 ```text
-.orchestrator/<request>/tasks/<NN>-<slug>.issues.md
+1_orchestrator/<request>/tasks/<NN>-<slug>.issues.md
 ```
 
 Обычные роли читают только последние одну-две записи. Standard executor после трёх неудачных repairs одной semantic finding вызывает Terra full-history loop diagnosis; single-model executor завершает task как blocked. Разные findings продолжаются только при измеримом прогрессе.

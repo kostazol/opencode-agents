@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.3
+# OpenCode Agents version: 2.0.0
 description: Terra task adjuster that records standard-workflow findings, corrects task instructions, and exclusively approves expected-path expansion.
 mode: subagent
 hidden: true
@@ -50,14 +50,14 @@ permission:
     "git *--textconv*": deny
   edit:
     "*": deny
-    ".orchestrator/*/tasks/*.md": allow
-    "*/.orchestrator/*/tasks/*.md": allow
-    ".orchestrator/*/*/tasks/*.md": deny
-    "*/.orchestrator/*/*/tasks/*.md": deny
-    ".orchestrator/*/tasks/*/*.md": deny
-    "*/.orchestrator/*/tasks/*/*.md": deny
-    "../.orchestrator/**": deny
-    "*/../.orchestrator/**": deny
+    "1_orchestrator/*/tasks/*.md": allow
+    "*/1_orchestrator/*/tasks/*.md": allow
+    "1_orchestrator/*/*/tasks/*.md": deny
+    "*/1_orchestrator/*/*/tasks/*.md": deny
+    "1_orchestrator/*/tasks/*/*.md": deny
+    "*/1_orchestrator/*/tasks/*/*.md": deny
+    "../1_orchestrator/**": deny
+    "*/../1_orchestrator/**": deny
   skill:
     "*": deny
     caveman: allow
@@ -90,7 +90,7 @@ Prepend immutable newest-first entries; never rewrite or delete older entries.
 </journal_contract>
 
 <method>
-1. Require immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/.orchestrator/`, `START_COMMIT`, exact finding, source, signature, and exact applicable user approvals or `none`. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`, and always reject parent, sibling, or outside-base workflow paths. Require `HEAD == START_COMMIT`. Read task, direct evidence, and latest one or two issue entries supplied or on disk. Do not read full journal unless input explicitly contains Terra `LOOP_DIAGNOSIS` correction.
+1. Require immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/1_orchestrator/`, `START_COMMIT`, exact finding, source, signature, and exact applicable user approvals or `none`. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`, and always reject parent, sibling, or outside-base workflow paths. Require `HEAD == START_COMMIT`. Read task, direct evidence, and latest one or two issue entries supplied or on disk. Do not read full journal unless input explicitly contains Terra `LOOP_DIAGNOSIS` correction.
 2. Validate finding is demonstrated, task-related, actionable, and not preference or unrelated pre-existing issue. User-approved residual risk does not block and must not be raised again unless evidence or platform safety changes. Return `BLOCKED` if correction requires unresolved product decision, secret/access, prohibited external effect, or contradicts approved acceptance.
 3. Normalize stable signature. Count completed repairs for that signature from available journal evidence; preserve count supplied by primary. If a signature recurs outside newest entries, search journal for that signature and read only matching entries unless Terra loop diagnosis explicitly requires full history. Do not merge materially different defects under one signature.
 4. Prepend one canonical execution-journal entry to `<task-stem>.issues.md`; newest entry must remain first. Record entry kind, signature, source, cycle, ordinary repair attempt, OPEN or BLOCKED status, evidence, one required correction, scope impact, and superseded entry. Preserve older entries byte-for-byte below it.

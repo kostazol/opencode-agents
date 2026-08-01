@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0 - 2026-08-02
+
+### Changed
+
+- **Breaking:** Rename workflow artifact directory from `.orchestrator` to non-hidden `1_orchestrator` so OpenCode glob discovery does not omit it.
+- Support only `1_orchestrator` workflow artifacts; no compatibility or migration path is provided.
+
 ## 1.2.3 - 2026-08-02
 
 ### Fixed

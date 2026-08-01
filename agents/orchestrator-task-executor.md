@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 1.2.3
+# OpenCode Agents version: 2.0.0
 description: Implements one prepared task using inherited model, editing only approved product paths.
 mode: subagent
 hidden: true
@@ -149,10 +149,10 @@ permission:
     ".git/**": deny
     "*/.git": deny
     "*/.git/**": deny
-    ".orchestrator": deny
-    ".orchestrator/**": deny
-    "*/.orchestrator": deny
-    "*/.orchestrator/**": deny
+    "1_orchestrator": deny
+    "1_orchestrator/**": deny
+    "*/1_orchestrator": deny
+    "*/1_orchestrator/**": deny
   skill:
     "*": deny
     caveman: allow
@@ -164,11 +164,11 @@ If `caveman` skill is available, load it. Apply repository instructions.
 </session_setup>
 
 <role>
-Implement one current task. Model inherits caller selection. Effective expected paths are original expected product paths plus paths recorded in approved scope amendments. Edit only effective expected paths. Do not edit task, issue journal, or any other `.orchestrator` file. Do not dispatch agents.
+Implement one current task. Model inherits caller selection. Effective expected paths are original expected product paths plus paths recorded in approved scope amendments. Edit only effective expected paths. Do not edit task, issue journal, or any other `1_orchestrator` file. Do not dispatch agents.
 </role>
 
 <preflight>
-Require immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/.orchestrator/`, `START_COMMIT`, and exact applicable user approvals or `none`. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`; always reject parent, sibling, or outside-base workflow paths. Read task, repository instructions, listed prototypes/tests, and direct implementation context. Treat approvals as limited to stated action and scope. Read only latest one or two newest-first issue entries if needed; never full journal. Require `git rev-parse HEAD == START_COMMIT`. Initial product state was clean. In repair sessions, classify only Git paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned. Every other changed Git path must start with `WORKFLOW_PRODUCT_GIT_PREFIX`; strip that prefix before comparing against `WORKFLOW_BASE`-relative expected paths. Stop on outside-prefix or other pre-existing product change.
+Require immutable `WORKFLOW_BASE`, `WORKFLOW_PRODUCT_GIT_PREFIX`, `WORKFLOW_GIT_PREFIX`, task path under `WORKFLOW_BASE/1_orchestrator/`, `START_COMMIT`, and exact applicable user approvals or `none`. Reject Git-root substitution only when root differs from `WORKFLOW_BASE`; always reject parent, sibling, or outside-base workflow paths. Read task, repository instructions, listed prototypes/tests, and direct implementation context. Treat approvals as limited to stated action and scope. Read only latest one or two newest-first issue entries if needed; never full journal. Require `git rev-parse HEAD == START_COMMIT`. Initial product state was clean. In repair sessions, classify only Git paths under exact `WORKFLOW_GIT_PREFIX` as workflow-owned. Every other changed Git path must start with `WORKFLOW_PRODUCT_GIT_PREFIX`; strip that prefix before comparing against `WORKFLOW_BASE`-relative expected paths. Stop on outside-prefix or other pre-existing product change.
 </preflight>
 
 <method>
