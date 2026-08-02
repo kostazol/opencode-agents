@@ -114,6 +114,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("Support only `1_orchestrator` workflow artifacts; no compatibility or migration path is provided", changelog)
         self.assertIn("## 2.2.0 - 2026-08-02", changelog)
         self.assertIn("Batch every independent actionable plan-review finding", changelog)
+        self.assertIn("## 2.2.1 - 2026-08-02", changelog)
+        self.assertIn("Normalize semantically complete singular, unnumbered, and imperfectly numbered", changelog)
 
     def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
@@ -142,10 +144,10 @@ class CliTests(unittest.TestCase):
             self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
         self.assertIn("pass only exact paths to `read`", planner)
         reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("Run `glob` with path set to the exact supplied target and pattern `tasks/[0-9][0-9]-*.md`", reviewer)
+        self.assertIn("run `glob` with path set to the exact supplied target and pattern `tasks/[0-9][0-9]-*.md`", reviewer)
         self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
         ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("Require Terra response to be a clean `PASS`", ultra_reviewer)
+        self.assertIn("require Terra response to be a clean `PASS`", ultra_reviewer)
         self.assertIn("Count prior matching entries regardless of reviewer source", ultra_reviewer)
         self.assertIn("current occurrence is prior matching count plus one", ultra_reviewer)
         self.assertEqual(self.evaluate(self.permission_rules(ultra_reviewer, "grep"), "src/Program.cs"), "deny")
@@ -167,28 +169,36 @@ class CliTests(unittest.TestCase):
             self.assertIn("it has no finding occurrence", planning_reviewer)
             self.assertIn("Planner `BLOCK` derives blocker identity and occurrence when absent", planning_reviewer)
             self.assertNotIn("use occurrence `1` for an immediate blocker", planning_reviewer)
-            self.assertIn("exact rejection evidence", planning_reviewer)
+            self.assertIn("exact rejected planner response verbatim", planning_reviewer)
             self.assertIn("corrected compatible exhaustive finding batch", planning_reviewer)
+            self.assertIn("explicit review mode `NORMAL` or `REJECTION_RECOVERY`", planning_reviewer)
+            self.assertIn("do not require an unavailable prior or current planner `PASS`", planning_reviewer)
+            self.assertIn("actual task files", planning_reviewer)
+            self.assertIn("never block solely because planner PASS metadata", planning_reviewer)
+            self.assertIn("Review mode: NORMAL|REJECTION_RECOVERY", planning_reviewer)
             self.assertIn("On `PASS`, return exactly `Findings: none`", planning_reviewer)
             self.assertIn("Progress exists only inside numbered findings", planning_reviewer)
             self.assertIn("Findings: none|<numbered entries>", planning_reviewer)
             for field in ("Signature:", "Occurrence:", "Progress:", "Affected tasks:", "Finding:", "Required correction:"):
                 self.assertIn(f"  {field}", planning_reviewer)
+        self.assertIn("in `REJECTION_RECOVERY`, verify evidence independently without requiring Terra PASS metadata", ultra_reviewer)
         analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
         self.assertIn("Require `PLANNING: PASS`, `MODE: CREATE`, `Evidence: COMPLETE`", analyst)
         self.assertIn("steps: 200", analyst)
         self.assertIn("validate the full batch", analyst)
-        self.assertIn("Numbered findings must each contain non-`none` signature", analyst)
+        self.assertIn("Findings must each contain non-`none` signature", analyst)
         self.assertIn("or for immediate `BLOCKED` only with a blocker accepted by step 6", analyst)
         self.assertIn("Apply steps 4 through 6 to the full ultra batch", analyst)
         self.assertIn("Occurrence `1` is `NOT_APPLICABLE`", analyst)
         self.assertIn("is batched `REVISE` through step 5", analyst)
         self.assertLess(analyst.index("validate the full batch"), analyst.index("After clean Terra `PASS`"))
         self.assertIn("Occurrence classification overrides mislabeled verdict", analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, or path mismatch triggers one fresh same-stage reviewer retry", analyst)
+        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, or path mismatch triggers one fresh same-stage reviewer retry", analyst)
         self.assertNotIn("reviewer contract unavailable after fresh retry", analyst)
         self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", analyst)
-        self.assertIn("entire validated reviewer batch", analyst)
+        self.assertIn("complete reviewer output verbatim", analyst)
+        self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", analyst)
+        self.assertIn("contradictory verdict, mode mismatch, or path mismatch", analyst)
         self.assertIn("`Findings applied` equal to batch count", analyst)
         self.assertIn("Every ultra batch returns through one fresh planner `REVISE`, then fresh Terra review", analyst)
         self.assertIn("planner derives identity and occurrence when absent", analyst)
@@ -209,8 +219,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("A malformed FINALIZE response gets one fresh same-mode planner retry", analyst)
         self.assertIn("Never yield or block on FINALIZE rejection or malformed response", analyst)
         self.assertIn("plan-reviewer response for single-model workflow, or plan-reviewer and ultra-reviewer responses for standard workflow", planner)
-        self.assertIn("a complete reviewer batch", planner)
-        self.assertIn("Do not require singular top-level signature", planner)
+        self.assertIn("complete reviewer finding semantics", planner)
+        self.assertIn("accept either a structured `Findings` batch or one complete unnumbered or singular finding", planner)
         self.assertIn("occurrence `1` may proceed with `NOT_APPLICABLE`", planner)
         self.assertIn("For occurrence `2` or `3` with progress `NONE`, apply a materially different bounded correction", planner)
         self.assertIn("An occurrence `4` or greater is contradictory `REVISE` input and returns `REJECTED` requiring `BLOCK`", planner)
@@ -219,7 +229,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("if any conflict, return `REJECTED` with exact conflict evidence and change nothing", planner)
         self.assertIn("apply all bounded corrections in one revision", planner)
         self.assertIn("prepend one newest-first issue entry per finding", planner)
-        self.assertIn("Findings applied: <count>", planner)
+        self.assertIn("Findings applied: <normalized batch count>", planner)
         self.assertIn("PLANNING: PASS|REJECTED|BLOCKED", planner)
         self.assertIn("Rejection: <none or exact malformed, contradictory, collision, or incompatible-batch reason>", planner)
         self.assertIn("For malformed, contradictory, or mode-invalid input, return `PLANNING: REJECTED`", planner)
@@ -243,14 +253,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("Occurrence `1` is `NOT_APPLICABLE`", single_analyst)
         self.assertIn("is batched `REVISE` through step 5", single_analyst)
         self.assertLess(single_analyst.index("validate the full batch"), single_analyst.index("After clean reviewer `PASS`"))
-        self.assertIn("Numbered findings must each contain non-`none` signature", single_analyst)
+        self.assertIn("Findings must each contain non-`none` signature", single_analyst)
         self.assertIn("or for immediate `BLOCKED` only with a blocker accepted by step 6", single_analyst)
         self.assertIn("Occurrence classification overrides mislabeled verdict", single_analyst)
         self.assertIn("identical checked and ready-for-finalize paths matching current tasks", single_analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, or path mismatch triggers one fresh reviewer retry", single_analyst)
+        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, or path mismatch triggers one fresh reviewer retry", single_analyst)
         self.assertNotIn("reviewer contract unavailable after fresh retry", single_analyst)
         self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", single_analyst)
-        self.assertIn("entire validated reviewer batch", single_analyst)
+        self.assertIn("complete reviewer output verbatim", single_analyst)
+        self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", single_analyst)
+        self.assertIn("contradictory verdict, mode mismatch, or path mismatch", single_analyst)
         self.assertIn("`Findings applied` equal to batch count", single_analyst)
         self.assertIn("planner derives identity and occurrence when absent", single_analyst)
         self.assertIn("If planner returns `REJECTED` or malformed response, correct inputs and dispatch fresh `BLOCK`", single_analyst)
@@ -327,6 +339,47 @@ class CliTests(unittest.TestCase):
         self.assertIn("Expected product paths are `WORKFLOW_BASE`-relative scope boundaries", planner)
         self.assertIn("Evidence: COMPLETE|NOT_APPLICABLE|BLOCKED", planner)
         self.assertIn("Independently verify repository evidence used by tasks", reviewer)
+
+    def test_planning_rejection_recovery_contracts(self):
+        planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
+        for contract in (
+            "Normalize a complete singular form internally to a one-entry batch",
+            "numbering punctuation, indentation, or wrapper presentation is imperfect",
+            "Do not reject, drop, merge, or reinterpret a finding solely because `Findings:`, `1.`, or exact response-contract formatting is absent or imperfect",
+            "Reject `REVISE` only for missing or contradictory semantic fields, never presentation-only numbering, wrapper, indentation, label placement, or punctuation",
+            "Findings applied: <normalized batch count>",
+        ):
+            self.assertIn(contract, planner)
+        for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
+            analyst = (ROOT / "agents" / name).read_text(encoding="utf-8")
+            for contract in (
+                "complete reviewer output verbatim",
+                "Never paraphrase, flatten, rename, omit a wrapper, or manually reconstruct finding fields",
+                "never synthesize a singular finding from prior history",
+                "classify it as a planner defect and retry planner once with the same reviewer output verbatim",
+                "exact current task paths, and exact rejected planner response verbatim",
+                "classify it as a malformed internal response and immediately fresh-retry with complete rejection-recovery inputs",
+                "never accept it as an access or user blocker",
+            ):
+                self.assertIn(contract, analyst, name)
+            self.assertNotIn("entire validated reviewer batch", analyst)
+        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
+        ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
+        for planning_reviewer in (reviewer, ultra_reviewer):
+            normal = planning_reviewer.index("In `NORMAL`")
+            recovery = planning_reviewer.index("In `REJECTION_RECOVERY`")
+            self.assertLess(normal, recovery)
+            self.assertIn("exact current task paths", planning_reviewer)
+            self.assertIn("read each remaining exact current task", planning_reviewer)
+            self.assertIn("verify enumerated paths equal supplied current task paths", planning_reviewer)
+            self.assertIn("do not require an unavailable prior or current planner `PASS`", planning_reviewer)
+            self.assertIn("while task files are readable", planning_reviewer)
+        self.assertIn("do not require an unavailable prior or current planner `PASS`, its metadata, or a Terra `PASS`", ultra_reviewer)
+        maintenance = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Analysts pass reviewer output verbatim to `REVISE`", maintenance)
+        self.assertIn("Metadata-only reviewer blocking while tasks are readable is malformed and retries", maintenance)
+        self.assertIn("Recovery reviewer читает actual tasks и не требует отсутствующий current planner `PASS`", readme)
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)

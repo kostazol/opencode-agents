@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1 - 2026-08-02
+
+### Fixed
+
+- Normalize semantically complete singular, unnumbered, and imperfectly numbered plan-review findings before planner revision.
+- Preserve reviewer output verbatim through revision and recover rejected planner handoffs from readable current task files without requiring unavailable planner PASS metadata.
+- Treat metadata-only reviewer blocking and presentation-only planner rejection as malformed internal workflow responses that must retry without yielding to the user.
+
 ## 2.2.0 - 2026-08-02
 
 ### Changed
