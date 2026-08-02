@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.2.1
+# OpenCode Agents version: 2.3.0
 description: Primary analyst that creates Terra- and Sol-reviewed implementation task files without changing product or Git state.
 mode: primary
 temperature: 0.1

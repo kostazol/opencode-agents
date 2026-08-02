@@ -2,7 +2,7 @@
 
 ## Scope
 
-This repository versions OpenCode agent prompts. Prompts are executable workflow. Keep roles small, autonomous, least-privileged, self-contained, and understandable from repository files alone.
+This repository versions OpenCode agent prompts and one runtime workflow guard plugin. Prompts are executable workflow. Keep roles small, autonomous, least-privileged, self-contained, and understandable from repository files alone.
 
 ## Sources of truth
 
@@ -10,6 +10,8 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 - Exactly four user-facing primary agents exist: `orchestrator-analyst`, `orchestrator-analyst-single-model`, `orchestrator-executor`, and `orchestrator-executor-single-model`. Do not add aliases, compatibility primaries, or profile-generated variants.
 - Analyst planner owns bounded no-write evidence discovery and model-inheriting task planning; fresh planning reviewer validates repository evidence and plan quality; standard analyst adds independent Sol ultra plan review. Executor support roles own model-inheriting implementation and review; standard executor uses Terra adjustment and final review or loop diagnosis, while single-model reviewer records bounded task corrections itself.
 - Each agent file owns only role-specific inputs, permissions, procedure, and compact output.
+- `plugins/analyst-workflow-guard.js` owns runtime detection and same-session continuation of incomplete analyst workflow; it never changes product files, workflow artifacts, Git state, agent selection, or model selection.
+- Installer preserves an unknown pre-existing guard-plugin collision. Before changing released guard bytes, add every prior owned plugin hash to `OWNED_PREVIOUS_FILE_HASHES` so update replaces only known project-owned content.
 - Explicit current user instruction outranks prior workflow state. Platform safety constraints always apply.
 
 ## Workflow rules
@@ -23,6 +25,7 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 - Planner normalizes semantically complete singular, unnumbered, and imperfectly numbered reviewer findings into a batch; presentation-only numbering or wrapper differences are never rejection reasons. Analysts pass reviewer output verbatim to `REVISE` without reconstructing fields.
 - Repairable plan-internal findings at occurrences `1` through `3`, including ordering, dependency, test ownership, path allocation, decomposition, and buildability, always return through planning revision. First occurrence has progress `NOT_APPLICABLE`; occurrences `2` and `3` with `NONE` require a materially different correction. `BLOCKED` requires access, safety, unresolved user-visible product choice, or occurrence `4` or greater.
 - After every valid planner `CREATE` or `REVISE` pass, analyst dispatches the required fresh reviewer immediately in the same user turn. Incomplete review, many distinct findings or cycles, elapsed time, context growth, and voluntary model or tool budgeting never justify yielding, asking the user to repeat/continue/restart, or synthesizing a blocker.
+- Analyst workflow guard treats only a matching final parent response plus structured planner and required fresh-review task results as terminal. On premature root-session idle it sends one hidden synthetic continuation with original analyst and model. It ignores child sessions, explicit cancellation, errored turns, active sessions, duplicate idle events, and non-analyst workflows; persisted markers, bounded no-progress retries, and a total continuation cap prevent loops.
 - Planner rejects malformed or contradictory mode input, target collisions, and semantically incompatible review batches without edits. Rejection is never a user blocker: analysts retry presentation-only rejection once with verbatim reviewer output, then pass exact rejection, request, target, and current task paths to fresh rejection-recovery review; reviewers read actual tasks without requiring unavailable planner PASS metadata. Metadata-only reviewer blocking while tasks are readable is malformed and retries. Rejected finalization restarts review; creation collision advances deterministic `-2`, `-3`, ... suffixes without inspecting workflow directories.
 - Reviewers and planner enumerate existing workflow artifacts from the exact supplied target directory so Git-ignore rules cannot hide task files from base-root globbing.
 - Executor accepts exactly one task file. User prepares and selects execution branch. Executor never creates or changes branches and never stages or commits.
@@ -45,10 +48,10 @@ This repository versions OpenCode agent prompts. Prompts are executable workflow
 ## Change process
 
 1. Read `README.md`, this file, and every affected agent.
-2. Identify every producer and consumer of changed task fields, issue fields, verdicts, and permissions.
+2. Identify every producer and consumer of changed task fields, issue fields, verdicts, permissions, and runtime guard certificates.
 3. Keep one responsibility per role; update every producer and consumer of a changed contract and remove superseded rules rather than layering exceptions.
 4. Verify exactly four primaries, model assignments, least-privilege permissions, autonomous command boundaries, and response contracts.
-5. Run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, and `opencode debug config`.
+5. Run `python3 tests/test-cli.py`, `node --test tests/test-plugin.mjs`, syntax checks, `git diff --check`, temporary installation, and `opencode debug config`.
 6. Obtain independent workflow and permission review before release.
 
 ## Text and versioning

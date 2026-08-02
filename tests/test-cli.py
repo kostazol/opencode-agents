@@ -26,6 +26,7 @@ AGENT_NAMES = [
     "orchestrator-task-reviewer-single-model.md",
     "orchestrator-task-reviewer.md",
 ]
+PLUGIN_NAMES = ["analyst-workflow-guard.js"]
 PINNED_AGENTS = {
     "orchestrator-final-reviewer.md": "openai/gpt-5.6-terra",
     "orchestrator-plan-ultra-reviewer.md": "openai/gpt-5.6-sol",
@@ -44,6 +45,9 @@ class CliTests(unittest.TestCase):
 
     def installed_agents(self, target):
         return {path.name: path.read_text(encoding="utf-8") for path in sorted((target / "agents").glob("*.md"))}
+
+    def installed_plugins(self, target):
+        return {path.name: path.read_text(encoding="utf-8") for path in sorted((target / "plugins").glob("*.js"))}
 
     def permission_rules(self, content, permission):
         lines = content.splitlines()
@@ -87,7 +91,9 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             agents = self.installed_agents(target)
+            plugins = self.installed_plugins(target)
             self.assertEqual(sorted(agents), AGENT_NAMES)
+            self.assertEqual(sorted(plugins), PLUGIN_NAMES)
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst-single-model.md", "orchestrator-analyst.md", "orchestrator-executor-single-model.md", "orchestrator-executor.md"])
             version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
             self.assertEqual(OPENCODE_AGENTS.VERSION, version)
@@ -96,6 +102,7 @@ class CliTests(unittest.TestCase):
                 self.assertIn(f"# OpenCode Agents version: {version}", content)
                 self.assertNotIn("protocols/orchestrator.md", content)
                 self.assertNotIn("Read `__OPENCODE", content)
+            self.assertIn(f'const VERSION = "{version}"', plugins["analyst-workflow-guard.js"])
             self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
 
@@ -484,6 +491,62 @@ class CliTests(unittest.TestCase):
             self.assertEqual(unknown.read_text(encoding="utf-8"), "user\n")
             self.assertFalse(backup.exists())
 
+    def test_update_preserves_unknown_plugins(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "config"
+            backup = root / "backup"
+            self.run_cli(ROOT, target, "install")
+            unknown = target / "plugins/user-plugin.js"
+            unknown.write_text("export default async () => ({})\n", encoding="utf-8")
+            self.run_cli(ROOT, target, "update", "--backup-dir", str(backup))
+            self.assertEqual(unknown.read_text(encoding="utf-8"), "export default async () => ({})\n")
+            self.assertFalse(backup.exists())
+
+    def test_update_preserves_preexisting_guard_plugin_collision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "config"
+            backup = root / "backup"
+            plugin = target / "plugins/analyst-workflow-guard.js"
+            plugin.parent.mkdir(parents=True)
+            plugin.write_text("export default async () => ({})\n", encoding="utf-8")
+            self.run_cli(ROOT, target, "install")
+            self.run_cli(ROOT, target, "update", "--backup-dir", str(backup))
+            self.assertEqual(plugin.read_text(encoding="utf-8"), "export default async () => ({})\n")
+            self.assertFalse(backup.exists())
+
+    def test_install_preflights_required_source_groups(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            target = root / "config"
+            (source / "agents").mkdir(parents=True)
+            (source / "agents/example.md").write_text("agent\n", encoding="utf-8")
+            result = subprocess.run([sys.executable, str(CLI), "--source", str(source), "--target", str(target), "install"], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((target / "agents/example.md").exists())
+
+    def test_install_rolls_back_added_files_on_write_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "config"
+            original = OPENCODE_AGENTS.atomic_write
+            calls = 0
+
+            def failing_write(source, content, destination):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("forced failure")
+                original(source, content, destination)
+
+            with patch.object(OPENCODE_AGENTS, "atomic_write", side_effect=failing_write):
+                with self.assertRaisesRegex(OSError, "forced failure"):
+                    OPENCODE_AGENTS.install(ROOT, target, False)
+            self.assertEqual(list((target / "agents").glob("*.md")), [])
+            self.assertFalse((target / "plugins/analyst-workflow-guard.js").exists())
+            self.assertFalse((target / "AGENTS.md").exists())
+
     def test_update_backs_up_and_removes_retired_agent(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -531,13 +594,13 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             result = self.run_cli(ROOT, target, "status", capture_output=True)
-            self.assertIn("summary missing=0 changed=0 current=13 retired=0", result.stdout)
+            self.assertIn("summary missing=0 changed=0 current=14 retired=0", result.stdout)
             instructions = (target / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(instructions.count(OPENCODE_AGENTS.GLOBAL_INSTRUCTIONS_START), 1)
             self.assertIn("caveman", instructions)
 
-    def test_complete_github_api_source_installs_agents_only(self):
-        files = [ROOT / "AGENTS.md", *sorted((ROOT / "agents").glob("*.md"))]
+    def test_complete_github_api_source_installs_agents_and_plugins(self):
+        files = [ROOT / "AGENTS.md", *sorted((ROOT / "agents").glob("*.md")), *sorted((ROOT / "plugins").glob("*.js"))]
         tree = {"tree": []}
         blobs = {}
         for index, path in enumerate(files):
@@ -558,8 +621,12 @@ class CliTests(unittest.TestCase):
             with patch.object(OPENCODE_AGENTS, "github_json", side_effect=github_response), patch.object(sys, "argv", arguments):
                 self.assertEqual(OPENCODE_AGENTS.main(), 0)
             self.assertEqual(sorted(self.installed_agents(target)), AGENT_NAMES)
+            self.assertEqual(sorted(self.installed_plugins(target)), PLUGIN_NAMES)
             self.assertFalse((target / "protocols").exists())
             self.assertFalse((target / "helpers").exists())
+
+    def test_runtime_plugin_regressions(self):
+        subprocess.run(["node", "--test", str(ROOT / "tests/test-plugin.mjs")], check=True)
 
     def test_repository_urls_and_invalid_github_json(self):
         self.assertEqual(OPENCODE_AGENTS.repository_name("kostazol/opencode-agents"), "kostazol/opencode-agents")
@@ -580,6 +647,10 @@ class CliTests(unittest.TestCase):
         with patch.object(OPENCODE_AGENTS, "build_opener", return_value=opener):
             with self.assertRaisesRegex(RuntimeError, "GitHub API returned invalid JSON"):
                 OPENCODE_AGENTS.github_json("https://api.github.com/repos/kostazol/opencode-agents", None)
+        self.assertTrue(OPENCODE_AGENTS.installable_repository_path("agents/example.md"))
+        self.assertTrue(OPENCODE_AGENTS.installable_repository_path("plugins/example.js"))
+        for path in ("agents/nested/example.md", "plugins/example.ts", "plugins/nested/example.js", "other/example.js"):
+            self.assertFalse(OPENCODE_AGENTS.installable_repository_path(path))
 
     @unittest.skipIf(sys.platform == "win32", "symlink behavior differs on Windows")
     def test_symlink_target_root_is_rejected(self):

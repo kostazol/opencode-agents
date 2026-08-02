@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.0 - 2026-08-02
+
+### Added
+
+- Install an auto-discovered runtime plugin that resumes prematurely idle analyst workflows in the same session with the original agent and model.
+- Require matching final parent, planner, and fresh-review certificates before the plugin accepts analyst `READY` or `BLOCKED` completion.
+- Persist synthetic continuation markers and enforce duplicate, no-progress, total-attempt, child-session, cancellation, error, and active-session guards.
+
+### Changed
+
+- Install and update project-owned JavaScript plugins alongside agent prompts while preserving unknown user plugins.
+
 ## 2.2.1 - 2026-08-02
 
 ### Fixed

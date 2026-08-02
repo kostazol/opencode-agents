@@ -1,6 +1,6 @@
 # OpenCode Agents
 
-Четыре автономных primary workflow для standard и single-model анализа и выполнения задач в OpenCode.
+Четыре автономных primary workflow для standard и single-model анализа и выполнения задач в OpenCode, с runtime guard незавершённого analyst workflow.
 
 ## Архитектура
 
@@ -30,7 +30,7 @@ orchestrator-executor-single-model <one-task.md>
 
 Других primary agents, aliases и profile variants нет. Analyst не запускает implementation. Executor принимает ровно один task file и не переключает ветки, не stage и не commit изменения.
 
-Каждый agent prompt self-contained и содержит только нужные ему workflow contracts. Runtime protocol file не устанавливается и не читается; согласованность producer/consumer fields проверяется tests.
+Каждый agent prompt self-contained и содержит только нужные ему workflow contracts. Runtime protocol file не устанавливается и не читается; согласованность producer/consumer fields проверяется tests. Global auto-discovered plugin продолжает analyst в той же session, если модель добровольно завершила turn до обязательного review или finalization.
 
 ## Как пользоваться
 
@@ -190,6 +190,7 @@ Primary agents сообщают только смену пользователь
 - `orchestrator-task-reviewer-single-model` — model-inheriting ordinary reviewer и task correction authority single-model workflow.
 - `orchestrator-task-adjuster` — Terra task correction and scope authority standard workflow.
 - `orchestrator-final-reviewer` — Terra final review and loop diagnosis.
+- `analyst-workflow-guard.js` — runtime plugin: на root-session idle проверяет terminal workflow certificates и безопасно продолжает незавершённый analyst на исходных agent и model.
 
 ## Установка
 
@@ -207,14 +208,17 @@ py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.github
 py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" status
 ```
 
-После install/update полностью перезапустите OpenCode: prompts и permissions загружаются при старте.
+После install/update полностью перезапустите OpenCode: prompts, permissions и plugin загружаются при старте. Plugin автоматически устанавливается в `~/.config/opencode/plugins/analyst-workflow-guard.js`; отдельная запись в `opencode.json` не нужна.
 
-При update устаревшие project-owned agent files архивируются в backup directory и удаляются точечно; пользовательские agents сохраняются.
+Guard работает только для `orchestrator-analyst` и `orchestrator-analyst-single-model`. Он игнорирует child sessions, errored или active turns, explicit cancellation и другие agents. Valid `READY` требует matching planner `FINALIZE` и обязательные review results; valid `BLOCKED` требует matching planner evidence certificate. Synthetic continuations имеют persisted deduplication marker, максимум три повтора без workflow progress и двенадцать continuations на один user request.
+
+При update устаревшие project-owned files архивируются в backup directory и удаляются точечно; пользовательские agents и plugins сохраняются.
 
 ## Проверка
 
 ```bash
 python3 tests/test-cli.py
+node --test tests/test-plugin.mjs
 opencode debug config >/dev/null
 ```
 

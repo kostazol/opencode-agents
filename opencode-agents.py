@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and update OpenCode agents."""
+"""Install and update OpenCode agents and plugins."""
 
 from __future__ import annotations
 
@@ -22,10 +22,18 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.2.1"
+VERSION = "2.3.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
-GROUPS = ("agents",)
+GROUP_PATTERNS = {"agents": "*.md", "plugins": "*.js"}
+GROUPS = tuple(GROUP_PATTERNS)
+MAX_SOURCE_FILE_BYTES = 1_000_000
+MAX_GITHUB_RESPONSE_BYTES = 2_000_000
+MAX_SOURCE_FILES = 100
+MAX_SOURCE_TOTAL_BYTES = 5_000_000
+OWNED_PREVIOUS_FILE_HASHES = {
+    Path("plugins/analyst-workflow-guard.js"): frozenset(),
+}
 RETIRED_FILE_HASHES = {
     Path("agents/orchestrator-recon.md"): frozenset({
         "18cbce96483f8b1ef7d2a90b2184853cd82af1f1bcd6158a457409f41742dd83",
@@ -59,7 +67,7 @@ def default_target() -> Path:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Install and update OpenCode agents.")
+    result = argparse.ArgumentParser(description="Install and update OpenCode agents and plugins.")
     result.add_argument("command", choices=("install", "update", "status"))
     result.add_argument("--source", type=Path, help="Use a local source directory instead of GitHub API.")
     result.add_argument("--repository", default=None, help="GitHub repository URL or owner/name.")
@@ -77,7 +85,7 @@ def source_files(source: Path, target: Path):
         source_group = source / group
         if not source_group.is_dir():
             raise RuntimeError(f"source missing {group}/: {source}")
-        for source_file in sorted(source_group.glob("*.md")):
+        for source_file in sorted(source_group.glob(GROUP_PATTERNS[group])):
             files.append((source_file, target / group / source_file.relative_to(source_group)))
     yield from sorted(files, key=lambda item: str(item[1]))
 
@@ -93,6 +101,16 @@ def repository_name(repository: str) -> str:
     if len(parts) != 2:
         raise RuntimeError(f"invalid GitHub repository: {repository}")
     return f"{parts[0]}/{parts[1].removesuffix('.git')}"
+
+
+def installable_repository_path(value: str) -> bool:
+    if value == "AGENTS.md":
+        return True
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 2:
+        return False
+    group, name = relative.parts
+    return group in GROUP_PATTERNS and Path(name).match(GROUP_PATTERNS[group])
 
 
 class SameHostRedirectHandler(HTTPRedirectHandler):
@@ -116,7 +134,10 @@ def github_json(url: str, token: Optional[str]) -> dict:
     try:
         opener = build_opener(SameHostRedirectHandler)
         with opener.open(Request(url, headers=headers), timeout=30) as response:
-            return json.loads(response.read())
+            content = response.read(MAX_GITHUB_RESPONSE_BYTES + 1)
+            if len(content) > MAX_GITHUB_RESPONSE_BYTES:
+                raise RuntimeError(f"GitHub API response is too large: {url}")
+            return json.loads(content)
     except HTTPError as error:
         raise RuntimeError(f"GitHub API request failed ({error.code}): {url}") from error
     except (URLError, TimeoutError) as error:
@@ -147,18 +168,43 @@ def prepared_source(source: Optional[Path], repository: Optional[str], ref: str,
         raise RuntimeError("GitHub repository tree is truncated; use a narrower ref")
     with tempfile.TemporaryDirectory(prefix="opencode-agents-") as temporary:
         root = Path(temporary)
-        entries = [entry for entry in tree.get("tree", []) if entry.get("type") == "blob" and (entry.get("path") == "AGENTS.md" or any(entry.get("path", "").startswith(f"{group}/") for group in GROUPS))]
+        entries = []
+        seen_paths = set()
+        for entry in tree.get("tree", []):
+            path = entry.get("path", "")
+            if entry.get("type") != "blob" or not installable_repository_path(path):
+                continue
+            if path in seen_paths:
+                raise RuntimeError(f"duplicate path from GitHub API: {path}")
+            if isinstance(entry.get("size"), int) and entry["size"] > MAX_SOURCE_FILE_BYTES:
+                raise RuntimeError(f"GitHub source file is too large: {path}")
+            seen_paths.add(path)
+            entries.append(entry)
+        if len(entries) > MAX_SOURCE_FILES:
+            raise RuntimeError(f"GitHub source contains too many installable files: {len(entries)}")
+        declared_total = sum(entry.get("size", 0) for entry in entries if isinstance(entry.get("size"), int))
+        if declared_total > MAX_SOURCE_TOTAL_BYTES:
+            raise RuntimeError(f"GitHub source is too large: {declared_total} bytes")
         if not entries:
-            raise RuntimeError(f"GitHub repository contains no agent files: {repo}@{selected_ref}")
+            raise RuntimeError(f"GitHub repository contains no installable files: {repo}@{selected_ref}")
+        decoded_total = 0
         for entry in entries:
             relative = Path(entry["path"])
             if relative.is_absolute() or ".." in relative.parts:
                 raise RuntimeError(f"unsafe path from GitHub API: {entry['path']}")
             content = github_json(f"{api_url.rstrip('/')}/repos/{repo}/git/blobs/{entry['sha']}", token)
             try:
-                decoded = base64.b64decode(content["content"], validate=False)
+                encoded = content["content"]
+                if len(encoded) > MAX_SOURCE_FILE_BYTES * 2:
+                    raise RuntimeError(f"GitHub source file is too large: {entry['path']}")
+                decoded = base64.b64decode(encoded, validate=False)
             except (KeyError, ValueError) as error:
                 raise RuntimeError(f"invalid blob response for {entry['path']}") from error
+            if len(decoded) > MAX_SOURCE_FILE_BYTES:
+                raise RuntimeError(f"GitHub source file is too large: {entry['path']}")
+            decoded_total += len(decoded)
+            if decoded_total > MAX_SOURCE_TOTAL_BYTES:
+                raise RuntimeError(f"GitHub source is too large: {decoded_total} bytes")
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(decoded)
@@ -174,7 +220,7 @@ def source_metadata_file(source: Path) -> Path:
     if instructions.exists():
         return instructions
     for group in GROUPS:
-        files = sorted((source / group).glob("*.md"))
+        files = sorted((source / group).glob(GROUP_PATTERNS[group]))
         if files:
             return files[0]
     raise RuntimeError(f"source contains no files for metadata: {source}")
@@ -357,7 +403,8 @@ def validate_global_instructions(path: Path) -> None:
 def status(source: Path, target: Path) -> None:
     validate_target(target)
     counts = {"missing": 0, "changed": 0, "current": 0, "retired": 0}
-    for source_file, target_file in source_files(source, target):
+    files = list(source_files(source, target))
+    for source_file, target_file in files:
         validate_target_file(target_file)
         relative = target_file.relative_to(target)
         if not target_file.exists():
@@ -389,35 +436,66 @@ def status(source: Path, target: Path) -> None:
 
 def install(source: Path, target: Path, dry_run: bool) -> None:
     validate_target(target)
-    installed = 0
-    skipped = 0
-    for source_file, target_file in source_files(source, target):
+    files = list(source_files(source, target))
+    metadata_file = source_metadata_file(source)
+    for _, target_file in files:
         validate_target_file(target_file)
-        relative = target_file.relative_to(target)
-        if target_file.exists():
-            print(f"skip {relative}")
-            skipped += 1
-        else:
-            print(f"copy {source_file} -> {target_file}" if dry_run else f"install {relative}")
-            if not dry_run:
-                atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
-            installed += 1
     instructions = global_instructions_path(target)
     validate_global_instructions(instructions)
-    if instructions.exists() and rendered_global_instructions(target) == instructions.read_bytes():
-        print(f"skip {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-        skipped += 1
-    else:
-        print(f"copy global caveman guidance -> {instructions}" if dry_run else f"install {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+    rendered_instructions = rendered_global_instructions(target)
+    rendered_files = [(source_file, target_file, rendered_content(source_file, target, target_file)) for source_file, target_file in files]
+    installed = 0
+    skipped = 0
+    added_files = []
+    previous_instructions = instructions.read_bytes() if instructions.exists() else None
+    instructions_changed = previous_instructions != rendered_instructions
+    try:
+        for source_file, target_file, content in rendered_files:
+            relative = target_file.relative_to(target)
+            if target_file.exists():
+                print(f"skip {relative}")
+                skipped += 1
+            else:
+                print(f"copy {source_file} -> {target_file}" if dry_run else f"install {relative}")
+                if not dry_run:
+                    atomic_write(source_file, content, target_file)
+                    added_files.append(target_file)
+                installed += 1
+        if not instructions_changed:
+            print(f"skip {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+            skipped += 1
+        else:
+            print(f"copy global caveman guidance -> {instructions}" if dry_run else f"install {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
+            if not dry_run:
+                atomic_write(metadata_file, rendered_instructions, instructions)
+            installed += 1
+    except (OSError, RuntimeError) as error:
         if not dry_run:
-            atomic_write(source_metadata_file(source), rendered_global_instructions(target), instructions)
-        installed += 1
+            rollback_errors = []
+            for target_file in reversed(added_files):
+                try:
+                    safe_remove(target_file)
+                except OSError as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if instructions_changed:
+                try:
+                    if previous_instructions is None:
+                        safe_remove(instructions)
+                    else:
+                        atomic_write(metadata_file, previous_instructions, instructions)
+                except (OSError, RuntimeError) as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if rollback_errors:
+                raise RuntimeError(f"{error}; rollback failed: {'; '.join(rollback_errors)}") from error
+        raise
     print(f"summary installed={installed} skipped={skipped}")
     print_caveman_next_step()
 
 
 def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) -> None:
     validate_target(target)
+    files = list(source_files(source, target))
+    metadata_file = source_metadata_file(source)
     if backup is None:
         backup = target.parent / f"opencode-agents-backup-{datetime.now():%Y%m%d-%H%M%S-%f}"
     backup = validate_backup(backup, source, target)
@@ -426,13 +504,17 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
     added_files = []
     removed_files = []
     try:
-        for source_file, target_file in source_files(source, target):
+        for source_file, target_file in files:
             validate_target_file(target_file)
             relative = target_file.relative_to(target)
             if target_file.exists() and rendered_content(source_file, target, target_file) == target_file.read_bytes():
                 print(f"current {relative}")
                 counts["unchanged"] += 1
             elif target_file.exists():
+                known_hashes = OWNED_PREVIOUS_FILE_HASHES.get(relative)
+                if known_hashes is not None and hashlib.sha256(target_file.read_bytes()).hexdigest() not in known_hashes:
+                    print(f"preserve user-owned {relative}")
+                    continue
                 print(f"update {relative}")
                 if not dry_run:
                     backup_file = backup / relative
@@ -475,14 +557,14 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
                 backup_file = backup / GLOBAL_INSTRUCTIONS_FILE
                 backup_copy(instructions, backup_file)
                 updated_files.append((instructions, backup_file))
-                atomic_write(source_metadata_file(source), rendered, instructions)
+                atomic_write(metadata_file, rendered, instructions)
             counts["backup"] += 1
             counts["updated"] += 1
         else:
             print(f"add {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
             if not dry_run:
                 added_files.append(instructions)
-                atomic_write(source_metadata_file(source), rendered, instructions)
+                atomic_write(metadata_file, rendered, instructions)
             counts["added"] += 1
     except (OSError, RuntimeError) as error:
         if not dry_run:
