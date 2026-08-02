@@ -22,7 +22,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUP_PATTERNS = {"agents": "*.md", "plugins": "*.js"}
@@ -32,7 +32,9 @@ MAX_GITHUB_RESPONSE_BYTES = 2_000_000
 MAX_SOURCE_FILES = 100
 MAX_SOURCE_TOTAL_BYTES = 5_000_000
 OWNED_PREVIOUS_FILE_HASHES = {
-    Path("plugins/analyst-workflow-guard.js"): frozenset(),
+    Path("plugins/analyst-workflow-guard.js"): frozenset({
+        "2a4c3223c4283526105123f3661881a455b9b57b15a6290aae479d839ab66bc1",
+    }),
 }
 RETIRED_FILE_HASHES = {
     Path("agents/orchestrator-recon.md"): frozenset({

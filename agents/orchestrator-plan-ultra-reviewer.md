@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.0
+# OpenCode Agents version: 2.3.1
 description: Fresh read-only Sol ultra reviewer for final analyst plan completeness and executable task-file quality.
 mode: subagent
 hidden: true

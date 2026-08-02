@@ -142,7 +142,7 @@ test("plugin ignores child sessions", async () => {
   assert.equal(messagesCalled, false)
 })
 
-test("plugin continues same root session with synthetic marker", async () => {
+test("plugin treats absent status entry as idle and continues", async () => {
   const messages = [user("user"), assistant("assistant", "stopped")]
   let prompt
   const client = {
@@ -150,7 +150,7 @@ test("plugin continues same root session with synthetic marker", async () => {
     session: {
       get: async () => ({ data: { id: SESSION, directory: "/repo" } }),
       messages: async () => ({ data: messages }),
-      status: async () => ({ data: { [SESSION]: { type: "idle" } } }),
+      status: async () => ({ data: {} }),
       promptAsync: async (value) => { prompt = value; return { data: undefined } },
     },
   }
@@ -161,6 +161,23 @@ test("plugin continues same root session with synthetic marker", async () => {
   assert.deepEqual(prompt.body.model, { providerID: "openai", modelID: "gpt-5.6-terra" })
   assert.equal(prompt.body.parts[0].synthetic, true)
   assert.equal(prompt.body.parts[0].metadata["opencode-agents.analyst-workflow-guard"].triggerAssistantID, "assistant")
+})
+
+test("plugin does not continue busy session", async () => {
+  const messages = [user("user"), assistant("assistant", "stopped")]
+  let prompts = 0
+  const client = {
+    app: { log: async () => ({ data: true }) },
+    session: {
+      get: async () => ({ data: { id: SESSION, directory: "/repo" } }),
+      messages: async () => ({ data: messages }),
+      status: async () => ({ data: { [SESSION]: { type: "busy" } } }),
+      promptAsync: async () => { prompts += 1; return { data: undefined } },
+    },
+  }
+  const hooks = await AnalystWorkflowGuard({ client, directory: "/repo" })
+  await hooks.event({ event: { type: "session.idle", properties: { sessionID: SESSION } } })
+  assert.equal(prompts, 0)
 })
 
 test("pending continuation suppresses duplicate idle before marker persistence", async () => {

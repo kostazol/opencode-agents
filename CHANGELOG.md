@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1 - 2026-08-02
+
+### Fixed
+
+- Treat a session absent from OpenCode's status map as idle, matching the runtime API that stores only busy and retry sessions.
+- Continue incomplete analyst workflows after `session.idle` instead of silently returning before synthetic continuation dispatch.
+
 ## 2.3.0 - 2026-08-02
 
 ### Added

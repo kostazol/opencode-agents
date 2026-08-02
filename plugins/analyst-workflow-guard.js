@@ -1,4 +1,4 @@
-const VERSION = "2.3.0"
+const VERSION = "2.3.1"
 
 const ANALYSTS = new Set(["orchestrator-analyst", "orchestrator-analyst-single-model"])
 const MARKER = "opencode-agents.analyst-workflow-guard"
@@ -269,7 +269,7 @@ async function AnalystWorkflowGuard({ client, directory }) {
       const currentDecision = continuationDecision(current, sessionID)
       if (!currentDecision.resume || currentDecision.triggerAssistantID !== decision.triggerAssistantID || currentDecision.frontier !== decision.frontier) return
       const status = responseData(await client.session.status({ query: { directory: session.directory } }), "get session status")
-      if (status[sessionID]?.type !== "idle") return
+      if (status[sessionID] && status[sessionID].type !== "idle") return
       const finalMessages = responseData(await client.session.messages({ path: { id: sessionID }, query: { directory: session.directory } }), "final message recheck")
       const finalDecision = continuationDecision(finalMessages, sessionID)
       if (!finalDecision.resume || finalDecision.triggerAssistantID !== decision.triggerAssistantID || finalDecision.frontier !== decision.frontier) return

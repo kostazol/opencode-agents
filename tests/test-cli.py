@@ -123,6 +123,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("Batch every independent actionable plan-review finding", changelog)
         self.assertIn("## 2.2.1 - 2026-08-02", changelog)
         self.assertIn("Normalize semantically complete singular, unnumbered, and imperfectly numbered", changelog)
+        self.assertIn("## 2.3.1 - 2026-08-02", changelog)
+        self.assertIn("absent from OpenCode's status map as idle", changelog)
 
     def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
