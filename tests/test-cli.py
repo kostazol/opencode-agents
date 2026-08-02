@@ -161,6 +161,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("current occurrence is prior matching count plus one", ultra_reviewer)
         self.assertEqual(self.evaluate(self.permission_rules(ultra_reviewer, "grep"), "src/Program.cs"), "deny")
         for planning_reviewer in (reviewer, ultra_reviewer):
+            self.assertIn("Path- or symbol-specific defects recur only when same missing or incorrect product path", planning_reviewer)
+            self.assertIn("Newly discovered member after broad inventory correction is new signature", planning_reviewer)
             self.assertIn("exhaustive review of the entire current plan", planning_reviewer)
             self.assertIn("every independent demonstrated actionable finding in one response", planning_reviewer)
             self.assertIn("ordered dependency-first and then highest impact", planning_reviewer)
@@ -218,6 +220,20 @@ class CliTests(unittest.TestCase):
         self.assertIn("ask user to repeat, continue, or restart", analyst)
         self.assertIn("many distinct findings or cycles, elapsed time, context growth, voluntary model/tool budgeting, or a valid progressive checkpoint", analyst)
         self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", analyst)
+        self.assertIn("Task-tool prompts are protocol transport, not user-facing prose", analyst)
+        self.assertIn("Caveman or progress-message compression never applies to them", analyst)
+        self.assertIn("Never use absolute task paths, `N/A`, `N_A`, “as prior”", analyst)
+        self.assertIn("Path- or symbol-specific defects recur only when same missing or incorrect product path", analyst)
+        self.assertIn("Own workflow state; subagents never control transitions", analyst)
+        self.assertIn("one compact in-memory canonical state", analyst)
+        self.assertIn("A newer accepted result atomically supersedes older results for that stage", analyst)
+        self.assertIn("Never revisit, merge, summarize from, or forward retired stages", analyst)
+        self.assertIn("Verbatim transport means copy required current response, not accumulated history", analyst)
+        self.assertIn("First determine fault owner", analyst)
+        self.assertIn("Rejection recovery applies only to a valid structured planner `REJECTED` response", analyst)
+        self.assertIn("Malformed role output after a retry remains at the same stage", analyst)
+        self.assertIn("never invoke rejection recovery without an exact valid rejected planner response", analyst)
+        self.assertIn("Repeated malformed role output is role degradation, not context, time, or user blocker", analyst)
         self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", analyst)
         self.assertIn("it is never a user blocker", analyst)
         self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", analyst)
@@ -238,6 +254,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("identical checked and ready paths matching supplied current task partitions", planner)
         self.assertIn("if any conflict, return `REJECTED` with exact conflict evidence and change nothing", planner)
         self.assertIn("apply all bounded corrections in one revision", planner)
+        self.assertIn("Newly discovered member after broad inventory correction is new signature", planner)
         self.assertIn("prepend one newest-first issue entry per finding", planner)
         self.assertIn("Findings applied: <normalized batch count>", planner)
         self.assertIn("PLANNING: PASS|REJECTED|BLOCKED", planner)
@@ -280,6 +297,15 @@ class CliTests(unittest.TestCase):
         self.assertIn("Never yield while review remains incomplete", single_analyst)
         self.assertIn("ask user to repeat, continue, or restart", single_analyst)
         self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", single_analyst)
+        self.assertIn("Task-tool prompts are protocol transport, not user-facing prose", single_analyst)
+        self.assertIn("Never use absolute task paths, `N/A`, `N_A`, “as prior”", single_analyst)
+        self.assertIn("Newly discovered member after broad inventory correction is new signature", single_analyst)
+        self.assertIn("Own workflow state; subagents never control transitions", single_analyst)
+        self.assertIn("one compact in-memory canonical state", single_analyst)
+        self.assertIn("Never revisit, merge, summarize from, or forward retired stages", single_analyst)
+        self.assertIn("First determine fault owner", single_analyst)
+        self.assertIn("Rejection recovery applies only to a valid structured planner `REJECTED` response", single_analyst)
+        self.assertIn("Malformed role output after a retry remains at the same stage", single_analyst)
         self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", single_analyst)
         self.assertIn("it is never a user blocker", single_analyst)
         self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", single_analyst)
@@ -414,7 +440,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("one exhaustive clarification gate", maintenance)
         self.assertIn("### 5. Пересмотреть оставшийся план", readme)
         self.assertIn("### Одно уточнение перед автономным workflow", readme)
-        self.assertIn("## 2.4.0 - 2026-08-02", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+        self.assertIn("## 2.4.1 - 2026-08-02", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
 
     def test_planning_rejection_recovery_contracts(self):
         planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
@@ -434,7 +460,8 @@ class CliTests(unittest.TestCase):
                 "never synthesize a singular finding from prior history",
                 "classify it as a planner defect and retry planner once with the same reviewer output verbatim",
                 "exact current task partitions, and exact rejected planner response verbatim",
-                "classify it as a malformed internal response and immediately fresh-retry with complete rejection-recovery inputs",
+                "Malformed reviewer output always retries a fresh reviewer in the same invoked review mode",
+                "Do not use `REJECTION_RECOVERY` for malformed reviewer output",
                 "never accept it as an access or user blocker",
             ):
                 self.assertIn(contract, analyst, name)

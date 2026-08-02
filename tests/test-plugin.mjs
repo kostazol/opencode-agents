@@ -10,6 +10,8 @@ const PATH = "1_orchestrator/request/tasks/01-work.md"
 const FULL_PATH = PATH
 const TARGET = "1_orchestrator/request/"
 
+assert.match(source, /Reconstruct compact canonical controller state from original user goal and latest accepted task-tool certificates/)
+
 function text(id, value, options = {}) {
   return { id, sessionID: SESSION, messageID: options.messageID ?? id, type: "text", text: value, ...options }
 }
@@ -99,6 +101,32 @@ test("incomplete analyst turn resumes", () => {
   const decision = AnalystWorkflowGuard.testing.continuationDecision([user("user"), assistant("assistant", "Стоп\n\nИтог: BLOCKED\nЗадачи: none\nОтложенные задачи: none\nЗавершённые задачи: none\nИсключённые задачи: none\nОтложенный scope: none\nНеопределённости: none\nREASSESS после: none\nРиски и ограничения: none\nБлокер: repeat request")], SESSION)
   assert.equal(decision.resume, true)
   assert.equal(decision.agent, "orchestrator-analyst")
+})
+
+test("explicit follow-up after blocked outcome is not auto-resumed without workflow work", () => {
+  const messages = [user("request"), assistant("blocked", "Итог: BLOCKED\nБлокер: choose behavior"), user("question", "orchestrator-analyst", "Что означает блокер?"), assistant("answer", "Блокер означает выбор контракта.")]
+  assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "explicit-followup-after-block" })
+})
+
+test("explicit decision after blocked outcome resumes when workflow work started", () => {
+  const rejected = "PLANNING: REJECTED\nMODE: CREATE\nEvidence: NOT_APPLICABLE\nRejection: collision\nБлокер: none"
+  const messages = [user("request"), assistant("blocked", "Итог: BLOCKED\nБлокер: choose behavior"), user("decision", "orchestrator-analyst", "Remove static scans"), assistant("working", "stopped", [task("planner", "orchestrator-task-planner", rejected)])]
+  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
+})
+
+test("pending workflow dispatch after blocked outcome remains resumable", () => {
+  const pending = task("planner", "orchestrator-task-planner", "")
+  pending.state.status = "pending"
+  pending.state.output = ""
+  const messages = [user("request"), assistant("blocked", "Итог: BLOCKED\nБлокер: choose behavior"), user("decision", "orchestrator-analyst", "Remove static scans"), assistant("working", "stopped", [pending])]
+  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
+})
+
+test("malformed workflow result after blocked outcome remains resumable", () => {
+  const malformed = task("planner", "orchestrator-task-planner", "")
+  malformed.state.output = "malformed"
+  const messages = [user("request"), assistant("blocked", "Итог: BLOCKED\nБлокер: choose behavior"), user("decision", "orchestrator-analyst", "Remove static scans"), assistant("working", "stopped", [malformed])]
+  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
 })
 
 test("non-analyst workflow never resumes", () => {

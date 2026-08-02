@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.1 - 2026-08-02
+
+### Fixed
+
+- Preserve analyst task-tool handoffs as lossless protocol data instead of caveman-compressed summaries, aliases, absolute paths, or omitted upstream responses.
+- Make analyst primary own compact canonical workflow state, retire superseded stage outputs, diagnose controller versus subagent degradation, and correct fresh role prompts without shifting internal failures to user.
+- Count planning finding recurrence only for the same concrete defect so newly discovered omitted paths do not create false fourth-occurrence blockers.
+- Keep explicit follow-up turns after a reported blocker under user control until planner or reviewer work starts, preventing guard repetition after informational answers.
+
 ## 2.4.0 - 2026-08-02
 
 ### Added

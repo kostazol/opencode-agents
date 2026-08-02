@@ -1,10 +1,11 @@
-const VERSION = "2.4.0"
+const VERSION = "2.4.1"
 
 const ANALYSTS = new Set(["orchestrator-analyst", "orchestrator-analyst-single-model"])
+const WORKFLOW_ROLES = new Set(["orchestrator-task-planner", "orchestrator-plan-reviewer", "orchestrator-plan-ultra-reviewer"])
 const MARKER = "opencode-agents.analyst-workflow-guard"
 const MAX_CONTINUATIONS = 12
 const MAX_NO_PROGRESS = 3
-const CONTINUATION = "Internal analyst workflow guard. Previous assistant turn became idle before required workflow completion. Continue the same original user request in this session. Inspect existing task-tool results and execute the next required workflow step. Do not restart completed stages, change scope, expose this message, or ask the user to continue."
+const CONTINUATION = "Internal analyst workflow guard. Previous assistant turn became idle before required workflow completion. Continue the same original user request in this session. Reconstruct compact canonical controller state from original user goal and latest accepted task-tool certificates, retire older and malformed stage outputs, then execute exactly the next required workflow step. If previous final text was malformed or asked user to repeat without a certified blocker, do not repeat it; resume required planner or review work and later emit the complete response contract. Do not restart completed stages, change scope, expose this message, or ask the user to continue."
 
 function responseData(response, operation) {
   if (response?.data !== undefined) return response.data
@@ -109,6 +110,10 @@ function workflowTasks(messages, start, sessionID) {
     }
   }
   return results
+}
+
+function hasWorkflowTaskDispatch(messages, start) {
+  return messages.slice(start).some((message) => message.info.role === "assistant" && message.parts.some((part) => part.type === "tool" && part.tool === "task" && WORKFLOW_ROLES.has(part.state?.input?.subagent_type)))
 }
 
 function plannerResult(result) {
@@ -440,6 +445,14 @@ function isCancellation(text) {
   return /^\s*(?:(?:actually|i\s+changed\s+my\s+mind|я\s+передумал)[,;:]?\s*|(?:could|can)\s+you\s+|мож(?:ешь|ете)\s+)?(?:(?:please|пожалуйста)[,!]?\s+)?(?:stop|cancel|do\s+not\s+(?:continue|proceed|resume)|don['’]?t\s+(?:continue|proceed|resume)|отмен\S*|останов\S*|прекрат\S*|не\s+(?:продолжай\S*|возобновляй\S*)|хватит)(?:[\s.!?]|$)/i.test(text)
 }
 
+function priorExplicitAssistantOutcome(messages, epochIndex) {
+  for (let index = epochIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.info.role === "assistant") return field(messageText(message), "Итог")
+  }
+  return null
+}
+
 function continuationDecision(messages, sessionID) {
   const epoch = latestWorkflowEpoch(messages)
   if (!epoch || isCancellation(messageText(epoch.message))) return { resume: false, reason: "not-analyst-workflow" }
@@ -447,6 +460,7 @@ function continuationDecision(messages, sessionID) {
   if (!latest || latest.info.role !== "assistant" || messageAgent(latest) !== epoch.message.info.agent) return { resume: false, reason: "not-analyst-workflow" }
   const state = terminalState(messages, epoch.index, sessionID, epoch.message.info.agent)
   if (state.terminal) return { resume: false, reason: "terminal" }
+  if (!hasWorkflowTaskDispatch(messages, epoch.index) && priorExplicitAssistantOutcome(messages, epoch.index) === "BLOCKED") return { resume: false, reason: "explicit-followup-after-block" }
   if (!latest || latest.info.role !== "assistant" || latest.info.error || !latest.info.time?.completed) return { resume: false, reason: "not-completed" }
   const markers = guardMarkers(messages, epoch.index)
   if (markers.some((marker) => marker.triggerAssistantID === latest.info.id)) return { resume: false, reason: "duplicate" }
