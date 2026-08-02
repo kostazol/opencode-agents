@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0 - 2026-08-02
+
+### Changed
+
+- Batch every independent actionable plan-review finding into one exhaustive dependency-first review response and one bounded planner revision.
+- Keep analyst review loops running in the same user turn until reviewed tasks are ready or a defined workflow blocker occurs.
+- Discover ignored workflow artifacts through exact target-directory glob and read operations.
+- Raise both analyst primary action budgets to 200 steps.
+- Return edit-free planner `REJECTED` results for invalid input, incompatible review batches, and target collisions, with autonomous analyst recovery paths.
+- Keep immediate blockers separate from finding occurrence fields and resolve planner-detected request-slug collisions through deterministic suffix retries.
+
 ## 2.1.0 - 2026-08-02
 
 ### Changed

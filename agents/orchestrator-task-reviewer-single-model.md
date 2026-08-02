@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.1.0
+# OpenCode Agents version: 2.2.0
 description: Reviews one single-model task and records bounded repair directions without editing product code.
 mode: subagent
 hidden: true
