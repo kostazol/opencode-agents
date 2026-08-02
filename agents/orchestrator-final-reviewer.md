@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.1
+# OpenCode Agents version: 2.4.0
 description: Independent Terra final reviewer and repeated-finding loop diagnostician for one executor task.
 mode: subagent
 hidden: true

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.1
+# OpenCode Agents version: 2.4.0
 description: Terra task adjuster that records standard-workflow findings, corrects task instructions, and exclusively approves expected-path expansion.
 mode: subagent
 hidden: true

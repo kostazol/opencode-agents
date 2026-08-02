@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.4.0 - 2026-08-02
+
+### Added
+
+- Reassess existing partially implemented plans against completed task evidence and current repository state without creating a suffixed replacement target.
+- Support independently reviewed progressive planning checkpoints through `PARTIAL_READY` when implementation must produce evidence required for later planning.
+- Preserve completed tasks as immutable history, supersede obsolete unexecuted tasks, and create corrective tasks for demonstrated gaps in completed outcomes.
+- Allow one exhaustive clarification batch after initial evidence discovery and in-memory planning, then keep all resumed planning and review autonomous.
+
+### Changed
+
+- Certify `READY`, `PARTIAL_READY`, and reassessment-only `SATISFIED` outcomes with matching planner, reviewer, partition, uncertainty, and final-response fields.
+- Reject draft, superseded, and already complete tasks as executor inputs while preserving the one-task execution contract.
+
+### Fixed
+
+- Restrict analyst workflow guard continuation to sessions whose latest user and assistant messages identify the same supported analyst agent, with an early session-level non-analyst rejection.
+
 ## 2.3.1 - 2026-08-02
 
 ### Fixed

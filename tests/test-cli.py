@@ -153,7 +153,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
         self.assertIn("pass only exact paths to `read`", planner)
         reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("run `glob` with path set to the exact supplied target and pattern `tasks/[0-9][0-9]-*.md`", reviewer)
+        self.assertIn("run `glob` with path set to the exact supplied absolute target and pattern `tasks/[0-9][0-9]-*.md`", reviewer)
         self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
         ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
         self.assertIn("require Terra response to be a clean `PASS`", ultra_reviewer)
@@ -192,7 +192,8 @@ class CliTests(unittest.TestCase):
                 self.assertIn(f"  {field}", planning_reviewer)
         self.assertIn("in `REJECTION_RECOVERY`, verify evidence independently without requiring Terra PASS metadata", ultra_reviewer)
         analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
-        self.assertIn("Require `PLANNING: PASS`, `MODE: CREATE`, `Evidence: COMPLETE`", analyst)
+        self.assertIn("Call a fresh `orchestrator-task-planner` in selected `CREATE` or `REASSESS` mode", analyst)
+        self.assertIn("proposed outcome `READY`, `PARTIAL_READY`, or REASSESS-only `SATISFIED`", analyst)
         self.assertIn("steps: 200", analyst)
         self.assertIn("validate the full batch", analyst)
         self.assertIn("Findings must each contain non-`none` signature", analyst)
@@ -202,12 +203,12 @@ class CliTests(unittest.TestCase):
         self.assertIn("is batched `REVISE` through step 5", analyst)
         self.assertLess(analyst.index("validate the full batch"), analyst.index("After clean Terra `PASS`"))
         self.assertIn("Occurrence classification overrides mislabeled verdict", analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, or path mismatch triggers one fresh same-stage reviewer retry", analyst)
+        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, outcome mismatch, or path mismatch triggers one fresh same-stage reviewer retry", analyst)
         self.assertNotIn("reviewer contract unavailable after fresh retry", analyst)
         self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", analyst)
         self.assertIn("complete reviewer output verbatim", analyst)
         self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", analyst)
-        self.assertIn("contradictory verdict, mode mismatch, or path mismatch", analyst)
+        self.assertIn("contradictory verdict, mode mismatch, outcome mismatch, or path mismatch", analyst)
         self.assertIn("`Findings applied` equal to batch count", analyst)
         self.assertIn("Every ultra batch returns through one fresh planner `REVISE`, then fresh Terra review", analyst)
         self.assertIn("planner derives identity and occurrence when absent", analyst)
@@ -215,11 +216,11 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("For repeated occurrence with `NONE`, call planner in `BLOCK` mode", analyst)
         self.assertIn("Never yield while review remains incomplete", analyst)
         self.assertIn("ask user to repeat, continue, or restart", analyst)
-        self.assertIn("many distinct findings or cycles, elapsed time, context growth, or voluntary model/tool budgeting", analyst)
+        self.assertIn("many distinct findings or cycles, elapsed time, context growth, voluntary model/tool budgeting, or a valid progressive checkpoint", analyst)
         self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", analyst)
-        self.assertIn("A valid `PLANNING: REJECTED` requires mode `CREATE` or `UNKNOWN`", analyst)
+        self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", analyst)
         self.assertIn("it is never a user blocker", analyst)
-        self.assertIn("A malformed CREATE response gets one fresh same-mode planner retry", analyst)
+        self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", analyst)
         self.assertIn("A valid `REJECTED` requires mode `REVISE` or `UNKNOWN`", analyst)
         self.assertIn("A malformed REVISE planner response gets one fresh same-mode planner retry", analyst)
         self.assertIn("No REVISE planner outcome has a dead-end response branch", analyst)
@@ -234,7 +235,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("For occurrence `2` or `3` with progress `NONE`, apply a materially different bounded correction", planner)
         self.assertIn("An occurrence `4` or greater is contradictory `REVISE` input and returns `REJECTED` requiring `BLOCK`", planner)
         self.assertIn("Reject stale, contradictory, partial, or path-mismatched responses", planner)
-        self.assertIn("identical checked and ready paths matching supplied current numbered task paths", planner)
+        self.assertIn("identical checked and ready paths matching supplied current task partitions", planner)
         self.assertIn("if any conflict, return `REJECTED` with exact conflict evidence and change nothing", planner)
         self.assertIn("apply all bounded corrections in one revision", planner)
         self.assertIn("prepend one newest-first issue entry per finding", planner)
@@ -248,8 +249,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("If it now exists, return edit-free collision `REJECTED`", planner)
         self.assertNotIn("Any existing target is `BLOCKED`", planner)
         self.assertGreaterEqual(planner.count("`glob` path set to the exact supplied target and pattern `tasks/[0-9][0-9]-*.md`"), 2)
-        revise_section = planner[planner.index("9. `REVISE`"):planner.index("10. `BLOCK`")]
-        block_section = planner[planner.index("10. `BLOCK`"):planner.index("11. `FINALIZE`")]
+        revise_section = planner[planner.index("11. `REVISE`"):planner.index("12. `BLOCK`")]
+        block_section = planner[planner.index("12. `BLOCK`"):planner.index("13. `FINALIZE`")]
         self.assertIn("materially different bounded correction", revise_section)
         self.assertNotIn("materially different bounded correction", block_section)
         self.assertIn("unresolved user-visible product decision", analyst)
@@ -265,13 +266,13 @@ class CliTests(unittest.TestCase):
         self.assertIn("Findings must each contain non-`none` signature", single_analyst)
         self.assertIn("or for immediate `BLOCKED` only with a blocker accepted by step 6", single_analyst)
         self.assertIn("Occurrence classification overrides mislabeled verdict", single_analyst)
-        self.assertIn("identical checked and ready-for-finalize paths matching current tasks", single_analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, or path mismatch triggers one fresh reviewer retry", single_analyst)
+        self.assertIn("checked paths matching all current tasks, ready-for-finalize paths matching ready tasks", single_analyst)
+        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, outcome mismatch, or path mismatch triggers one fresh reviewer retry", single_analyst)
         self.assertNotIn("reviewer contract unavailable after fresh retry", single_analyst)
         self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", single_analyst)
         self.assertIn("complete reviewer output verbatim", single_analyst)
         self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", single_analyst)
-        self.assertIn("contradictory verdict, mode mismatch, or path mismatch", single_analyst)
+        self.assertIn("contradictory verdict, mode mismatch, outcome mismatch, or path mismatch", single_analyst)
         self.assertIn("`Findings applied` equal to batch count", single_analyst)
         self.assertIn("planner derives identity and occurrence when absent", single_analyst)
         self.assertIn("If planner returns `REJECTED` or malformed response, correct inputs and dispatch fresh `BLOCK`", single_analyst)
@@ -279,9 +280,9 @@ class CliTests(unittest.TestCase):
         self.assertIn("Never yield while review remains incomplete", single_analyst)
         self.assertIn("ask user to repeat, continue, or restart", single_analyst)
         self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", single_analyst)
-        self.assertIn("A valid `PLANNING: REJECTED` requires mode `CREATE` or `UNKNOWN`", single_analyst)
+        self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", single_analyst)
         self.assertIn("it is never a user blocker", single_analyst)
-        self.assertIn("A malformed CREATE response gets one fresh same-mode planner retry", single_analyst)
+        self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", single_analyst)
         self.assertIn("A valid `REJECTED` requires mode `REVISE` or `UNKNOWN`", single_analyst)
         self.assertIn("A malformed REVISE planner response gets one fresh same-mode planner retry", single_analyst)
         self.assertIn("No REVISE planner outcome has a dead-end response branch", single_analyst)
@@ -312,13 +313,13 @@ class CliTests(unittest.TestCase):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Capture OpenCode session working directory as immutable `WORKFLOW_BASE`", content)
             self.assertIn("Never target `1_orchestrator` at Git root or any parent", content)
-            self.assertIn("current deterministic candidate target", content)
+            self.assertIn("current target", content)
             self.assertIn("target still absent", content)
-            self.assertIn("Derive one deterministic base request slug without inspecting filesystem", content)
+            self.assertIn("derive one deterministic base request slug without inspecting filesystem", content)
             self.assertIn("Never use `read`, glob, or any base-root discovery for collision detection", content)
             self.assertIn("`<request-slug>-2`, then `-3`, continuing monotonically", content)
             self.assertNotIn("Call `read` on exact `WORKFLOW_BASE/1_orchestrator`", content)
-            self.assertIn("After any valid planner `CREATE` or `REVISE` `PASS`, immediately dispatch", content)
+            self.assertIn("After any valid planner `CREATE`, `REASSESS`, or `REVISE` `PASS`, immediately dispatch", content)
         self.assertIn("Reject Git-root or repository-root substitution only when that root differs from `WORKFLOW_BASE`", planner)
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
@@ -349,6 +350,72 @@ class CliTests(unittest.TestCase):
         self.assertIn("Evidence: COMPLETE|NOT_APPLICABLE|BLOCKED", planner)
         self.assertIn("Independently verify repository evidence used by tasks", reviewer)
 
+    def test_reassessment_and_progressive_planning_contracts(self):
+        planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
+        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
+        ultra = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
+        for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
+            analyst = (ROOT / "agents" / name).read_text(encoding="utf-8")
+            self.assertIn("Select `REASSESS` only when user explicitly supplies one existing", analyst, name)
+            self.assertIn("never apply collision suffix logic", analyst, name)
+            self.assertIn("PARTIAL_READY", analyst, name)
+            self.assertIn("SATISFIED", analyst, name)
+            self.assertIn("valid progressive checkpoint", analyst, name)
+            self.assertIn("User executes each ready task separately and later invokes REASSESS", analyst, name)
+            self.assertIn("open exactly one clarification gate", analyst, name)
+            self.assertIn("Any answer turn consumes the gate", analyst, name)
+            self.assertIn("no role may ask another clarification question", analyst, name)
+        for contract in (
+            "Require mode `CREATE`, `REASSESS`, `REVISE`, `BLOCK`, or `FINALIZE`",
+            "Treat every `COMPLETE` task as immutable",
+            "create a new corrective task",
+            "mark obsolete unexecuted tasks `SUPERSEDED`",
+            "Never delete or rename task files",
+            "new tasks only after the current maximum number",
+            "accept any exact existing target name, including one previously assigned a CREATE collision suffix",
+            "If any task is `IN_PROGRESS` or `BLOCKED`",
+            "If a required new task would exceed `99-*.md`",
+            "Progressive planning may propose `PARTIAL_READY` only after bounded static evidence discovery proves",
+            "Context size, elapsed time, task count, complexity, multiple ordinary technical options, weak decomposition",
+            "`SATISFIED` is valid only in `REASSESS`",
+            "Deferred scope: <none or exact concise scope>",
+            "Uncertainty IDs: <ordered IDs|none>",
+            "one complete in-memory planning attempt before any clarification or write",
+            "one exhaustive question batch",
+            "After explicit answers, set gate `CONSUMED` even when answers are incomplete",
+            "never ask follow-up questions or return `WAITING` again",
+            "PLANNING: PASS|REJECTED|BLOCKED|CLARIFICATION_REQUIRED",
+            "Target: <exact WORKFLOW_BASE-relative 1_orchestrator/<request>/>",
+            "Superseded reason: none",
+            "Replacement: none",
+            "Uncertainty ID: none",
+            "Static evidence exhausted: none",
+            "Unlock tasks: none",
+            "Affected deferred scope or tasks: none",
+        ):
+            self.assertIn(contract, planner)
+        for planning_reviewer in (reviewer, ultra):
+            self.assertIn("For origin `REASSESS`", planning_reviewer)
+            self.assertIn("Independently validate proposed `PARTIAL_READY`", planning_reviewer)
+            self.assertIn("Unsupported partial rationale is a repairable finding", planning_reviewer)
+            self.assertIn("Confirmed outcome: READY|PARTIAL_READY|SATISFIED|none", planning_reviewer)
+            self.assertIn("Uncertainty confirmation: CONFIRMED|REJECTED|NOT_APPLICABLE", planning_reviewer)
+            self.assertIn("Reviewers never accept gate `OPEN` or `WAITING`, ask clarification questions, or create another gate", planning_reviewer)
+            self.assertIn("Clarification incorporation: CONFIRMED|NOT_APPLICABLE", planning_reviewer)
+            self.assertIn("Questions: <exact compact batch|none>", planning_reviewer)
+            self.assertIn("Confirmed uncertainties: <exact `ID{question=...;static=...;implementation=...;unlock=...;durable=...;affected=...;condition=...}` entries", planning_reviewer)
+        for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
+            executor = (ROOT / "agents" / name).read_text(encoding="utf-8")
+            self.assertIn("Reject `DRAFT`, `SUPERSEDED`, and `COMPLETE`", executor)
+        maintenance = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Analyst `REASSESS` uses one exact existing target", maintenance)
+        self.assertIn("Planner may propose `PARTIAL_READY` only", maintenance)
+        self.assertIn("one exhaustive clarification gate", maintenance)
+        self.assertIn("### 5. Пересмотреть оставшийся план", readme)
+        self.assertIn("### Одно уточнение перед автономным workflow", readme)
+        self.assertIn("## 2.4.0 - 2026-08-02", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+
     def test_planning_rejection_recovery_contracts(self):
         planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
         for contract in (
@@ -366,7 +433,7 @@ class CliTests(unittest.TestCase):
                 "Never paraphrase, flatten, rename, omit a wrapper, or manually reconstruct finding fields",
                 "never synthesize a singular finding from prior history",
                 "classify it as a planner defect and retry planner once with the same reviewer output verbatim",
-                "exact current task paths, and exact rejected planner response verbatim",
+                "exact current task partitions, and exact rejected planner response verbatim",
                 "classify it as a malformed internal response and immediately fresh-retry with complete rejection-recovery inputs",
                 "never accept it as an access or user blocker",
             ):
@@ -378,9 +445,9 @@ class CliTests(unittest.TestCase):
             normal = planning_reviewer.index("In `NORMAL`")
             recovery = planning_reviewer.index("In `REJECTION_RECOVERY`")
             self.assertLess(normal, recovery)
-            self.assertIn("exact current task paths", planning_reviewer)
+            self.assertIn("exact current task partitions", planning_reviewer)
             self.assertIn("read each remaining exact current task", planning_reviewer)
-            self.assertIn("verify enumerated paths equal supplied current task paths", planning_reviewer)
+            self.assertIn("verify enumerated paths normalize to supplied relative checked task paths", planning_reviewer)
             self.assertIn("do not require an unavailable prior or current planner `PASS`", planning_reviewer)
             self.assertIn("while task files are readable", planning_reviewer)
         self.assertIn("do not require an unavailable prior or current planner `PASS`, its metadata, or a Terra `PASS`", ultra_reviewer)

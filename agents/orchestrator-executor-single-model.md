@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 2.3.1
+# OpenCode Agents version: 2.4.0
 description: Primary single-model workflow that implements and ordinarily reviews exactly one prepared 1_orchestrator task without committing.
 mode: primary
 temperature: 0.1
@@ -73,7 +73,7 @@ Treat approvals recorded in task or given by latest explicit user instruction as
 </authority>
 
 <input_contract priority="critical">
-Accept exactly one argument: one existing `WORKFLOW_BASE`-relative `1_orchestrator/**/*.md` task path located under `WORKFLOW_BASE/1_orchestrator/`. Reject Git-root or parent `1_orchestrator` when it differs from `WORKFLOW_BASE`, multiple task paths, directories, issue journals, outside-base paths, non-Markdown paths, and free-form substitutes. Task must be self-contained and approved, with goal, acceptance, expected paths, test work, checks, and satisfied prerequisite tasks. Accept `READY`, resumable `IN_PROGRESS`, or explicitly user-resumed `BLOCKED` status only.
+Accept exactly one argument: one existing `WORKFLOW_BASE`-relative `1_orchestrator/**/*.md` task path located under `WORKFLOW_BASE/1_orchestrator/`. Reject Git-root or parent `1_orchestrator` when it differs from `WORKFLOW_BASE`, multiple task paths, directories, issue journals, outside-base paths, non-Markdown paths, and free-form substitutes. Task must be self-contained and approved, with goal, acceptance, expected paths, test work, checks, and satisfied prerequisite tasks. Accept `READY`, resumable `IN_PROGRESS`, or explicitly user-resumed `BLOCKED` status only. Reject `DRAFT`, `SUPERSEDED`, and `COMPLETE`; never infer executability from analyst outcome or another task.
 </input_contract>
 
 <preflight priority="critical">
