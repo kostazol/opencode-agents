@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and update OpenCode agents and plugins."""
+"""Install and update OpenCode agents."""
 
 from __future__ import annotations
 
@@ -22,25 +22,72 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "3.0.1"
+VERSION = "4.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
-GROUP_PATTERNS = {"agents": "*.md", "plugins": "*.js"}
-GROUPS = tuple(GROUP_PATTERNS)
+SOURCE_GROUP_PATTERNS = {"agents": "*.md"}
+TARGET_GROUPS = ("agents", "plugins")
 MAX_SOURCE_FILE_BYTES = 1_000_000
 MAX_GITHUB_RESPONSE_BYTES = 2_000_000
 MAX_SOURCE_FILES = 100
 MAX_SOURCE_TOTAL_BYTES = 5_000_000
-OWNED_PREVIOUS_FILE_HASHES = {
+RETIRED_FILE_HASHES = {
     Path("plugins/analyst-workflow-guard.js"): frozenset({
         "2a4c3223c4283526105123f3661881a455b9b57b15a6290aae479d839ab66bc1",
+        "4f635a0921441e87098d61f2d18c6f2eab408489fad345e907a2e37a70b4f55f",
         "d333fe9c8f57dbe7a9c0a0a65d9589daec8f7857f97f120fa3fe7818d27a9b90",
         "f170158806b988411e3cd875e64a48207752e0f564f72f8474ccbead4aad798b",
         "e63eb3089e48f1f481f8065d6d660270408945c8a2c49276398303b9e8e60bec",
         "77bdc5e407d176d73d1532bc5dfb2c2c11c28b0ceeee5d4eec793c6f128731f4",
     }),
-}
-RETIRED_FILE_HASHES = {
+    Path("agents/orchestrator-analyst-single-model.md"): frozenset({
+        "0f5dda6a9eee577d28cc36b74e5c722e714c58a05a2105c5050c52651721ca59",
+        "4d28f4e61e8133b33826cf4c0349d169d6aece9fbeccee94ec64ace5a6ccb360",
+        "538560e732eaa37e461eb9b083ffb284fd8ab8c499a180d3b4081f28d7d14da4",
+        "61b1abe0be8709e0975a114f2bc3e7fa7fc964a646552e4417a9a22bc87b9481",
+        "652d5faddf8ef14e01411d7b1c75dff37673fb6a8d22c9c756bc873d5269074c",
+        "690bd299802f93313a03836192943aaa5d1e93d7ed81151670926cb92c57bd5e",
+        "8c01980229e8c387a6b64f283a80583107042a2661a83ac009a306fb39ccf8f3",
+        "c9127f93a2d48c91c636da88faef862ee6fc24d373925cada41870d5cd683e2b",
+        "d25b7d7da00a23ca70c3755fd104f163643fa6f053c504cf1d00f880b1d2a98a",
+        "d723659883e56e1de39edab54d29fb2e72ea67f9e15daaa8507bc8de885c7dbe",
+        "d8f260b764661fb8d55af37929b0615b9c8eaeeebd7772b9b24818f5977798c2",
+        "e7bd3a2adcc4522a0ced8c0d305d6143a6238592d356cab61fb40659045d04ca",
+        "f0b40517a374b23b5b0a072041cb5a1f16eb98feecfb4338edcc90c4772a2df2",
+        "f542dd6a4c4acc3b16b1abd4f3d66c01df2be63f1c2c6ae8266d47f57fa6ce63",
+    }),
+    Path("agents/orchestrator-executor-single-model.md"): frozenset({
+        "0f12a7731fc097b7d5e5960e1a0b20c3467c20eb1a987e823bf0fdba791b9d05",
+        "12bdc6390ece9117e7710d7225c258f35d0a79e8edb79d7807d2024f984bf3ac",
+        "1e3777d055fdc9a3985b076de44d00c241bb540f7d7d912309fd96b3242977e4",
+        "1f8b77c37347f803f61c734d19d010b6baa0e8569d5ff31dab464a209ac5b45d",
+        "2f27be237a111396a8ce9e4a456e46213824a0c0c98cfac2abf88465aff8c531",
+        "7855950b7b855d72cec29b19317b0aa5985a227c2ec127f8183216dcf91be15e",
+        "99b39d171fb4ae52a9118a003f5a4a1bd33ac23f2d3445a824d70edf46a24575",
+        "b9afc2c0af9474cfd120d85b55d6accef54cdea84830b2d2407fb6c519b48c99",
+        "cbec0dfb2c0570f87c00f907c39828b7ded5dee10678dde3d61ce27bb5ac9917",
+        "cf6ea98c03d8309a2ae5d516f34a6365a32be7f3e41fb175a226d1ae7023ada8",
+        "e02798b6d1c7cdd7051c5d0644e2e11240421c66312d12a2215244955deb9749",
+        "ed5ccf4d1b2a9bd1ed2578100ce00e3c86db15ef08e1758db4816e73c19df0d0",
+        "f71126b4b1cdb6f1012231bb62280b5ea39456cc4eb577540217cb30b384ed17",
+        "f8dbb80cca5ec4f0d70f49ea5bb15b349c1c317e8da501ba0e2cdb2ad498e622",
+    }),
+    Path("agents/orchestrator-task-reviewer-single-model.md"): frozenset({
+        "1fa558a2fdcb3b436daaf5c13c1f67020c3c202d3df2bee86124d50923935b75",
+        "21770278f39e34432d095a8ab49c5f54f90e76e28cabe27b6f232821644c84d9",
+        "3f6a1078281c44f6db4b5d04483e43d3d69acd9581269e0c104a048f55b44dd0",
+        "4b0012d0c3a5a4e0395e6b1a5267d316e8786cc89711d5ce07d1a071752d606e",
+        "5d1e0d930ca819b2fd2e32bfc52957e5bd4b9920a29a215899cb5a9e847bf78d",
+        "5e3be933cf3909696fb157e066ff1634394c94dfac920c23b21612afab74a489",
+        "6683a5750a2f630a375ace4499b41ed7347ffbe99e5139bca6bdf9878d795d72",
+        "74047cee6caf6d6e8c1f72a8c6dc076777a1e219dc3cafeb5b39697ee823c673",
+        "74ab4870868501ef154620e55a1703c26e0768c363b2bb19c9bb5af6f30fac41",
+        "abf01b140fc324fb6b50376bee198bf7156fd965ff0c96da9213b74ce67321bf",
+        "b133d261ad77b48688936e31d1f6d19522682790ed4782f59c624414a0a7ad12",
+        "d1547bb3796a7a1c06ec26affa45d026daf5b449910d0c014061c89eb1f318d8",
+        "d23980b2fdab70d9a175c785973baf1058c7da1584d925395dcb16231f54a96b",
+        "e30a83d339c8b059d1c106fda4a4a36c0edbf15029ed51018f6a32479a1e6ddf",
+    }),
     Path("agents/orchestrator-recon.md"): frozenset({
         "18cbce96483f8b1ef7d2a90b2184853cd82af1f1bcd6158a457409f41742dd83",
         "6fdfc984f4e23ab587ebe859214e0c7ecac26bf330009f8faf9cd29c72d65625",
@@ -73,7 +120,7 @@ def default_target() -> Path:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Install and update OpenCode agents and plugins.")
+    result = argparse.ArgumentParser(description="Install and update OpenCode agents.")
     result.add_argument("command", choices=("install", "update", "status"))
     result.add_argument("--source", type=Path, help="Use a local source directory instead of GitHub API.")
     result.add_argument("--repository", default=None, help="GitHub repository URL or owner/name.")
@@ -87,11 +134,11 @@ def parser() -> argparse.ArgumentParser:
 
 def source_files(source: Path, target: Path):
     files = []
-    for group in GROUPS:
+    for group in SOURCE_GROUP_PATTERNS:
         source_group = source / group
         if not source_group.is_dir():
             raise RuntimeError(f"source missing {group}/: {source}")
-        for source_file in sorted(source_group.glob(GROUP_PATTERNS[group])):
+        for source_file in sorted(source_group.glob(SOURCE_GROUP_PATTERNS[group])):
             files.append((source_file, target / group / source_file.relative_to(source_group)))
     yield from sorted(files, key=lambda item: str(item[1]))
 
@@ -116,7 +163,7 @@ def installable_repository_path(value: str) -> bool:
     if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 2:
         return False
     group, name = relative.parts
-    return group in GROUP_PATTERNS and Path(name).match(GROUP_PATTERNS[group])
+    return group in SOURCE_GROUP_PATTERNS and Path(name).match(SOURCE_GROUP_PATTERNS[group])
 
 
 class SameHostRedirectHandler(HTTPRedirectHandler):
@@ -225,8 +272,8 @@ def source_metadata_file(source: Path) -> Path:
     instructions = source / GLOBAL_INSTRUCTIONS_FILE
     if instructions.exists():
         return instructions
-    for group in GROUPS:
-        files = sorted((source / group).glob(GROUP_PATTERNS[group]))
+    for group in SOURCE_GROUP_PATTERNS:
+        files = sorted((source / group).glob(SOURCE_GROUP_PATTERNS[group]))
         if files:
             return files[0]
     raise RuntimeError(f"source contains no files for metadata: {source}")
@@ -398,7 +445,7 @@ def validate_backup(backup: Path, source: Path, target: Path) -> Path:
 def validate_target(target: Path) -> None:
     if is_link_or_reparse(target):
         raise RuntimeError(f"refusing symlink target root: {target}")
-    for group in GROUPS:
+    for group in TARGET_GROUPS:
         validate_target_group(target / group)
 
 
@@ -517,10 +564,6 @@ def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) ->
                 print(f"current {relative}")
                 counts["unchanged"] += 1
             elif target_file.exists():
-                known_hashes = OWNED_PREVIOUS_FILE_HASHES.get(relative)
-                if known_hashes is not None and hashlib.sha256(target_file.read_bytes()).hexdigest() not in known_hashes:
-                    print(f"preserve user-owned {relative}")
-                    continue
                 print(f"update {relative}")
                 if not dry_run:
                     backup_file = backup / relative

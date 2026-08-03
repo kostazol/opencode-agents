@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.0 - 2026-08-03
+
+### Changed
+
+- **Breaking:** reduce public surface to exactly two primary agents: `orchestrator-analyst` and `orchestrator-executor`; remove single-model variants.
+- Make OpenCode's native agentic task loop the sole runtime harness. Remove recovery plugin, custom workflow certificates, idle recovery, and synthetic continuation.
+- Keep analyst orchestration on fresh subagents, one native `question` batch, exact approval, per-stage review, and ordered adjacent-pair review.
+- Invoke pinned Sol only as authority for demonstrated substantive backtracking; remove whole-plan Sol final review.
+- Forbid progress-only final text during autonomous work; phase updates must continue immediately with the next tool call.
+- Add mandatory isolated live-model analyst acceptance test covering approval, revision-1 two-stage and pair reviews without `REVISE`, finalization, and absence of executor calls or synthetic turns.
+- Preserve executor's one-task, clean-worktree, non-detached-HEAD, no-Git-mutation flow with fresh implementation and review roles.
+- Make installation agents-only. Retire known project-owned old plugin and single-model files while preserving unknown and customized files.
+
+### Removed
+
+- Remove plugin lifecycle as workflow infrastructure because it duplicated native scheduling, introduced hidden recovery state, and made workflow correctness depend on synthetic messages instead of explicit agent contracts.
+
 ## 3.0.1 - 2026-08-03
 
 ### Fixed

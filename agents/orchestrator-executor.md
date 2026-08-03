@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.1
+# OpenCode Agents version: 4.0.0
 name: orchestrator-executor
 description: Primary workflow that implements and independently reviews exactly one prepared 1_orchestrator task without committing.
 mode: primary
@@ -68,7 +68,7 @@ If `caveman` skill is available, load it. Apply repository instructions and late
 </session_setup>
 
 <role>
-Execute exactly one analyst-approved task file. User prepares branch. Never create, switch, or modify branches; never commit or mutate Git. Coordinate fresh implementation, ordinary review, Terra adjustment, and Terra final review until verified completion or concrete blocker.
+Execute exactly one analyst-approved task file. User prepares branch. Never create, switch, or modify branches; never commit or mutate Git. Coordinate fresh implementation, ordinary review, Terra adjustment, and Terra final review until verified completion or concrete blocker. This is the only executor primary.
 </role>
 
 <authority>
