@@ -1,232 +1,213 @@
 # OpenCode Agents
 
-Четыре автономных primary workflow для standard и single-model анализа и выполнения задач в OpenCode, с runtime guard незавершённого analyst workflow.
+Четыре autonomous primary workflow для staged-аналитики и выполнения задач в OpenCode. Analyst сначала согласует этапы с пользователем, затем планирует каждый этап, проверяет соседние этапы и выпускает self-contained task files. Runtime guard безопасно продолжает только незавершённую внутреннюю работу.
 
 ## Архитектура
 
 ```text
-orchestrator-analyst (run with Terra)
-  model-inheriting evidence discovery and task planning
-  independent model-inheriting plan review
-  independent Sol ultra plan review
-  self-contained task Markdown files
+orchestrator-analyst (рекомендуется: Terra)
+  fresh INITIAL decomposition
+  independent exhaustive question review
+  fresh RESTAGE decomposition
+  explicit user approval
+  stage planning/review loops
+  adjacent-pair consistency loops
+  Sol backtrack authority and final review
 
 orchestrator-analyst-single-model
-  evidence discovery, planning, and review on caller model
-  no Sol ultra plan review
+  тот же staged workflow на caller model
+  substantive backtrack требует решения пользователя
+  no Sol review
 
-orchestrator-executor <one-task.md> (run with Luna)
-  fresh implementation
-  independent ordinary review
-  Terra task adjustment
-  Terra final review or loop diagnosis
-  validated uncommitted result
+orchestrator-executor <one-task.md> (рекомендуется: Luna)
+  implementation/review/adjustment/final review
 
 orchestrator-executor-single-model <one-task.md>
-  implementation and corrective ordinary review on caller model
-  reviewer records task repair direction
-  no separate final review
+  implementation/review на caller model
 ```
 
-Других primary agents, aliases и profile variants нет. Analyst не запускает implementation. Он может создать новый план либо пересмотреть существующий после выполнения части задач. Executor принимает ровно один executable task file и не переключает ветки, не stage и не commit изменения.
+Других primary agents и aliases нет. Analyst не меняет product code и Git. Executor принимает ровно один executable task file, не переключает ветки, не stage и не commit изменения.
 
-Каждый agent prompt self-contained и содержит только нужные ему workflow contracts. Runtime protocol file не устанавливается и не читается; согласованность producer/consumer fields проверяется tests. Global auto-discovered plugin продолжает analyst в той же session, если модель добровольно завершила turn до обязательного review или finalization.
+## Analyst: полный цикл
 
-## Как пользоваться
+### 1. Исследование и вопросы
 
-После установки полностью перезапустите OpenCode. В agent selector выберите нужный primary agent.
+Выберите `orchestrator-analyst` или `orchestrator-analyst-single-model` и отправьте полный запрос.
 
-### 1. Подготовить задачи через analyst
-
-Выберите `orchestrator-analyst` с Terra для Sol final plan review либо `orchestrator-analyst-single-model` для workflow только на выбранной модели. Отправьте полный запрос одним сообщением:
+Fresh decomposer исследует repository и создаёт предварительную последовательность этапов. Другой fresh reviewer независимо проверяет скрытые material user-visible решения. Если нужны ответы:
 
 ```text
-Добавь в API загрузку аватара пользователя.
-
-Требования:
-- принимать JPEG и PNG до 5 MB;
-- сохранять файл через существующий storage abstraction;
-- возвращать URL загруженного изображения;
-- добавить unit и integration tests;
-- не менять публичный контракт других endpoints.
+Итог: НУЖНЫ_ОТВЕТЫ
+Target: 1_orchestrator/avatar-upload/
+Этапы: 3
+Вопросы:
+- Q01: постоянный или временный URL? ...
+Действие: ответьте на все вопросы одним сообщением
 ```
 
-Standard analyst выполнит model-inheriting evidence discovery/planning, fresh model-inheriting review и independent Sol ultra plan review. Single-model analyst выполнит discovery, planning и review на выбранной модели. Результат:
+Вопросы приходят одним исчерпывающим batch. После ответа новый subagent заново исследует задачу и формирует этапы. Даже когда вопросов нет, запускается fresh RESTAGE-анализ: INITIAL proposal никогда не принимается автоматически.
+
+### 2. Согласование этапов
+
+Analyst показывает полную последовательность: outcome, boundaries, dependencies, expected path areas, contracts, tests, ordering, approvals и non-goals.
+
+```text
+Итог: НУЖНО_ОДОБРЕНИЕ
+Target: 1_orchestrator/avatar-upload/
+Approval ID: avatar-upload-g0-a7c2
+Этапы:
+- S01: storage contract and implementation
+- S02: upload endpoint and validation
+- S03: integration coverage and documentation
+Действие: отправьте `APPROVE avatar-upload-g0-a7c2`
+```
+
+Только точная команда `APPROVE <approval-id>` запускает запись task files. Обычное «ок», другой ID или изменение требований не считается approval. До approval target tasks и journal не создаются.
+
+### 3. Планирование каждого этапа
+
+После approval analyst автономно выполняет для S01, затем S02 и далее:
+
+```text
+планирование одного этапа
+fresh stage review
+корректировка текущего этапа при findings
+fresh stage review
+```
+
+Цикл продолжается до `PASS`. Planner пишет только текущий этап. Каждый task остаётся working vertical slice и содержит stage metadata, acceptance, prerequisites, expected product paths, implementation, tests и validation.
+
+### 4. Согласованность соседних этапов
+
+Когда все этапы отдельно прошли review, analyst проверяет пары строго по порядку:
+
+```text
+S01 + S02
+S02 + S03
+S03 + S04
+```
+
+Проверяются границы, зависимости, contracts, migrations/configuration, expected paths, execution order и test ownership. Исправление справа предпочтительно.
+
+Левый этап можно менять как `MINOR`, только если неизменны:
+
+- user-visible behavior;
+- stage boundaries и dependencies;
+- expected paths и contracts;
+- test ownership и cases;
+- execution ordering;
+- approvals и non-goals.
+
+После minor edit повторяются stale stage и pair reviews. Любое другое изменение — substantive.
+
+Standard workflow передаёт substantive finding fresh Sol reviewer. Только Sol может разрешить exact corrective amendments, создать replacement effective-contract ID и выбрать самый ранний invalidated stage. Active suffix tasks сначала возвращаются в `DRAFT/PENDING`, затем planning/review повторяются последовательно. Initial approval делегирует Sol только доказанные corrective amendments, не новый scope. Single-model workflow останавливается и показывает пользователю точные команды `RESTART <lineage-id> FROM <stage-id>` и `KEEP <lineage-id>`.
+
+После всех pair PASS standard workflow выполняет Sol final review. Planner переводит tasks в `READY/PASS` только после полной текущей цепочки проверок.
+
+### 5. Результат
 
 ```text
 Итог: READY
+Target: 1_orchestrator/avatar-upload/
+Approval ID: avatar-upload-g0-a7c2
+Этапы:
+- S01 revision 1 — PASS
+- S02 revision 2 — PASS
+- S03 revision 1 — PASS
 Задачи:
 - 1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
 - 1_orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
+Действие: none
 ```
 
-Каждый task file self-contained. `Ordered prerequisites` показывает, какие более ранние задачи должны быть завершены до выбранной задачи. Analyst не создаёт ветки и не меняет product code.
-
-### 2. Подготовить execution branch
-
-Пользователь самостоятельно создаёт или выбирает ветку. Product worktree должен быть clean; только `WORKFLOW_BASE/1_orchestrator/**` может оставаться untracked или modified.
-
-```bash
-git switch -c feature/avatar-storage
-git status --short
-```
-
-Executor не выполняет `git switch`, `git add` или `git commit`.
-
-### 3. Выполнить ровно одну задачу
-
-Выберите `orchestrator-executor` с Luna для Luna implementation/review и Terra adjustment/final review либо `orchestrator-executor-single-model` для implementation/review loop только на выбранной модели. Передайте только один task path, без второго task и дополнительных инструкций:
-
-```text
-1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
-```
-
-Standard executor:
-
-1. проверит branch, task status, prerequisites и clean product state;
-2. зафиксирует `START_COMMIT` в task file;
-3. запустит fresh implementation role;
-4. запустит independent ordinary reviewer;
-5. при findings вызовет Terra adjuster и fresh repair cycle;
-6. завершит работу только после Terra final review `PASS`.
-
-Product changes останутся uncommitted. После `DONE` пользователь проверяет diff и самостоятельно делает commit:
-
-```bash
-git status --short
-git diff --check
-git diff
-git add <нужные-файлы>
-git commit -m "feat: add avatar storage operation"
-```
-
-### 4. Выполнить следующую зависимую задачу
-
-Сначала обеспечьте присутствие результата prerequisite task в подготовленной ветке: merge, cherry-pick или новая ветка от уже завершённой работы выполняются пользователем. Затем выберите `orchestrator-executor` и передайте следующий task path:
-
-```text
-1_orchestrator/avatar-upload/tasks/02-add-upload-endpoint.md
-```
-
-Не передавайте executor весь каталог, несколько task paths или исходный пользовательский запрос. Он работает только с выбранной задачей и перечисленными в ней prerequisites.
-
-### 5. Пересмотреть оставшийся план
-
-После выполнения части большого плана снова выберите analyst и передайте exact target, authoritative request и exact completed task paths:
-
-```text
-Режим: REASSESS
-План: 1_orchestrator/avatar-upload/
-
-Исходный запрос:
-Добавить загрузку аватара пользователя с JPEG/PNG, лимитом 5 MB и тестами.
-
-Завершённые задачи:
-- 1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
-```
-
-Planner проверит, что заявленные задачи уже имеют `COMPLETE`, planning `PASS` и execution result `PASS`, не изменит их, повторно исследует repository и скорректирует только unexecuted remainder. Exact target может содержать ранее назначенный CREATE collision suffix. Наличие `IN_PROGRESS` или `BLOCKED` task останавливает reassessment до завершения её executor lifecycle. Пробел завершённого результата становится новой corrective task. Ненужная unexecuted task получает `SUPERSEDED`, но не удаляется и не переименовывается. Новые задачи получают номера после текущего максимума в двухзначном диапазоне до `99`.
-
-Возможные результаты:
-
-- `READY` — весь оставшийся scope доказуемо спланирован;
-- `PARTIAL_READY` — готов полезный executable prefix, но дальнейшее планирование зависит от evidence, которое создаст его реализация;
-- `SATISFIED` — completed outcomes уже полностью покрывают authoritative request;
-- `BLOCKED` — нужен доступ, завершение active execution lifecycle или user-visible решение.
-
-При `PARTIAL_READY` пользователь выполняет перечисленные ready tasks по одной через executor, затем явно возвращается к analyst `REASSESS` с их completed paths. Analyst и planner не запускают implementation автоматически.
-
-### Одно уточнение перед автономным workflow
-
-После bounded repository research и первого in-memory planning attempt analyst может один раз вернуть `CLARIFICATION_REQUIRED`. Вопросы задаются одним полным batch только для material user-visible решений, которые нельзя вывести из запроса и repository evidence. До ответа CREATE target остаётся отсутствующим, а REASSESS target не изменяется.
-
-Ответьте одним сообщением с полученными `Clarification ID` и `Question IDs`. Любой answer turn закрывает gate, даже если ответ неполный. После этого planner и reviewers больше не задают вопросов: ordinary technical choices выбираются автономно по repository conventions и lowest-scope reversible default. Missing access, safety constraint, unfinished execution lifecycle или решение, без которого безопасное планирование невозможно, остаются явными `BLOCKED`, но не открывают новый question batch.
-
-## Analyst
-
-Оба analyst primary agents создают задачи под `1_orchestrator/<request>/tasks/`:
+Artifacts:
 
 ```text
 1_orchestrator/<request>/tasks/<NN>-<slug>.md
 1_orchestrator/<request>/planning-issues.md
 ```
 
-`1_orchestrator` всегда создаётся внутри working directory, из которой запущена текущая OpenCode-сессия. Non-hidden имя предотвращает пропуск workflow artifacts glob-поиском OpenCode, который исключает dot-prefixed hidden directories. Git root и родительские каталоги не меняют расположение. Например, при запуске из `/repo/src/MyProject` artifacts находятся в `/repo/src/MyProject/1_orchestrator/`, даже если Git root — `/repo`. Expected product paths остаются относительными к `/repo/src/MyProject`; Git status paths `src/MyProject/...` нормализуются снятием этого prefix. Изменения вне `/repo/src/MyProject` считаются user-owned overlap. `REASSESS` всегда использует exact existing target и никогда не применяет CREATE collision suffix.
+`1_orchestrator` всегда находится внутри working directory текущей OpenCode session. Git root не меняет расположение. Index, manifest, ledger и отдельный checkpoint artifact не создаются.
 
-В `CREATE` model-inheriting planner сначала проводит bounded no-write evidence phase: раскладывает запрос на acceptance areas, ищет implementation/integration prototypes, существующие tests, test prototypes и applicable repository instructions. До завершения evidence phase будущий `1_orchestrator/<request>/` target обязан отсутствовать; planner не читает его и ничего не записывает. Затем planner создаёт working vertical slices. Каждый task self-contained, может зависеть от более ранних task paths и содержит acceptance, expected paths, проверяемые prototypes, обязательную test work и validation commands. Для `none found` task фиксирует search basis, ожидаемую новую область и ближайшую convention.
+## Reassess после выполнения
 
-Fresh model-inheriting plan reviewer независимо проверяет repository evidence, полное покрытие запроса, зависимости, buildability, scope и тесты. Каждый reviewer сначала завершает exhaustive проверку всего текущего плана, затем одним ответом возвращает все независимые demonstrated actionable findings, упорядоченные dependency-first и по impact. Analyst передаёт reviewer output в planner `REVISE` verbatim, без переименования или ручной сборки полей. Planner нормализует complete singular, unnumbered и imperfectly numbered findings в batch; presentation-only numbering или wrapper не являются причиной `REJECTED`. Planner применяет все совместимые bounded corrections одной ревизией и записывает отдельную newest-first issue entry для каждого finding. Standard analyst после чистого `PASS` запускает fresh Sol ultra reviewer. Любой исправимый Sol batch возвращается planner, затем fresh model-inheriting review и новая Sol проверка. Ordering, dependency, test ownership, path allocation, decomposition, evidence accuracy и buildability findings на occurrences `1`–`3` всегда исправляются через `REVISE`; наличие нескольких технических вариантов само по себе не блокирует planning. Первое появление каждой signature имеет progress `NOT_APPLICABLE`; при `NONE` на occurrences `2`–`3` planner обязан применить materially different correction. Счётчик каждой signature независим. Planner выполняет `FINALIZE` только после обоих `PASS`. Single-model analyst завершает после model-inheriting review `PASS`. Occurrence `4` или greater одной и той же проблемы блокирует planning независимо от ошибочно возвращённого reviewer verdict.
+После выполнения части задач снова выберите analyst и передайте exact target, authoritative request и exact completed paths:
 
-После любого успешного `CREATE`, `REASSESS` или `REVISE` analyst немедленно запускает следующий обязательный review в том же user turn. Primary сохраняет compact canonical state: исходную цель и решения пользователя, current target/partitions, только latest accepted certificates, concrete-signature counts и один next stage. Новый accepted result retire старый результат того же stage; historical retries больше не имеют authority и не пересылаются дальше. Внутренние task-tool handoff передают authoritative request, exact relative task partitions и только требуемые current planner/reviewer responses без сокращения: caveman compression, `N/A`, absolute paths, summaries и `as prior` для protocol data запрещены. Если handoff оказался неполным, primary восстанавливает его из canonical state; если complete input проигнорировал subagent, primary классифицирует role degradation, указывает exact contract defects и запускает fresh same-stage role. Internal protocol loss никогда не становится user blocker. Незавершённый review, число разных findings или cycles, elapsed time, context growth, добровольный model/tool budget и valid progressive checkpoint не разрешают `BLOCKED`, остановку или просьбу повторить, продолжить либо перезапустить запрос. Workflow останавливается только при missing access, safety constraint, unfinished declared execution lifecycle, unresolved user-visible product decision или occurrence `4` одной signature. Occurrence растёт только для того же concrete defect: новый omitted path или symbol после broad inventory correction получает отдельную signature, если он не был явно назван раньше. Reviewers и planner находят task files через exact target-directory glob/read, поэтому Git-ignore rules не скрывают workflow artifacts.
+```text
+Режим: REASSESS
+План: 1_orchestrator/avatar-upload/
+Исходный запрос: ...
+Завершённые задачи:
+- 1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
+```
 
-Progressive planning возвращает `PARTIAL_READY` только когда bounded static discovery доказывает implementation-dependent uncertainty. Готовый prefix обязан быть independently useful и buildable, произвести durable evidence, а deferred scope, uncertainty IDs и reassessment conditions должны быть exact. Model-inheriting reviewer и, в standard workflow, Sol reviewer независимо подтверждают обоснование. Task count, complexity, time, context, tool budget, ordinary technical options и weak decomposition не являются допустимыми причинами partial planning.
-
-Planner возвращает `REJECTED` без edits для malformed/contradictory mode input, семантически несовместимого finding batch или target collision. Это не user blocker: presentation-only rejection получает один planner retry с verbatim reviewer output, затем fresh rejection-recovery reviewer получает original request, exact base/target, current task paths и exact rejected response. Recovery reviewer читает actual tasks и не требует отсутствующий current planner `PASS`; metadata-only `BLOCKED` при readable tasks считается malformed internal response и повторяется. Rejected finalization перезапускает required review chain, collision использует deterministic suffixes `-2`, `-3`, ... без чтения workflow directory. Только planner проверяет существование exact candidate target через exact-path `read`, поэтому ignored existing targets и races не пропускаются. Immediate blocker остаётся отдельным от findings: `Findings: none` плюс exact blocker, user action и доказательство невозможности bounded correction.
-
-Analyst возвращает только reviewed task paths. Index и manifest не создаются.
+`COMPLETE/PASS` tasks immutable. Gap завершённого результата становится новой corrective task. Obsolete unexecuted task может получить `SUPERSEDED`, но не удаляется и не переименовывается. `IN_PROGRESS` или `BLOCKED` execution сначала должен завершить executor lifecycle.
 
 ## Executor
 
-Пользователь выбирает один task и заранее создаёт или переключает execution branch. Executor требует:
+Пользователь сам создаёт или выбирает execution branch. Product worktree должен быть clean; workflow-owned `WORKFLOW_BASE/1_orchestrator/**` может оставаться modified/untracked.
 
-- существующий non-detached `HEAD`;
-- task status `READY` и planning review `PASS`;
-- завершённые prerequisite tasks;
-- отсутствие staged, unstaged и untracked product changes;
-- только точный `WORKFLOW_BASE/1_orchestrator/**` может оставаться workflow-owned dirty state; другой `1_orchestrator` в Git worktree считается user/product state.
-
-`DRAFT`, `SUPERSEDED` и `COMPLETE` не являются executable входами. Analyst outcome не заменяет status выбранного task file.
-
-Оба executor primary agents фиксируют `START_COMMIT`, но не меняют Git. Fresh implementation и ordinary reviewer чередуются. Standard finding проходит через Terra adjuster. В single-model workflow отдельного adjuster нет: специальный reviewer сам фиксирует bounded repair direction и при доказанной необходимости расширяет expected paths, но не меняет product code.
-
-Execution findings хранятся newest-first рядом с task:
+Передайте executor ровно один task path:
 
 ```text
-1_orchestrator/<request>/tasks/<NN>-<slug>.issues.md
+1_orchestrator/avatar-upload/tasks/01-add-storage-operation.md
 ```
 
-Обычные роли читают только последние одну-две записи. Standard executor после трёх неудачных repairs одной semantic finding вызывает Terra full-history loop diagnosis; single-model executor завершает task как blocked. Разные findings продолжаются только при измеримом прогрессе.
+Standard executor проверит preconditions, запишет `START_COMMIT`, выполнит implementation, ordinary review, Terra adjustment и Terra final review. Single-model executor завершает после model-inheriting implementation/review loop. Product diff остаётся uncommitted.
 
-Standard executor после ordinary review PASS запускает fresh Terra final reviewer. Его finding возвращается через adjuster, fresh executor и ordinary reviewer. Standard task получает `COMPLETE` только после Terra PASS; single-model task получает `COMPLETE` после ordinary review PASS. Product diff остаётся пользователю без commit.
+Не передавайте executor весь каталог, несколько tasks или исходный запрос. Следующий dependent task запускайте только после присутствия prerequisite result в подготовленной ветке.
 
-## Автономность и безопасность
+## Structured recovery harness
 
-- Standard build, test, package restore и localhost-only testing через project commands выполняются автономно в trusted development repository. Raw network clients не выдаются как универсальный localhost escape hatch.
-- Repository-controlled checks выполняются с обычными правами текущего пользователя. Production secrets не должны присутствовать в development environment.
-- Agent prompts и direct-read permissions запрещают целевое использование common secret files, но search tools и запущенный repository code не являются OS sandbox.
-- Secrets, credentials, deploy, publish, release, destructive actions, unrelated external effects и overlap с user-owned changes требуют решения пользователя.
-- Git mutation полностью запрещена: нет branch creation, checkout, stage, commit, reset, restore, clean, stash, merge, rebase или push.
+Guard plugin предоставляет внутренний `workflow_certificate` tool. Analyst записывает machine-validated JSON state после каждого принятого перехода. Пользователь сертификаты не видит и не заполняет.
 
-## Сообщения пользователю
+Это заменяет хрупкий разбор строк вроде `PLANNING: PASS` из model prose. Guard читает completed certificate tool calls, а обычный ответ остаётся дружелюбным сообщением человеку.
 
-Primary agents сообщают только смену пользовательской фазы:
+На OpenCode root-session idle guard:
+
+- игнорирует child, non-analyst, busy, errored и cancelled sessions;
+- не продолжает `WAITING_ANSWERS`, `WAITING_APPROVAL`, `BLOCKED` и `COMPLETE`;
+- продолжает `RUNNING` или turn без текущего certificate;
+- сохраняет исходные agent, model и variant;
+- слушает `session.status` idle и compatibility `session.idle`;
+- использует deterministic message ID, persisted marker, locks и bounded retry caps.
+
+Plugin — recovery guard, не workflow engine. Он не выбирает этапы, не меняет scope и ничего не пишет.
+
+## Понятные статусы
+
+Analyst сообщает смену phase по-русски:
 
 ```text
-Планирование: ...
-Анализ и реализация: ...
-Проверка: ...
-Финальное ревью: ...
-Готово: ...
-Стоп: <что требуется от пользователя>
+Этап: Исследование. Стадия: 0/? — изучаю задачу. Действие пользователя: ничего.
+Этап: Планирование. Стадия: 2/4 — готовлю tasks. Действие пользователя: ничего.
+Этап: Проверка связи. Пара: S02+S03 — проверяю contracts. Действие пользователя: ничего.
+Этап: Ожидание approval — отправьте `APPROVE <id>`.
+Этап: Возврат. Стадия: 2/4 — Sol разрешил substantive backtrack.
+Готово: план проверен и tasks готовы.
+Стоп: <почему остановлено и точное действие пользователя>.
 ```
 
-Внутренние signatures, cycle counts, issue journals и handoffs не выводятся. Analyst возвращает task paths; executor возвращает изменённые product paths, проверки, риски и blocker.
+Internal role names, prompts, retries, certificates, signatures и journals не показываются.
+
+## Безопасность
+
+- Standard build, test, restore и localhost checks в trusted repository выполняются автономно.
+- Secrets, deploy, publish, release, destructive actions, unrelated external effects и user-owned overlap требуют решения пользователя.
+- Git mutation запрещена: agents не выполняют branch creation, checkout, stage, commit, reset, restore, clean, stash, merge, rebase или push.
+- Prompt permissions уменьшают accidental access, но не являются OS sandbox.
 
 ## Состав
 
-- `orchestrator-analyst` — primary анализа и подготовки задач.
-- `orchestrator-analyst-single-model` — primary анализа и подготовки задач только на модели caller.
-- `orchestrator-task-planner` — model-inheriting evidence discovery, task planning и planning-journal maintenance.
-- `orchestrator-plan-reviewer` — independent model-inheriting plan review.
-- `orchestrator-plan-ultra-reviewer` — independent Sol ultra plan review.
-- `orchestrator-executor` — primary выполнения одной задачи.
-- `orchestrator-executor-single-model` — primary выполнения одной задачи только на модели caller.
-- `orchestrator-task-executor` — model-inheriting implementation role.
-- `orchestrator-task-reviewer` — model-inheriting read-only ordinary reviewer standard workflow.
-- `orchestrator-task-reviewer-single-model` — model-inheriting ordinary reviewer и task correction authority single-model workflow.
-- `orchestrator-task-adjuster` — Terra task correction and scope authority standard workflow.
-- `orchestrator-final-reviewer` — Terra final review and loop diagnosis.
-- `analyst-workflow-guard.js` — runtime plugin: на root-session idle проверяет terminal workflow certificates и безопасно продолжает незавершённый analyst на исходных agent и model.
+- `orchestrator-analyst`, `orchestrator-analyst-single-model` — staged analyst primaries.
+- `orchestrator-stage-decomposer` — INITIAL/RESTAGE evidence and decomposition.
+- `orchestrator-stage-question-reviewer` — independent exhaustive question review.
+- `orchestrator-task-planner` — sole task/journal writer, one stage per call.
+- `orchestrator-plan-reviewer` — one-stage review.
+- `orchestrator-stage-pair-reviewer` — adjacent-pair consistency review.
+- `orchestrator-plan-ultra-reviewer` — Sol backtrack authority and final review.
+- `orchestrator-executor`, `orchestrator-executor-single-model` и execution support roles — one-task execution.
+- `analyst-workflow-guard.js` — structured-certificate idle recovery plugin.
 
 ## Установка
 
@@ -236,28 +217,21 @@ curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/openc
 curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - status
 ```
 
-Windows:
-
-```powershell
-py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" install
-py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" update
-py -3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py').read())" status
-```
-
-После install/update полностью перезапустите OpenCode: prompts, permissions и plugin загружаются при старте. Plugin автоматически устанавливается в `~/.config/opencode/plugins/analyst-workflow-guard.js`; отдельная запись в `opencode.json` не нужна.
-
-Guard работает только для `orchestrator-analyst` и `orchestrator-analyst-single-model`. Latest non-synthetic user message и latest completed assistant message должны указывать один и тот же analyst agent; session с явно объявленным другим agent отклоняется до чтения messages. Guard игнорирует child sessions, errored или active turns, explicit cancellation и все другие agents. Явный follow-up после показанного `BLOCKED` не auto-resume, пока новый turn не запустил planner или reviewer work. Valid `CLARIFICATION_REQUIRED` требует fresh planner certificate после completed evidence и planning attempt без edits. Valid `READY`, `PARTIAL_READY` или `SATISFIED` требует matching planner `FINALIZE`, closed clarification gate, task partitions, outcome, uncertainty fields и обязательные review results; valid `BLOCKED` требует matching planner evidence certificate. Synthetic continuations имеют persisted deduplication marker, максимум три повтора без workflow progress и двенадцать continuations на один user request.
-
-При update устаревшие project-owned files архивируются в backup directory и удаляются точечно; пользовательские agents и plugins сохраняются.
+После install/update полностью перезапустите OpenCode. Agents, custom tool и plugin загружаются только при старте. Plugin устанавливается в `~/.config/opencode/plugins/analyst-workflow-guard.js`; запись в `opencode.json` не нужна.
 
 ## Проверка
 
 ```bash
 python3 tests/test-cli.py
 node --test tests/test-plugin.mjs
+python3 -m py_compile opencode-agents.py
+node --check plugins/analyst-workflow-guard.js
 opencode debug config >/dev/null
 ```
 
-## Repository safety
+## Источники OpenCode harness
 
-Репозиторий не содержит provider config, production credentials, auth/session databases, MCP tokens, `.env`, пользовательские workflow artifacts или tool logs.
+- Plugin lifecycle: <https://opencode.ai/docs/plugins/>
+- Custom tools: <https://opencode.ai/docs/custom-tools/>
+- Server message API: <https://opencode.ai/docs/server/#messages>
+- Agents and child sessions: <https://opencode.ai/docs/agents/#subagents>

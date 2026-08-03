@@ -22,7 +22,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "2.4.1"
+VERSION = "3.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 GROUP_PATTERNS = {"agents": "*.md", "plugins": "*.js"}
@@ -36,6 +36,7 @@ OWNED_PREVIOUS_FILE_HASHES = {
         "2a4c3223c4283526105123f3661881a455b9b57b15a6290aae479d839ab66bc1",
         "d333fe9c8f57dbe7a9c0a0a65d9589daec8f7857f97f120fa3fe7818d27a9b90",
         "f170158806b988411e3cd875e64a48207752e0f564f72f8474ccbead4aad798b",
+        "e63eb3089e48f1f481f8065d6d660270408945c8a2c49276398303b9e8e60bec",
     }),
 }
 RETIRED_FILE_HASHES = {

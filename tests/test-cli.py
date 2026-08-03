@@ -20,6 +20,9 @@ AGENT_NAMES = [
     "orchestrator-final-reviewer.md",
     "orchestrator-plan-reviewer.md",
     "orchestrator-plan-ultra-reviewer.md",
+    "orchestrator-stage-decomposer.md",
+    "orchestrator-stage-pair-reviewer.md",
+    "orchestrator-stage-question-reviewer.md",
     "orchestrator-task-adjuster.md",
     "orchestrator-task-executor.md",
     "orchestrator-task-planner.md",
@@ -96,6 +99,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(sorted(plugins), PLUGIN_NAMES)
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst-single-model.md", "orchestrator-analyst.md", "orchestrator-executor-single-model.md", "orchestrator-executor.md"])
             version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+            self.assertEqual(version, "3.0.0")
             self.assertEqual(OPENCODE_AGENTS.VERSION, version)
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
@@ -115,7 +119,7 @@ class CliTests(unittest.TestCase):
         for path in current_contracts:
             self.assertNotIn(hidden_workflow, path.read_text(encoding="utf-8"), path.name)
         self.assertIn("1_orchestrator/<request>/tasks/", maintenance)
-        self.assertIn("Non-hidden имя предотвращает пропуск workflow artifacts glob-поиском OpenCode", readme)
+        self.assertIn("`1_orchestrator` всегда находится внутри working directory текущей OpenCode session", readme)
         self.assertIn("## 2.0.0 - 2026-08-02", changelog)
         self.assertIn("Rename workflow artifact directory", changelog)
         self.assertIn("Support only `1_orchestrator` workflow artifacts; no compatibility or migration path is provided", changelog)
@@ -125,6 +129,9 @@ class CliTests(unittest.TestCase):
         self.assertIn("Normalize semantically complete singular, unnumbered, and imperfectly numbered", changelog)
         self.assertIn("## 2.3.1 - 2026-08-02", changelog)
         self.assertIn("absent from OpenCode's status map as idle", changelog)
+        self.assertIn("## 3.0.0 - 2026-08-02", changelog)
+        self.assertIn("replace monolithic analyst planning with fresh decomposition", changelog)
+        self.assertIn("schema-validated `workflow_certificate` tool calls", changelog)
 
     def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
@@ -132,191 +139,83 @@ class CliTests(unittest.TestCase):
         self.assertEqual(pinned, set(PINNED_AGENTS))
         for name, model in PINNED_AGENTS.items():
             self.assertIsNotNone(re.search(rf"^model: {re.escape(model)}$", source_agents[name], re.MULTILINE))
-        for name in ("orchestrator-plan-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-planner.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-reviewer.md"):
+        for name in ("orchestrator-plan-reviewer.md", "orchestrator-stage-decomposer.md", "orchestrator-stage-pair-reviewer.md", "orchestrator-stage-question-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-planner.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-reviewer.md"):
             self.assertIsNone(re.search(r"^model:", source_agents[name], re.MULTILINE))
             self.assertIn("Model inherits caller selection", source_agents[name])
 
-    def test_agent_local_contracts_are_complete(self):
+    def test_staged_analyst_role_contracts_are_complete(self):
+        decomposer = (ROOT / "agents/orchestrator-stage-decomposer.md").read_text(encoding="utf-8")
+        question_reviewer = (ROOT / "agents/orchestrator-stage-question-reviewer.md").read_text(encoding="utf-8")
         planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
+        stage_reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
+        pair_reviewer = (ROOT / "agents/orchestrator-stage-pair-reviewer.md").read_text(encoding="utf-8")
+        ultra = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
         sections = ("## Goal", "## Acceptance criteria", "## Ordered prerequisites", "## Branch preconditions", "## Repository context", "## Scope", "## Implementation", "## Test work", "## Validation", "## Approved scope amendments", "## Current repair direction", "## Execution record")
         for section in sections:
             self.assertIn(section, planner)
+        for field in ("Stage ID:", "Stage title:", "Stage sequence:", "Stage revision:", "Approval ID:", "Status: DRAFT", "Planning review: PENDING"):
+            self.assertIn(field, planner)
+        for name in ("orchestrator-stage-decomposer.md", "orchestrator-stage-question-reviewer.md", "orchestrator-task-planner.md", "orchestrator-plan-reviewer.md", "orchestrator-stage-pair-reviewer.md", "orchestrator-plan-ultra-reviewer.md"):
+            content = (ROOT / "agents" / name).read_text(encoding="utf-8")
+            self.assertIn("This prompt is self-contained: do not read OpenCode configuration, agent prompts, or runtime protocol files.", content, name)
+        self.assertIn("`INITIAL` proposes stages for independent question review", decomposer)
+        self.assertIn("`RESTAGE` always starts fresh after question review, whether questions existed or not", decomposer)
+        self.assertIn("Re-read repository evidence independently; do not merely confirm INITIAL", decomposer)
+        self.assertIn("No role may write tasks from INITIAL output", decomposer)
+        self.assertIn("one exhaustive batch", question_reviewer)
+        self.assertIn("repository evidence and safe reversible defaults cannot resolve", question_reviewer)
+        self.assertIn("without follow-up", question_reviewer)
+        self.assertIn("Plan only supplied current stage", planner)
+        self.assertIn("Do not create, edit, rename, supersede, or delete tasks belonging to another stage", planner)
+        self.assertIn("Fresh independent review of exactly one current planning stage", stage_reviewer)
+        self.assertIn("Review whole stage before verdict", stage_reviewer)
+        self.assertIn("after all stages are individually planned and reviewed", pair_reviewer)
+        self.assertIn("exactly one adjacent certified stage pair", pair_reviewer)
+        self.assertIn("`S01+S02`, `S02+S03`, and so on", ultra)
+        self.assertEqual(self.evaluate(self.permission_rules(ultra, "grep"), "src/Program.cs"), "deny")
+
+    def test_primary_staged_workflow_order_and_backtracking(self):
+        analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
+        single_analyst = (ROOT / "agents/orchestrator-analyst-single-model.md").read_text(encoding="utf-8")
+        for content in (analyst, single_analyst):
+            workflow = content[content.index("<workflow priority="):content.index("</workflow>")]
+            initial = workflow.index("Dispatch fresh decomposer `INITIAL`")
+            questions = workflow.index("Dispatch fresh question reviewer with exact INITIAL output")
+            restage = workflow.index("fresh decomposer `RESTAGE`", questions)
+            approval = workflow.index("Require exact `APPROVE <approval-id>`")
+            self.assertLess(initial, questions)
+            self.assertLess(questions, restage)
+            self.assertLess(restage, approval)
+            if content is analyst:
+                self.assertIn("No task or journal write before exact approval", content)
+                self.assertIn("For each stage S01 through SNN sequentially", content)
+            else:
+                self.assertIn("No planner dispatch, task, or journal write before approval", content)
+                self.assertIn("Sequentially for S01 through SNN", content)
+            self.assertIn("fresh stage reviewer", content)
+            self.assertIn("`REVISE_STAGE`", content)
+            self.assertIn("until PASS", content)
+            self.assertIn("After all stages", content)
+            self.assertIn("S01+S02", content)
+            self.assertIn("S02+S03", content)
+            self.assertLess(content.index("After all stages"), content.index("S01+S02"))
+            for invariant in ("behavior", "boundaries", "dependencies", "expected paths", "contracts", "test ownership/cases", "execution ordering", "approvals", "non-goals"):
+                self.assertIn(invariant, content)
+        self.assertIn("fresh Sol ultra in `BACKTRACK_AUTHORITY`", analyst)
+        self.assertIn("After all current stage and pair PASS responses, dispatch fresh Sol ultra `FINAL`", analyst)
+        self.assertIn("Only clean FINAL PASS proceeds", analyst)
+        self.assertNotIn("orchestrator-plan-ultra-reviewer", single_analyst)
+        self.assertIn("`RESTART <lineage-id> FROM <stage-id>`", single_analyst)
+        self.assertIn("`KEEP <lineage-id>`", single_analyst)
+        self.assertIn("Do not choose for user", single_analyst)
+
+    def test_executor_and_workflow_base_contracts_are_preserved(self):
         executor = (ROOT / "agents/orchestrator-executor.md").read_text(encoding="utf-8")
         adjuster = (ROOT / "agents/orchestrator-task-adjuster.md").read_text(encoding="utf-8")
         for field in ("Finding:", "Source:", "Cycle:", "Ordinary repair attempt:", "Status:", "Evidence:", "Requirement:", "Scope impact:", "Supersedes:"):
             self.assertIn(field, executor)
             self.assertIn(field, adjuster)
         self.assertIn("Do not expose or quote journals", executor)
-        self.assertIn("Do not expose or quote journals", (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8"))
-        for name in ("orchestrator-task-planner.md", "orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md"):
-            content = (ROOT / "agents" / name).read_text(encoding="utf-8")
-            self.assertIn("do not read global OpenCode configuration, agent files, or runtime protocol files", content)
-        self.assertIn("pass only exact paths to `read`", planner)
-        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("run `glob` with path set to the exact supplied absolute target and pattern `tasks/[0-9][0-9]-*.md`", reviewer)
-        self.assertIn("Before any `read`, discard every returned path ending in `.issues.md`", reviewer)
-        ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
-        self.assertIn("require Terra response to be a clean `PASS`", ultra_reviewer)
-        self.assertIn("Count prior matching entries regardless of reviewer source", ultra_reviewer)
-        self.assertIn("current occurrence is prior matching count plus one", ultra_reviewer)
-        self.assertEqual(self.evaluate(self.permission_rules(ultra_reviewer, "grep"), "src/Program.cs"), "deny")
-        for planning_reviewer in (reviewer, ultra_reviewer):
-            self.assertIn("Path- or symbol-specific defects recur only when same missing or incorrect product path", planning_reviewer)
-            self.assertIn("Newly discovered member after broad inventory correction is new signature", planning_reviewer)
-            self.assertIn("exhaustive review of the entire current plan", planning_reviewer)
-            self.assertIn("every independent demonstrated actionable finding in one response", planning_reviewer)
-            self.assertIn("ordered dependency-first and then highest impact", planning_reviewer)
-            self.assertIn("Do not stop after the first finding", planning_reviewer)
-            self.assertNotIn("at most one", planning_reviewer)
-            self.assertIn("Occurrence `1` always reports `Progress: NOT_APPLICABLE`", planning_reviewer)
-            self.assertIn("independently per signature", planning_reviewer)
-            self.assertIn("All corrections in one `REVISE` batch must be complete and mutually compatible", planning_reviewer)
-            self.assertIn("Multiple technical repair options alone are not a material product decision", planning_reviewer)
-            self.assertIn("why no bounded plan-only correction can proceed", planning_reviewer)
-            self.assertIn("a safety constraint", planning_reviewer)
-            self.assertNotIn("unsafe secret dependency", planning_reviewer)
-            self.assertIn("Occurrence `4` or greater of any signature requires `BLOCKED`; never return `REVISE`", planning_reviewer)
-            self.assertIn("An immediate blocker uses `Findings: none` plus exact blocker, user action", planning_reviewer)
-            self.assertIn("it has no finding occurrence", planning_reviewer)
-            self.assertIn("Planner `BLOCK` derives blocker identity and occurrence when absent", planning_reviewer)
-            self.assertNotIn("use occurrence `1` for an immediate blocker", planning_reviewer)
-            self.assertIn("exact rejected planner response verbatim", planning_reviewer)
-            self.assertIn("corrected compatible exhaustive finding batch", planning_reviewer)
-            self.assertIn("explicit review mode `NORMAL` or `REJECTION_RECOVERY`", planning_reviewer)
-            self.assertIn("do not require an unavailable prior or current planner `PASS`", planning_reviewer)
-            self.assertIn("actual task files", planning_reviewer)
-            self.assertIn("never block solely because planner PASS metadata", planning_reviewer)
-            self.assertIn("Review mode: NORMAL|REJECTION_RECOVERY", planning_reviewer)
-            self.assertIn("On `PASS`, return exactly `Findings: none`", planning_reviewer)
-            self.assertIn("Progress exists only inside numbered findings", planning_reviewer)
-            self.assertIn("Findings: none|<numbered entries>", planning_reviewer)
-            for field in ("Signature:", "Occurrence:", "Progress:", "Affected tasks:", "Finding:", "Required correction:"):
-                self.assertIn(f"  {field}", planning_reviewer)
-        self.assertIn("in `REJECTION_RECOVERY`, verify evidence independently without requiring Terra PASS metadata", ultra_reviewer)
-        analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
-        self.assertIn("Call a fresh `orchestrator-task-planner` in selected `CREATE` or `REASSESS` mode", analyst)
-        self.assertIn("proposed outcome `READY`, `PARTIAL_READY`, or REASSESS-only `SATISFIED`", analyst)
-        self.assertIn("steps: 200", analyst)
-        self.assertIn("validate the full batch", analyst)
-        self.assertIn("Findings must each contain non-`none` signature", analyst)
-        self.assertIn("or for immediate `BLOCKED` only with a blocker accepted by step 6", analyst)
-        self.assertIn("Apply steps 4 through 6 to the full ultra batch", analyst)
-        self.assertIn("Occurrence `1` is `NOT_APPLICABLE`", analyst)
-        self.assertIn("is batched `REVISE` through step 5", analyst)
-        self.assertLess(analyst.index("validate the full batch"), analyst.index("After clean Terra `PASS`"))
-        self.assertIn("Occurrence classification overrides mislabeled verdict", analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, outcome mismatch, or path mismatch triggers one fresh same-stage reviewer retry", analyst)
-        self.assertNotIn("reviewer contract unavailable after fresh retry", analyst)
-        self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", analyst)
-        self.assertIn("complete reviewer output verbatim", analyst)
-        self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", analyst)
-        self.assertIn("contradictory verdict, mode mismatch, outcome mismatch, or path mismatch", analyst)
-        self.assertIn("`Findings applied` equal to batch count", analyst)
-        self.assertIn("Every ultra batch returns through one fresh planner `REVISE`, then fresh Terra review", analyst)
-        self.assertIn("planner derives identity and occurrence when absent", analyst)
-        self.assertIn("If planner returns `REJECTED` or malformed response, correct inputs and dispatch fresh `BLOCK`", analyst)
-        self.assertNotIn("For repeated occurrence with `NONE`, call planner in `BLOCK` mode", analyst)
-        self.assertIn("Never yield while review remains incomplete", analyst)
-        self.assertIn("ask user to repeat, continue, or restart", analyst)
-        self.assertIn("many distinct findings or cycles, elapsed time, context growth, voluntary model/tool budgeting, or a valid progressive checkpoint", analyst)
-        self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", analyst)
-        self.assertIn("Task-tool prompts are protocol transport, not user-facing prose", analyst)
-        self.assertIn("Caveman or progress-message compression never applies to them", analyst)
-        self.assertIn("Never use absolute task paths, `N/A`, `N_A`, “as prior”", analyst)
-        self.assertIn("Path- or symbol-specific defects recur only when same missing or incorrect product path", analyst)
-        self.assertIn("Own workflow state; subagents never control transitions", analyst)
-        self.assertIn("one compact in-memory canonical state", analyst)
-        self.assertIn("A newer accepted result atomically supersedes older results for that stage", analyst)
-        self.assertIn("Never revisit, merge, summarize from, or forward retired stages", analyst)
-        self.assertIn("Verbatim transport means copy required current response, not accumulated history", analyst)
-        self.assertIn("First determine fault owner", analyst)
-        self.assertIn("Rejection recovery applies only to a valid structured planner `REJECTED` response", analyst)
-        self.assertIn("Malformed role output after a retry remains at the same stage", analyst)
-        self.assertIn("never invoke rejection recovery without an exact valid rejected planner response", analyst)
-        self.assertIn("Repeated malformed role output is role degradation, not context, time, or user blocker", analyst)
-        self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", analyst)
-        self.assertIn("it is never a user blocker", analyst)
-        self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", analyst)
-        self.assertIn("A valid `REJECTED` requires mode `REVISE` or `UNKNOWN`", analyst)
-        self.assertIn("A malformed REVISE planner response gets one fresh same-mode planner retry", analyst)
-        self.assertIn("No REVISE planner outcome has a dead-end response branch", analyst)
-        self.assertIn("A valid `FINALIZE` `REJECTED` requires mode `FINALIZE` or `UNKNOWN`", analyst)
-        self.assertIn("immediately restart required review chain with fresh Terra review then fresh Sol review", analyst)
-        self.assertIn("A malformed FINALIZE response gets one fresh same-mode planner retry", analyst)
-        self.assertIn("Never yield or block on FINALIZE rejection or malformed response", analyst)
-        self.assertIn("plan-reviewer response for single-model workflow, or plan-reviewer and ultra-reviewer responses for standard workflow", planner)
-        self.assertIn("complete reviewer finding semantics", planner)
-        self.assertIn("accept either a structured `Findings` batch or one complete unnumbered or singular finding", planner)
-        self.assertIn("occurrence `1` may proceed with `NOT_APPLICABLE`", planner)
-        self.assertIn("For occurrence `2` or `3` with progress `NONE`, apply a materially different bounded correction", planner)
-        self.assertIn("An occurrence `4` or greater is contradictory `REVISE` input and returns `REJECTED` requiring `BLOCK`", planner)
-        self.assertIn("Reject stale, contradictory, partial, or path-mismatched responses", planner)
-        self.assertIn("identical checked and ready paths matching supplied current task partitions", planner)
-        self.assertIn("if any conflict, return `REJECTED` with exact conflict evidence and change nothing", planner)
-        self.assertIn("apply all bounded corrections in one revision", planner)
-        self.assertIn("Newly discovered member after broad inventory correction is new signature", planner)
-        self.assertIn("prepend one newest-first issue entry per finding", planner)
-        self.assertIn("Findings applied: <normalized batch count>", planner)
-        self.assertIn("PLANNING: PASS|REJECTED|BLOCKED", planner)
-        self.assertIn("Rejection: <none or exact malformed, contradictory, collision, or incompatible-batch reason>", planner)
-        self.assertIn("For malformed, contradictory, or mode-invalid input, return `PLANNING: REJECTED`", planner)
-        self.assertIn("verify candidate target absence by calling `read` on the exact supplied target path", planner)
-        self.assertIn("If target exists, return `REJECTED` with exact collision reason", planner)
-        self.assertIn("immediately before the first write, call `read` on the exact supplied target again", planner)
-        self.assertIn("If it now exists, return edit-free collision `REJECTED`", planner)
-        self.assertNotIn("Any existing target is `BLOCKED`", planner)
-        self.assertGreaterEqual(planner.count("`glob` path set to the exact supplied target and pattern `tasks/[0-9][0-9]-*.md`"), 2)
-        revise_section = planner[planner.index("11. `REVISE`"):planner.index("12. `BLOCK`")]
-        block_section = planner[planner.index("12. `BLOCK`"):planner.index("13. `FINALIZE`")]
-        self.assertIn("materially different bounded correction", revise_section)
-        self.assertNotIn("materially different bounded correction", block_section)
-        self.assertIn("unresolved user-visible product decision", analyst)
-        self.assertNotIn("material product-decision blocker", analyst)
-        single_analyst = (ROOT / "agents/orchestrator-analyst-single-model.md").read_text(encoding="utf-8")
-        self.assertNotIn("orchestrator-plan-ultra-reviewer", single_analyst)
-        self.assertIn("All dispatched roles inherit caller model selection", single_analyst)
-        self.assertIn("current clean plan-review response", single_analyst)
-        self.assertIn("steps: 200", single_analyst)
-        self.assertIn("Occurrence `1` is `NOT_APPLICABLE`", single_analyst)
-        self.assertIn("is batched `REVISE` through step 5", single_analyst)
-        self.assertLess(single_analyst.index("validate the full batch"), single_analyst.index("After clean reviewer `PASS`"))
-        self.assertIn("Findings must each contain non-`none` signature", single_analyst)
-        self.assertIn("or for immediate `BLOCKED` only with a blocker accepted by step 6", single_analyst)
-        self.assertIn("Occurrence classification overrides mislabeled verdict", single_analyst)
-        self.assertIn("checked paths matching all current tasks, ready-for-finalize paths matching ready tasks", single_analyst)
-        self.assertIn("Any malformed entry, contradictory verdict, mode mismatch, outcome mismatch, or path mismatch triggers one fresh reviewer retry", single_analyst)
-        self.assertNotIn("reviewer contract unavailable after fresh retry", single_analyst)
-        self.assertIn("derived blocker `same finding reached occurrence <N>; three automated plan repairs exhausted`", single_analyst)
-        self.assertIn("complete reviewer output verbatim", single_analyst)
-        self.assertIn("Require `Review mode` to exactly match invoked `NORMAL` or `REJECTION_RECOVERY`", single_analyst)
-        self.assertIn("contradictory verdict, mode mismatch, outcome mismatch, or path mismatch", single_analyst)
-        self.assertIn("`Findings applied` equal to batch count", single_analyst)
-        self.assertIn("planner derives identity and occurrence when absent", single_analyst)
-        self.assertIn("If planner returns `REJECTED` or malformed response, correct inputs and dispatch fresh `BLOCK`", single_analyst)
-        self.assertNotIn("For repeated occurrence with `NONE`, call planner in `BLOCK` mode", single_analyst)
-        self.assertIn("Never yield while review remains incomplete", single_analyst)
-        self.assertIn("ask user to repeat, continue, or restart", single_analyst)
-        self.assertIn("Only blockers accepted by step 6 may end `BLOCKED`", single_analyst)
-        self.assertIn("Task-tool prompts are protocol transport, not user-facing prose", single_analyst)
-        self.assertIn("Never use absolute task paths, `N/A`, `N_A`, “as prior”", single_analyst)
-        self.assertIn("Newly discovered member after broad inventory correction is new signature", single_analyst)
-        self.assertIn("Own workflow state; subagents never control transitions", single_analyst)
-        self.assertIn("one compact in-memory canonical state", single_analyst)
-        self.assertIn("Never revisit, merge, summarize from, or forward retired stages", single_analyst)
-        self.assertIn("First determine fault owner", single_analyst)
-        self.assertIn("Rejection recovery applies only to a valid structured planner `REJECTED` response", single_analyst)
-        self.assertIn("Malformed role output after a retry remains at the same stage", single_analyst)
-        self.assertIn("A valid `PLANNING: REJECTED` requires selected mode or `UNKNOWN`", single_analyst)
-        self.assertIn("it is never a user blocker", single_analyst)
-        self.assertIn("A malformed CREATE or REASSESS response gets one fresh same-mode planner retry", single_analyst)
-        self.assertIn("A valid `REJECTED` requires mode `REVISE` or `UNKNOWN`", single_analyst)
-        self.assertIn("A malformed REVISE planner response gets one fresh same-mode planner retry", single_analyst)
-        self.assertIn("No REVISE planner outcome has a dead-end response branch", single_analyst)
-        self.assertIn("A valid `FINALIZE` `REJECTED` requires mode `FINALIZE` or `UNKNOWN`", single_analyst)
-        self.assertIn("immediately restart required review chain with a fresh reviewer", single_analyst)
-        self.assertIn("A malformed FINALIZE response gets one fresh same-mode planner retry", single_analyst)
-        self.assertIn("unresolved user-visible product decision", single_analyst)
-        self.assertNotIn("material product-decision blocker", single_analyst)
         single_executor = (ROOT / "agents/orchestrator-executor-single-model.md").read_text(encoding="utf-8")
         self.assertNotIn("orchestrator-final-reviewer", single_executor)
         self.assertNotIn("orchestrator-task-adjuster", single_executor)
@@ -328,25 +227,16 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("SINGLE_REVIEW: PASS|FINDING_ADJUSTED|BLOCKED\nMODE: ADJUST_EXECUTOR_FINDING", single_reviewer)
         self.assertIn("update only task `Current repair direction`", single_reviewer)
         self.assertIn("Only workflow-designated task-correction authority can expand scope", (ROOT / "agents/orchestrator-task-executor.md").read_text(encoding="utf-8"))
-        self.assertIn("perform no edit until evidence is complete", planner)
-        self.assertIn("Target absence is required state, never an access blocker", planner)
-        self.assertIn("Search only `WORKFLOW_BASE` descendants", planner)
-        workflow_base_agents = ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md", "orchestrator-executor.md", "orchestrator-executor-single-model.md", "orchestrator-task-planner.md", "orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-reviewer.md", "orchestrator-task-reviewer-single-model.md", "orchestrator-task-adjuster.md", "orchestrator-final-reviewer.md")
+        workflow_base_agents = tuple(AGENT_NAMES)
         for name in workflow_base_agents:
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("WORKFLOW_BASE", content, name)
         for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Capture OpenCode session working directory as immutable `WORKFLOW_BASE`", content)
-            self.assertIn("Never target `1_orchestrator` at Git root or any parent", content)
-            self.assertIn("current target", content)
-            self.assertIn("target still absent", content)
-            self.assertIn("derive one deterministic base request slug without inspecting filesystem", content)
-            self.assertIn("Never use `read`, glob, or any base-root discovery for collision detection", content)
-            self.assertIn("`<request-slug>-2`, then `-3`, continuing monotonically", content)
-            self.assertNotIn("Call `read` on exact `WORKFLOW_BASE/1_orchestrator`", content)
-            self.assertIn("After any valid planner `CREATE`, `REASSESS`, or `REVISE` `PASS`, immediately dispatch", content)
-        self.assertIn("Reject Git-root or repository-root substitution only when that root differs from `WORKFLOW_BASE`", planner)
+            self.assertIn("never derive it from Git root, repository root, parent directory, or subagent working directory", content)
+            self.assertIn("deterministic", content)
+            self.assertIn("target", content)
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Git root is separate and may be used only for Git-state inspection", content)
@@ -372,123 +262,59 @@ class CliTests(unittest.TestCase):
             content = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("excluding only Git paths under exact `WORKFLOW_GIT_PREFIX`", content, name)
             self.assertIn("outside-prefix path", content, name)
-        self.assertIn("Expected product paths are `WORKFLOW_BASE`-relative scope boundaries", planner)
-        self.assertIn("Evidence: COMPLETE|NOT_APPLICABLE|BLOCKED", planner)
-        self.assertIn("Independently verify repository evidence used by tasks", reviewer)
 
-    def test_reassessment_and_progressive_planning_contracts(self):
+    def test_reassessment_contracts_are_preserved(self):
         planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
-        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        ultra = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
         for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
             analyst = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Select `REASSESS` only when user explicitly supplies one existing", analyst, name)
-            self.assertIn("never apply collision suffix logic", analyst, name)
-            self.assertIn("PARTIAL_READY", analyst, name)
-            self.assertIn("SATISFIED", analyst, name)
-            self.assertIn("valid progressive checkpoint", analyst, name)
-            self.assertIn("User executes each ready task separately and later invokes REASSESS", analyst, name)
-            self.assertIn("open exactly one clarification gate", analyst, name)
-            self.assertIn("Any answer turn consumes the gate", analyst, name)
-            self.assertIn("no role may ask another clarification question", analyst, name)
+            self.assertNotIn("SATISFIED", analyst, name)
         for contract in (
-            "Require mode `CREATE`, `REASSESS`, `REVISE`, `BLOCK`, or `FINALIZE`",
-            "Treat every `COMPLETE` task as immutable",
-            "create a new corrective task",
-            "mark obsolete unexecuted tasks `SUPERSEDED`",
-            "Never delete or rename task files",
-            "new tasks only after the current maximum number",
-            "accept any exact existing target name, including one previously assigned a CREATE collision suffix",
-            "If any task is `IN_PROGRESS` or `BLOCKED`",
-            "If a required new task would exceed `99-*.md`",
-            "Progressive planning may propose `PARTIAL_READY` only after bounded static evidence discovery proves",
-            "Context size, elapsed time, task count, complexity, multiple ordinary technical options, weak decomposition",
-            "`SATISFIED` is valid only in `REASSESS`",
-            "Deferred scope: <none or exact concise scope>",
-            "Uncertainty IDs: <ordered IDs|none>",
-            "one complete in-memory planning attempt before any clarification or write",
-            "one exhaustive question batch",
-            "After explicit answers, set gate `CONSUMED` even when answers are incomplete",
-            "never ask follow-up questions or return `WAITING` again",
-            "PLANNING: PASS|REJECTED|BLOCKED|CLARIFICATION_REQUIRED",
-            "Target: <exact WORKFLOW_BASE-relative 1_orchestrator/<request>/>",
-            "Superseded reason: none",
-            "Replacement: none",
-            "Uncertainty ID: none",
-            "Static evidence exhausted: none",
-            "Unlock tasks: none",
-            "Affected deferred scope or tasks: none",
+            "completed tasks with `Status: COMPLETE`, `Planning review: PASS`, and execution `Result: PASS` are immutable",
+            "If any task is `IN_PROGRESS` or `BLOCKED`, return `BLOCKED` before edits",
+            "A completed-outcome gap gets a new corrective task",
+            "Obsolete unexecuted tasks may be marked `SUPERSEDED` only while editing their own stage",
+            "Never renumber or delete task files",
+            "next unused two-digit number through `99`",
         ):
             self.assertIn(contract, planner)
-        for planning_reviewer in (reviewer, ultra):
-            self.assertIn("For origin `REASSESS`", planning_reviewer)
-            self.assertIn("Independently validate proposed `PARTIAL_READY`", planning_reviewer)
-            self.assertIn("Unsupported partial rationale is a repairable finding", planning_reviewer)
-            self.assertIn("Confirmed outcome: READY|PARTIAL_READY|SATISFIED|none", planning_reviewer)
-            self.assertIn("Uncertainty confirmation: CONFIRMED|REJECTED|NOT_APPLICABLE", planning_reviewer)
-            self.assertIn("Reviewers never accept gate `OPEN` or `WAITING`, ask clarification questions, or create another gate", planning_reviewer)
-            self.assertIn("Clarification incorporation: CONFIRMED|NOT_APPLICABLE", planning_reviewer)
-            self.assertIn("Questions: <exact compact batch|none>", planning_reviewer)
-            self.assertIn("Confirmed uncertainties: <exact `ID{question=...;static=...;implementation=...;unlock=...;durable=...;affected=...;condition=...}` entries", planning_reviewer)
         for name in ("orchestrator-executor.md", "orchestrator-executor-single-model.md"):
             executor = (ROOT / "agents" / name).read_text(encoding="utf-8")
             self.assertIn("Reject `DRAFT`, `SUPERSEDED`, and `COMPLETE`", executor)
-        maintenance = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Analyst `REASSESS` uses one exact existing target", maintenance)
-        self.assertIn("Planner may propose `PARTIAL_READY` only", maintenance)
-        self.assertIn("one exhaustive clarification gate", maintenance)
-        self.assertIn("### 5. Пересмотреть оставшийся план", readme)
-        self.assertIn("### Одно уточнение перед автономным workflow", readme)
-        self.assertIn("## 2.4.1 - 2026-08-02", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
 
-    def test_planning_rejection_recovery_contracts(self):
-        planner = (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8")
-        for contract in (
-            "Normalize a complete singular form internally to a one-entry batch",
-            "numbering punctuation, indentation, or wrapper presentation is imperfect",
-            "Do not reject, drop, merge, or reinterpret a finding solely because `Findings:`, `1.`, or exact response-contract formatting is absent or imperfect",
-            "Reject `REVISE` only for missing or contradictory semantic fields, never presentation-only numbering, wrapper, indentation, label placement, or punctuation",
-            "Findings applied: <normalized batch count>",
-        ):
-            self.assertIn(contract, planner)
-        for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
-            analyst = (ROOT / "agents" / name).read_text(encoding="utf-8")
-            for contract in (
-                "complete reviewer output verbatim",
-                "Never paraphrase, flatten, rename, omit a wrapper, or manually reconstruct finding fields",
-                "never synthesize a singular finding from prior history",
-                "classify it as a planner defect and retry planner once with the same reviewer output verbatim",
-                "exact current task partitions, and exact rejected planner response verbatim",
-                "Malformed reviewer output always retries a fresh reviewer in the same invoked review mode",
-                "Do not use `REJECTION_RECOVERY` for malformed reviewer output",
-                "never accept it as an access or user blocker",
-            ):
-                self.assertIn(contract, analyst, name)
-            self.assertNotIn("entire validated reviewer batch", analyst)
-        reviewer = (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8")
-        ultra_reviewer = (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8")
-        for planning_reviewer in (reviewer, ultra_reviewer):
-            normal = planning_reviewer.index("In `NORMAL`")
-            recovery = planning_reviewer.index("In `REJECTION_RECOVERY`")
-            self.assertLess(normal, recovery)
-            self.assertIn("exact current task partitions", planning_reviewer)
-            self.assertIn("read each remaining exact current task", planning_reviewer)
-            self.assertIn("verify enumerated paths normalize to supplied relative checked task paths", planning_reviewer)
-            self.assertIn("do not require an unavailable prior or current planner `PASS`", planning_reviewer)
-            self.assertIn("while task files are readable", planning_reviewer)
-        self.assertIn("do not require an unavailable prior or current planner `PASS`, its metadata, or a Terra `PASS`", ultra_reviewer)
-        maintenance = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Analysts pass reviewer output verbatim to `REVISE`", maintenance)
-        self.assertIn("Metadata-only reviewer blocking while tasks are readable is malformed and retries", maintenance)
-        self.assertIn("Recovery reviewer читает actual tasks и не требует отсутствующий current planner `PASS`", readme)
+    def test_structured_certificate_and_guard_contracts(self):
+        agents = self.installed_agents(ROOT)
+        analysts = {"orchestrator-analyst.md", "orchestrator-analyst-single-model.md"}
+        for name, content in agents.items():
+            if name in analysts:
+                self.assertEqual(self.evaluate(self.permission_rules(content, "workflow_certificate"), "*"), "allow")
+            else:
+                self.assertNotRegex(content, r"^  workflow_certificate: allow$", name)
+        fields = ("protocolVersion", "workflow", "lineageID", "state", "phase", "target", "approvalID", "stageID", "stageRevision", "pairID", "generation", "nextAction", "summary")
+        states = "RUNNING|WAITING_ANSWERS|WAITING_APPROVAL|BLOCKED|COMPLETE"
+        for name in analysts:
+            content = agents[name]
+            self.assertIn('`protocolVersion: "3"`', content)
+            self.assertIn(states, content)
+            for field in fields:
+                self.assertIn(field, content)
+        plugin = (ROOT / "plugins/analyst-workflow-guard.js").read_text(encoding="utf-8")
+        self.assertIn('tool: { workflow_certificate: workflowCertificate }', plugin)
+        self.assertIn('part.tool !== "workflow_certificate"', plugin)
+        self.assertIn('part.state?.status !== "completed"', plugin)
+        self.assertIn('Use structured workflow certificates only. Do not parse prior prose', plugin)
+        self.assertNotIn("PLANNING: PASS", plugin)
+        self.assertNotIn("Итог:", plugin)
+        self.assertIn('event.type === "session.status"', plugin)
+        self.assertIn('if (decision.variant !== undefined) body.variant = decision.variant', plugin)
+        self.assertIn('continuationMessageID(sessionID, decision)', plugin)
+        self.assertIn('decision.epochID, decision.triggerAssistantID, decision.frontier', plugin)
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)
         expected = {
-            "orchestrator-analyst-single-model.md": {"orchestrator-task-planner", "orchestrator-plan-reviewer"},
-            "orchestrator-analyst.md": {"orchestrator-task-planner", "orchestrator-plan-reviewer", "orchestrator-plan-ultra-reviewer"},
+            "orchestrator-analyst-single-model.md": {"orchestrator-stage-decomposer", "orchestrator-stage-question-reviewer", "orchestrator-task-planner", "orchestrator-plan-reviewer", "orchestrator-stage-pair-reviewer"},
+            "orchestrator-analyst.md": {"orchestrator-stage-decomposer", "orchestrator-stage-question-reviewer", "orchestrator-task-planner", "orchestrator-plan-reviewer", "orchestrator-stage-pair-reviewer", "orchestrator-plan-ultra-reviewer"},
             "orchestrator-executor-single-model.md": {"orchestrator-task-executor", "orchestrator-task-reviewer-single-model"},
             "orchestrator-executor.md": {"orchestrator-task-executor", "orchestrator-task-reviewer", "orchestrator-task-adjuster", "orchestrator-final-reviewer"},
         }
@@ -505,14 +331,17 @@ class CliTests(unittest.TestCase):
             self.assertEqual(self.evaluate(rules, "src/Program.cs"), "deny")
             self.assertEqual(self.evaluate(rules, ".git/config"), "deny")
         planner_edits = self.permission_rules(agents["orchestrator-task-planner.md"], "edit")
+        self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/request/planning-issues.md"), "allow")
         self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/request/tasks/01-task.issues.md"), "deny")
         self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/nested/request/tasks/01-task.md"), "deny")
         self.assertEqual(self.evaluate(planner_edits, "1_orchestrator/request/tasks/nested/01-task.md"), "deny")
         self.assertEqual(self.evaluate(planner_edits, "../1_orchestrator/request/tasks/01-task.md"), "deny")
         self.assertIn("Edit only supplied task and sibling", agents["orchestrator-task-adjuster.md"])
-        for name in ("orchestrator-plan-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
+        for name in ("orchestrator-stage-decomposer.md", "orchestrator-stage-question-reviewer.md", "orchestrator-plan-reviewer.md", "orchestrator-stage-pair-reviewer.md", "orchestrator-plan-ultra-reviewer.md", "orchestrator-task-reviewer.md", "orchestrator-final-reviewer.md"):
             self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "1_orchestrator/request/tasks/01-task.md"), "deny")
             self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "src/Program.cs"), "deny")
+        for name in ("orchestrator-analyst.md", "orchestrator-analyst-single-model.md"):
+            self.assertEqual(self.evaluate(self.permission_rules(agents[name], "edit"), "1_orchestrator/request/tasks/01-task.md"), "deny")
         executor_edits = self.permission_rules(agents["orchestrator-task-executor.md"], "edit")
         self.assertEqual(self.evaluate(executor_edits, "src/Program.cs"), "allow")
         self.assertEqual(self.evaluate(executor_edits, ".git"), "deny")
@@ -690,7 +519,7 @@ class CliTests(unittest.TestCase):
             target = Path(temporary) / "config"
             self.run_cli(ROOT, target, "install")
             result = self.run_cli(ROOT, target, "status", capture_output=True)
-            self.assertIn("summary missing=0 changed=0 current=14 retired=0", result.stdout)
+            self.assertIn("summary missing=0 changed=0 current=17 retired=0", result.stdout)
             instructions = (target / "AGENTS.md").read_text(encoding="utf-8")
             self.assertEqual(instructions.count(OPENCODE_AGENTS.GLOBAL_INSTRUCTIONS_START), 1)
             self.assertIn("caveman", instructions)

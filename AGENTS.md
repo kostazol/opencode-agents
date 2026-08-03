@@ -1,73 +1,101 @@
 # Agent Maintenance Guide
 
-## Scope
+## Scope and sources of truth
 
-This repository versions OpenCode agent prompts and one runtime workflow guard plugin. Prompts are executable workflow. Keep roles small, autonomous, least-privileged, self-contained, and understandable from repository files alone.
+This repository versions four user-facing OpenCode primary agents, their least-privileged subagents, and one analyst recovery plugin. Prompts are executable workflow contracts.
 
-## Sources of truth
-
-- Primary prompts own orchestration loops and user contracts. Each subagent prompt owns only its role-specific inputs, permissions, procedure, artifact fields, and compact output.
-- Exactly four user-facing primary agents exist: `orchestrator-analyst`, `orchestrator-analyst-single-model`, `orchestrator-executor`, and `orchestrator-executor-single-model`. Do not add aliases, compatibility primaries, or profile-generated variants.
-- Analyst planner owns bounded no-write evidence discovery and model-inheriting task planning; fresh planning reviewer validates repository evidence and plan quality; standard analyst adds independent Sol ultra plan review. Executor support roles own model-inheriting implementation and review; standard executor uses Terra adjustment and final review or loop diagnosis, while single-model reviewer records bounded task corrections itself.
-- Each agent file owns only role-specific inputs, permissions, procedure, and compact output.
-- `plugins/analyst-workflow-guard.js` owns runtime detection and same-session continuation of incomplete analyst workflow; it never changes product files, workflow artifacts, Git state, agent selection, or model selection.
-- Installer preserves an unknown pre-existing guard-plugin collision. Before changing released guard bytes, add every prior owned plugin hash to `OWNED_PREVIOUS_FILE_HASHES` so update replaces only known project-owned content.
+- Exactly four primary agents exist: `orchestrator-analyst`, `orchestrator-analyst-single-model`, `orchestrator-executor`, and `orchestrator-executor-single-model`.
+- Analyst primary owns orchestration and user interaction. Subagents own only role-specific evidence, planning, review, or correction.
+- `plugins/analyst-workflow-guard.js` owns same-session recovery of incomplete analyst turns. It is not a workflow engine and never changes product files, workflow artifacts, Git state, request scope, agent, model, or variant.
 - Explicit current user instruction outranks prior workflow state. Platform safety constraints always apply.
 
-## Workflow rules
+## Staged analyst workflow
 
-- Analyst creates or reassesses self-contained task Markdown files under `1_orchestrator/<request>/tasks/` and one separate newest-first planning issue journal. It creates no index, manifest, ledger, hash, separate checkpoint artifact, or product change.
-- Workflow `1_orchestrator` is anchored to immutable OpenCode session working directory, never Git root or a parent directory. Every handoff preserves that workflow base; Git root is only for Git-state inspection. Nested-cwd execution maps Git-root-relative status paths through a canonical product prefix, excludes only the exact workflow `1_orchestrator` prefix, and treats outside-base paths as user-owned overlap.
-- Every executable task is a working vertical slice. It may name ordered prerequisite task paths, expected product paths, acceptance criteria, implementation and integration evidence, test work, validation commands, and an inline progressive-planning checkpoint. Deferred tasks remain non-executable `DRAFT`; superseded tasks are never executable.
-- Planner `CREATE` completes bounded acceptance-first repository evidence discovery before decomposition or any write. Evidence blockers leave target absent. Planning reviewer validates task evidence directly against repository source.
-- After bounded evidence discovery and one in-memory planning attempt, planner may use one exhaustive clarification gate for material user-visible choices that evidence cannot resolve. It asks all questions in one batch before any CREATE write or REASSESS edit. Any answer turn consumes the gate; if unused it closes. Planner and reviewers ask no later questions, resolve ordinary technical choices autonomously, and use only defined blockers when safe planning remains impossible.
-- Analyst `REASSESS` uses one exact existing target, including a prior CREATE collision-suffixed target, authoritative request, and exact user-declared completed paths. Planner verifies existing `COMPLETE/PASS` metadata, blocks while any task remains `IN_PROGRESS` or `BLOCKED`, never edits completed tasks, creates corrective tasks for completed-outcome gaps, updates only unexecuted work, appends new two-digit task numbers through `99`, and marks obsolete unexecuted tasks `SUPERSEDED` without deletion or rename.
-- Planner may propose `PARTIAL_READY` only when bounded static discovery proves specific implementation-dependent uncertainty, at least one useful buildable ready task will produce durable evidence, deferred scope and reassessment conditions are exact, and every required fresh reviewer independently confirms the checkpoint. Task count, complexity, time, context, tool budget, ordinary technical options, and weak decomposition never justify partial planning. User executes ready tasks one at a time, then explicitly returns to analyst `REASSESS`.
-- Standard analyst runs on user-selected Terra and adds fresh independent Sol review after model-inheriting plan review PASS; every Sol finding returns through fresh planning and review before another Sol review. Single-model analyst dispatches only model-inheriting roles and has no Sol review.
-- Every planning reviewer exhaustively reviews the whole current plan and returns all independent demonstrated actionable findings in one dependency-first, high-impact batch. Each signature keeps independent occurrence and progress counts. Planner validates the complete batch, applies all mutually compatible bounded corrections in one revision, and records one newest-first planning issue entry per finding.
-- Analyst task-tool handoffs are lossless protocol transport: caveman compression never applies, all exact relative task partitions are repeated, and required planner or reviewer responses are carried verbatim without aliases, summaries, absolute paths, or “as prior” placeholders.
-- Analyst primary owns one compact in-memory canonical state per request epoch: immutable user goal and decisions, current target and partitions, latest accepted certificates, concrete finding counts, and one next stage. Accepted results retire older same-stage outputs; malformed or stale subagent results never advance state, and no checkpoint artifact is written.
-- Analyst distinguishes its own incomplete handoff from subagent degradation. It rebuilds omitted canonical input itself, fresh-retries a role that ignored complete supplied data with exact contract defects, and never turns internal protocol loss, stale output, or repeated malformed role behavior into user action.
-- Finding recurrence requires the same concrete defect identity. Different omitted paths or symbols discovered after a broad inventory repair remain separate signatures unless the exact member was already named and stayed unfixed.
-- Planner normalizes semantically complete singular, unnumbered, and imperfectly numbered reviewer findings into a batch; presentation-only numbering or wrapper differences are never rejection reasons. Analysts pass reviewer output verbatim to `REVISE` without reconstructing fields.
-- Repairable plan-internal findings at occurrences `1` through `3`, including ordering, dependency, test ownership, path allocation, decomposition, and buildability, always return through planning revision. First occurrence has progress `NOT_APPLICABLE`; occurrences `2` and `3` with `NONE` require a materially different correction. `BLOCKED` requires access, safety, unresolved user-visible product choice, or occurrence `4` or greater.
-- After every valid planner `CREATE`, `REASSESS`, or `REVISE` pass, analyst dispatches the required fresh reviewer immediately in the same user turn. A certified first-pass clarification request waits for one explicit answer turn without reviewer dispatch. After that gate closes, incomplete review, many distinct findings or cycles, elapsed time, context growth, voluntary model or tool budgeting, and a valid progressive checkpoint never justify yielding, asking the user to repeat/continue/restart, or synthesizing a blocker.
-- Analyst workflow guard treats only a matching final parent response plus structured planner and required fresh-review task results as terminal. On premature root-session idle it sends one hidden synthetic continuation with original analyst and model. It requires both latest non-synthetic user message and latest completed assistant message to identify the same supported analyst agent, and rejects a session-declared non-analyst before reading messages. It ignores child sessions, explicit cancellation, errored turns, active sessions, duplicate idle events, and every non-analyst workflow; persisted markers, bounded no-progress retries, and a total continuation cap prevent loops.
-- Analyst workflow guard does not reinterpret an explicit follow-up after a reported `BLOCKED` outcome as workflow continuation until that turn actually dispatches planner or reviewer work.
-- Planner rejects malformed or contradictory mode input, target collisions, and semantically incompatible review batches without edits. Rejection is never a user blocker: analysts retry presentation-only rejection once with verbatim reviewer output, then pass exact rejection, request, target, and current task paths to fresh rejection-recovery review; reviewers read actual tasks without requiring unavailable planner PASS metadata. Metadata-only reviewer blocking while tasks are readable is malformed and retries. Rejected finalization restarts review; creation collision advances deterministic `-2`, `-3`, ... suffixes without inspecting workflow directories.
-- Reviewers and planner enumerate existing workflow artifacts from the exact supplied target directory so Git-ignore rules cannot hide task files from base-root globbing.
-- Executor accepts exactly one `READY`, resumable `IN_PROGRESS`, or explicitly resumed `BLOCKED` task file. It rejects `DRAFT`, `SUPERSEDED`, and `COMPLETE`. User prepares and selects execution branch. Executor never creates or changes branches and never stages or commits.
-- Executor requires `HEAD` and product worktree clean at start; workflow-owned `1_orchestrator/**` changes are allowed. It records immutable `START_COMMIT` after preflight.
-- Fresh implementation and ordinary-review roles alternate. Standard executor runs on user-selected Luna, sends findings through Terra adjuster before repair, and requires Terra final review to complete. Single-model reviewer records bounded task corrections and approved path expansion before fresh implementation; single-model executor completes after reviewer PASS.
-- Same demonstrated execution finding gets at most three ordinary repair attempts. Standard executor then invokes Terra loop diagnosis; single-model executor blocks. Different execution findings may continue only while measurable progress occurs. Any Terra finding returns through adjuster, fresh executor, and fresh ordinary reviewer before another Terra final review.
-- Standard build, test, restore, and localhost test activity runs autonomously in trusted repositories. Secret use, deploy, publish, destructive action, unrelated external effect, material product choice, and overlap with user-owned changes require user decision.
+### Stage discovery and approval
+
+- Analyst captures OpenCode session working directory as immutable `WORKFLOW_BASE`. `1_orchestrator` is anchored there, never at Git root or a parent.
+- Fresh `orchestrator-stage-decomposer` performs bounded no-write repository discovery in `INITIAL` mode and proposes ordered implementation stages.
+- Fresh `orchestrator-stage-question-reviewer` independently checks the proposal and emits one exhaustive batch of material user-visible questions only when repository evidence and reversible defaults cannot decide them.
+- If questions exist, analyst stops with exact questions. Any explicit answer turn consumes the batch; no follow-up question gate exists.
+- After answers, or immediately when no questions exist, a new decomposer session runs `RESTAGE`. It must reanalyze evidence and regenerate stages rather than confirm `INITIAL`.
+- Analyst always presents the complete RESTAGE proposal and stops. No task or journal may be written before exact `APPROVE <approval-id>` matching the current proposal.
+- Approval binds authoritative request, answers, target, generation, ordered stages, boundaries, dependencies, contracts, expected path areas, test ownership, ordering, approvals, and non-goals.
+
+### Per-stage planning
+
+- `orchestrator-task-planner` is sole analyst-side writer. It writes only `1_orchestrator/<request>/tasks/*.md` and one newest-first `planning-issues.md`.
+- Planner materializes exactly one approved stage per call. Every task carries stage ID, sequence, revision, and approval ID while preserving executor-facing `Status`, `Planning review`, prerequisites, expected paths, tests, validation, and execution record.
+- Fresh `orchestrator-plan-reviewer` checks exactly one current stage. `REVISE` returns to fresh planning and fresh stage review until `PASS`.
+- All stages are planned and independently passed in order before cross-stage review starts.
+
+### Adjacent-pair consistency
+
+- Fresh `orchestrator-stage-pair-reviewer` checks only adjacent pairs in order: `S01+S02`, then `S02+S03`, and so on.
+- Pair review validates boundary coverage, dependency direction, contracts, migrations/configuration, expected paths, execution ordering, approvals, non-goals, and test ownership/cases.
+- Correction in right stage is preferred.
+- Left-stage change is `MINOR` only when behavior, stage boundaries, dependencies, expected paths, contracts, test ownership and cases, execution ordering, approvals, and non-goals all remain unchanged. Ambiguity is substantive.
+- Minor left correction requires explicit invariant proof, revision increment, fresh stage review, and revalidation of every stale touching or downstream pair.
+- Any substantive earlier-stage change requires backtracking authority. Ordinary planner, reviewers, primary, and plugin may detect need but cannot authorize it.
+
+### Backtracking and finalization
+
+- Standard analyst sends substantive findings only to fresh pinned-Sol `orchestrator-plan-ultra-reviewer` in `BACKTRACK_AUTHORITY` mode.
+- Sol either denies backtracking with bounded current/right correction or authorizes exact amendments, replacement effective-contract ID, and earliest invalidated stage. User approval delegates only demonstrated Sol-authorized corrective amendments. Authorization invalidates that stage and every later stage/pair certificate; planner first demotes active suffix tasks to `DRAFT/PENDING`, then planning and reviews restart sequentially.
+- Standard analyst runs Sol `FINAL` after every current stage and adjacent pair passes. Final findings follow normal right/minor/backtrack routes before another final review.
+- Single-model analyst never invokes Sol. Substantive backtrack need produces a clear user stop with exact `RESTART <lineage-id> FROM <stage-id>` and `KEEP <lineage-id>` choices. It never chooses for user.
+- Planner `FINALIZE` changes only active task metadata from `DRAFT/PENDING` to `READY/PASS` after current approval, all stage passes, all pair passes, and required Sol final pass.
+- Analyst never launches implementation. User executes ready tasks one at a time through an executor primary.
+
+## Structured recovery harness
+
+- Plugin exposes `workflow_certificate`, a schema-validated custom tool. Analyst primary calls it after every accepted transition and before every user wait, blocker, or completion.
+- Certificate protocol version `3` records lineage, state, phase, target, approval, stage, revision, pair, generation, next action, and compact summary.
+- Free-form model prose has no transition authority. Guard reads completed root-session certificate tool calls directly.
+- Terminal-for-now states are `WAITING_ANSWERS`, `WAITING_APPROVAL`, `BLOCKED`, and `COMPLETE`. A certificate from before a new explicit user turn cannot terminate that new turn.
+- `RUNNING` or absent current-turn certificate means incomplete workflow and may trigger hidden continuation.
+- Guard listens to `session.status` idle and deprecated `session.idle`, ignores child, non-analyst, active, errored, cancelled, and mismatched-agent sessions, and rechecks messages/status before dispatch.
+- Continuation preserves original agent, provider/model, variant, session, and directory. Deterministic message ID, persisted marker, per-session lock, pending suppression, same-frontier cap, and total cap prevent duplicate loops.
+- Installer preserves unknown pre-existing guard collisions. Before changing released guard bytes, add every previous project-owned hash to `OWNED_PREVIOUS_FILE_HASHES`.
+
+## Reassessment and task safety
+
+- `REASSESS` uses one exact existing target, authoritative request, and exact user-declared completed paths.
+- `COMPLETE/PASS` tasks are immutable. Gaps become new corrective tasks. Obsolete unexecuted tasks may be marked `SUPERSEDED` only within their stage; files are never deleted or renamed.
+- Active `IN_PROGRESS` or `BLOCKED` execution must finish before reassessment.
+- Task numbers are two-digit and monotonic through `99`.
+- Expected product paths are `WORKFLOW_BASE`-relative scope boundaries. Executor-side expansion requires designated correction authority.
+
+## Executor invariants
+
+- Executor accepts exactly one `READY`, resumable `IN_PROGRESS`, or explicitly resumed `BLOCKED` task. It rejects `DRAFT`, `SUPERSEDED`, and `COMPLETE`.
+- User prepares execution branch. Executor requires non-detached `HEAD` and clean product state, records immutable `START_COMMIT`, and never creates or changes branches.
+- Fresh implementation and review roles alternate. Standard executor uses Terra adjustment/final review; single-model reviewer records bounded task correction itself.
 - Preserve user-owned staged, unstaged, and untracked changes. Never stage, commit, reset, restore, clean, checkout, switch, rebase, merge, stash, push, or rewrite history.
-- Report concise Russian phase updates. Never expose journals, finding IDs, internal handoffs, or other workflow internals to user; analyst may return task paths and executor may repeat supplied task path.
+- Trusted build, test, restore, and localhost checks run autonomously. Secrets, deploy, publish, destructive action, unrelated external effects, material product choices, and user-owned overlap require user decision.
 
 ## Permissions
 
-- Keep default deny and grant least privilege. Put broad permission rules before narrower exceptions because last match wins.
-- Git read-only inspection may be allowed. Deny all Git mutation in permissions and prompts.
-- Analyst roles write only `1_orchestrator/**/*.md`. They do not edit product files or Git state.
-- Only implementation role edits product files; it cannot edit `1_orchestrator/**`. Executor primary records factual execution status in supplied task. No executor-side role may edit another task or planning journal. Planner may edit unexecuted tasks and planning journal during reassessment but never a `COMPLETE` task.
-- Planning reviewer, standard ordinary reviewer, Terra adjuster, single-model ordinary reviewer, and Terra final reviewer do not edit product files. Standard reviewers are read-only; planner records planning findings, Terra adjuster and single-model ordinary reviewer may edit only supplied task and its execution journal.
-- Standard trusted build, test, restore, and localhost commands may be allowed. Deny secret-bearing commands, deployment, publication, destructive commands, and unrelated external effects pending user approval.
+- Keep default deny and least privilege. Broad permission rules precede narrower exceptions because last match wins.
+- Analyst primary reads no product files and edits nothing. Decomposer and all planning reviewers are read-only. Planner alone edits analyst task files and journal.
+- Implementation role alone edits product files. Executor primary edits only supplied task and its execution journal as defined by executor contracts.
+- Deny Git mutation everywhere. Never edit `GlobalUsings.cs` unless explicitly requested.
+
+## User communication
+
+- Primary agents send concise Russian updates at meaningful phase changes.
+- Analyst updates state phase, current/total stage, current action, and whether user action is needed.
+- User waits state exact next message: answer batch, `APPROVE <id>`, backtrack choice, access/safety decision, or execution-lifecycle action.
+- Never expose internal prompts, role names, retries, certificates, signatures, journals, or handoffs. Approval ID and explicit control commands are intentionally user-visible.
 
 ## Change process
 
-1. Read `README.md`, this file, and every affected agent.
-2. Identify every producer and consumer of changed task fields, issue fields, verdicts, permissions, and runtime guard certificates.
-3. Keep one responsibility per role; update every producer and consumer of a changed contract and remove superseded rules rather than layering exceptions.
-4. Verify exactly four primaries, model assignments, least-privilege permissions, autonomous command boundaries, and response contracts.
+1. Read `README.md`, this file, and every affected producer/consumer.
+2. Update all role contracts, permissions, guard certificates, tests, and user docs together; remove superseded rules instead of layering exceptions.
+3. Preserve exactly four primaries, pinned model assignments, least privilege, workflow-base semantics, and executor safety.
+4. For releases, update `VERSION`, `opencode-agents.py:VERSION`, every agent version marker, plugin version, and `CHANGELOG.md` together.
 5. Run `python3 tests/test-cli.py`, `node --test tests/test-plugin.mjs`, syntax checks, `git diff --check`, temporary installation, and `opencode debug config`.
 6. Obtain independent workflow and permission review before release.
 
-## Text and versioning
-
-- Preserve UTF-8, LF line endings, and final-newline state. Do not add credentials or secret values.
-- Update `VERSION`, `opencode-agents.py:VERSION`, every agent version marker, and `CHANGELOG.md` together for release changes.
-- Major version: incompatible installation or workflow change. Minor: compatible capability. Patch: compatible correction.
-
 ## Repository exclusions
 
-Do not add provider config, auth/session databases, MCP tokens, `.env`, user source, patches, logs, or generated target-repository `1_orchestrator/` artifacts to this repository. Approved repository-local plans remain allowed.
+Do not add provider config, credentials, auth/session databases, MCP tokens, `.env`, user source, patches, logs, generated target-repository `1_orchestrator/` artifacts, indexes, manifests, ledgers, snapshots, or hashes.

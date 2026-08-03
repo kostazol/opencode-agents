@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0 - 2026-08-02
+
+### Changed
+
+- **Breaking:** replace monolithic analyst planning with fresh decomposition, independent question review, mandatory RESTAGE analysis, and explicit stage approval before any task write.
+- Plan and independently review one approved stage at a time, then validate adjacent stage pairs in order with right-side correction preferred.
+- Restrict left-stage edits to proven minor changes; route substantive backtracking through Sol authority in standard workflow and explicit user choice in single-model workflow.
+- Replace free-form terminal-response parsing with schema-validated `workflow_certificate` tool calls and a certificate-driven OpenCode recovery guard.
+- Preserve agent, model, and variant on recovery; support `session.status` idle plus compatibility `session.idle`, deterministic continuation IDs, persisted deduplication, and stage-aware progress frontiers.
+- Expand user-facing Russian phase updates with current stage, active action, stop reason, and exact next user command.
+
+### Added
+
+- Add dedicated decomposer, question reviewer, and adjacent-pair reviewer subagents.
+- Add stage identity, revision, sequence, and approval metadata to analyst task files while preserving executor contracts.
+
 ## 2.4.1 - 2026-08-02
 
 ### Fixed
