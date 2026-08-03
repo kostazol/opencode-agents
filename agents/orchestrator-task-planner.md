@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Model-inheriting sole writer for one approved analyst stage at a time, task files, and newest-first planning journal.
 mode: subagent
 hidden: true

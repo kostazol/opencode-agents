@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Implements one prepared task using inherited model, editing only approved product paths.
 mode: subagent
 hidden: true

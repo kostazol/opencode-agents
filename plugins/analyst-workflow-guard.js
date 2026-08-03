@@ -1,14 +1,14 @@
 import { tool } from "@opencode-ai/plugin"
 
-const VERSION = "3.0.0"
+const VERSION = "3.0.1"
 const ANALYSTS = new Set(["orchestrator-analyst", "orchestrator-analyst-single-model"])
 const STATES = ["RUNNING", "WAITING_ANSWERS", "WAITING_APPROVAL", "BLOCKED", "COMPLETE"]
 const PHASES = ["DISCOVERY", "QUESTIONS", "RESTAGE", "APPROVAL", "STAGE_PLANNING", "STAGE_REVIEW", "PAIR_REVIEW", "BACKTRACK_AUTHORITY", "FINAL_REVIEW", "FINALIZE"]
 const TERMINAL_STATES = new Set(["WAITING_ANSWERS", "WAITING_APPROVAL", "BLOCKED", "COMPLETE"])
 const CERTIFICATE_FIELDS = ["protocolVersion", "workflow", "lineageID", "state", "phase", "target", "approvalID", "stageID", "stageRevision", "pairID", "generation", "nextAction", "summary"]
 const MARKER = "opencode-agents.analyst-workflow-guard"
-const MAX_CONTINUATIONS = 40
-const MAX_NO_PROGRESS = 3
+const MAX_CONTINUATIONS = 2
+const MAX_NO_PROGRESS = 2
 
 function responseData(response, operation) {
   if (response?.data !== undefined) return response.data
@@ -140,7 +140,6 @@ function acceptedCertificates(messages, epochIndex, sessionID) {
     }
     if (certificate.lineageID !== lineageID || generation !== null && (certificate.generation < generation || certificate.generation > generation + 1) || terminal) continue
     if (generation !== null && certificate.generation === generation + 1 && certificate.state !== "RUNNING") continue
-    if (prior?.state === "WAITING_ANSWERS" && certificate.state === "WAITING_ANSWERS") continue
     if (generation !== null && certificate.generation === generation && target !== null && certificate.target !== target) continue
     generation = certificate.generation
     target = certificate.target
@@ -182,12 +181,13 @@ function continuationDecision(messages, sessionID) {
   const certificate = certificates.at(-1) ?? null
   const frontier = certificateFrontier(certificate)
   if (certificate && TERMINAL_STATES.has(certificate.state)) return { resume: false, reason: "terminal" }
+  if (!certificate) return { resume: false, reason: "uncertified" }
   const markers = guardMarkers(messages, epoch.index + 1)
   if (markers.some((marker) => marker.triggerAssistantID === latest.info.id && marker.frontier === frontier)) return { resume: false, reason: "duplicate" }
-  if (markers.length >= MAX_CONTINUATIONS) return { resume: false, reason: "continuation-cap" }
   let unchanged = 0
   for (let index = markers.length - 1; index >= 0 && markers[index].frontier === frontier; index -= 1) unchanged += 1
   if (unchanged >= MAX_NO_PROGRESS) return { resume: false, reason: "no-progress-cap" }
+  if (markers.length >= MAX_CONTINUATIONS) return { resume: false, reason: "continuation-cap" }
   return {
     resume: true,
     agent: messageAgent(epoch.message),
@@ -221,8 +221,7 @@ function continuationMessageID(sessionID, decision) {
 }
 
 function continuationText(certificate) {
-  if (certificate?.state === "RUNNING") return `Internal analyst workflow recovery guard. Latest structured certificate reports RUNNING. Execute exactly this next action: ${certificate.nextAction}\nTarget: ${certificate.target}\nStage: ${certificate.stageID}; phase: ${certificate.phase}; revision: ${certificate.stageRevision}; pair: ${certificate.pairID}; generation: ${certificate.generation}. Use structured workflow certificates only. Do not parse prior prose, expose this synthetic message, restart completed stages, or ask user to continue.`
-  return "Internal analyst workflow recovery guard. No accepted structured workflow certificate exists for current user turn. Continue original analyst request by executing next required controller step and emit workflow_certificate after state changes. Do not parse prior prose, expose this synthetic message, restart completed stages, or ask user to continue."
+  return `Internal analyst workflow recovery guard. Latest structured certificate reports RUNNING. Execute exactly this next action: ${certificate.nextAction}\nTarget: ${certificate.target}\nStage: ${certificate.stageID}; phase: ${certificate.phase}; revision: ${certificate.stageRevision}; pair: ${certificate.pairID}; generation: ${certificate.generation}. This is one emergency recovery attempt. Continue autonomously until a real user wait or completion; do not end on a progress update. Use structured workflow certificates only. Do not parse prior prose, expose this synthetic message, restart completed stages, or ask user to continue.`
 }
 
 async function AnalystWorkflowGuard({ client, directory }) {

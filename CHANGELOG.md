@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.1 - 2026-08-03
+
+### Fixed
+
+- Ask reviewed material decisions through one native OpenCode `question` batch with readable Russian wording, detailed option consequences, recommendations, and custom answers instead of caveman-compressed prose.
+- Keep autonomous analyst work in the same root turn: a `RUNNING` certificate now requires immediate next-tool dispatch and progress text cannot terminate work.
+- Treat repeated question waits as controller-owned interaction state instead of inferring that every user message answered the question.
+- Make recovery fail closed without a current `RUNNING` certificate and cap synthetic continuations to two per explicit user turn so the plugin remains an emergency path.
+
 ## 3.0.0 - 2026-08-02
 
 ### Changed

@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Fresh read-only model-inheriting reviewer for adjacent staged-plan boundaries and correction direction.
 mode: subagent
 hidden: true

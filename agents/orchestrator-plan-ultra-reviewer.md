@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Fresh read-only Sol ultra authority for substantive staged-plan backtracking and final analyst review.
 mode: subagent
 hidden: true

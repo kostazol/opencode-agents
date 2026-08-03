@@ -99,7 +99,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(sorted(plugins), PLUGIN_NAMES)
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst-single-model.md", "orchestrator-analyst.md", "orchestrator-executor-single-model.md", "orchestrator-executor.md"])
             version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-            self.assertEqual(version, "3.0.0")
+            self.assertEqual(version, "3.0.1")
             self.assertEqual(OPENCODE_AGENTS.VERSION, version)
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
@@ -132,6 +132,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("## 3.0.0 - 2026-08-02", changelog)
         self.assertIn("replace monolithic analyst planning with fresh decomposition", changelog)
         self.assertIn("schema-validated `workflow_certificate` tool calls", changelog)
+        self.assertIn("## 3.0.1 - 2026-08-03", changelog)
+        self.assertIn("native OpenCode `question` batch", changelog)
 
     def test_models_match_standard_and_single_model_architecture(self):
         source_agents = self.installed_agents(ROOT)
@@ -164,7 +166,9 @@ class CliTests(unittest.TestCase):
         self.assertIn("No role may write tasks from INITIAL output", decomposer)
         self.assertIn("one exhaustive batch", question_reviewer)
         self.assertIn("repository evidence and safe reversible defaults cannot resolve", question_reviewer)
-        self.assertIn("without follow-up", question_reviewer)
+        self.assertIn("without inventing follow-up", question_reviewer)
+        self.assertIn("ready for one OpenCode `question` call", question_reviewer)
+        self.assertIn("Do not use caveman compression in user-facing fields", question_reviewer)
         self.assertIn("Plan only supplied current stage", planner)
         self.assertIn("Do not create, edit, rename, supersede, or delete tasks belonging to another stage", planner)
         self.assertIn("Fresh independent review of exactly one current planning stage", stage_reviewer)
@@ -195,6 +199,9 @@ class CliTests(unittest.TestCase):
             self.assertIn("fresh stage reviewer", content)
             self.assertIn("`REVISE_STAGE`", content)
             self.assertIn("until PASS", content)
+            self.assertIn("Every `RUNNING` certificate is an immediate same-turn obligation", content)
+            self.assertIn("Progress", content)
+            self.assertIn("never as final", content)
             self.assertIn("After all stages", content)
             self.assertIn("S01+S02", content)
             self.assertIn("S02+S03", content)
@@ -288,6 +295,9 @@ class CliTests(unittest.TestCase):
         for name, content in agents.items():
             if name in analysts:
                 self.assertEqual(self.evaluate(self.permission_rules(content, "workflow_certificate"), "*"), "allow")
+                self.assertEqual(self.evaluate(self.permission_rules(content, "question"), "*"), "allow")
+                self.assertIn("Use OpenCode `question` tool for every material question batch", content)
+                self.assertIn("Caveman compression does not apply", content)
             else:
                 self.assertNotRegex(content, r"^  workflow_certificate: allow$", name)
         fields = ("protocolVersion", "workflow", "lineageID", "state", "phase", "target", "approvalID", "stageID", "stageRevision", "pairID", "generation", "nextAction", "summary")
@@ -309,6 +319,8 @@ class CliTests(unittest.TestCase):
         self.assertIn('if (decision.variant !== undefined) body.variant = decision.variant', plugin)
         self.assertIn('continuationMessageID(sessionID, decision)', plugin)
         self.assertIn('decision.epochID, decision.triggerAssistantID, decision.frontier', plugin)
+        self.assertIn('if (!certificate) return { resume: false, reason: "uncertified" }', plugin)
+        self.assertIn("const MAX_CONTINUATIONS = 2", plugin)
 
     def test_primary_task_allowlists_are_exact(self):
         agents = self.installed_agents(ROOT)

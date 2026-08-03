@@ -45,7 +45,7 @@ Target: 1_orchestrator/avatar-upload/
 Действие: ответьте на все вопросы одним сообщением
 ```
 
-Вопросы приходят одним исчерпывающим batch. После ответа новый subagent заново исследует задачу и формирует этапы. Даже когда вопросов нет, запускается fresh RESTAGE-анализ: INITIAL proposal никогда не принимается автоматически.
+Вопросы приходят одним вызовом native OpenCode `question`: отдельные карточки, нормальный русский, подробные варианты и последствия, рекомендация при наличии evidence, custom answer. Caveman compression к вопросам не применяется. Решения сохраняются отдельно по каждой карточке; просьба пояснить открывает повторно только нерешённые карточки. После всех решений новый subagent заново исследует задачу и формирует этапы. Даже когда вопросов нет, запускается fresh RESTAGE-анализ: INITIAL proposal никогда не принимается автоматически.
 
 ### 2. Согласование этапов
 
@@ -167,12 +167,13 @@ Guard plugin предоставляет внутренний `workflow_certifica
 
 - игнорирует child, non-analyst, busy, errored и cancelled sessions;
 - не продолжает `WAITING_ANSWERS`, `WAITING_APPROVAL`, `BLOCKED` и `COMPLETE`;
-- продолжает `RUNNING` или turn без текущего certificate;
+- продолжает только turn с текущим `RUNNING` certificate;
+- ничего не делает при отсутствующем certificate: неизвестное состояние не должно мешать пользователю;
 - сохраняет исходные agent, model и variant;
 - слушает `session.status` idle и compatibility `session.idle`;
-- использует deterministic message ID, persisted marker, locks и bounded retry caps.
+- использует deterministic message ID, persisted marker, locks и максимум две recovery-попытки на один explicit user turn.
 
-Plugin — recovery guard, не workflow engine. Он не выбирает этапы, не меняет scope и ничего не пишет.
+Plugin — emergency recovery guard, не workflow engine и не основной scheduler. `RUNNING` обязывает primary немедленно вызвать следующий tool в том же turn; standalone progress вроде «действие пользователя: ничего» запрещён.
 
 ## Понятные статусы
 

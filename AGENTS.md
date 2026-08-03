@@ -16,7 +16,7 @@ This repository versions four user-facing OpenCode primary agents, their least-p
 - Analyst captures OpenCode session working directory as immutable `WORKFLOW_BASE`. `1_orchestrator` is anchored there, never at Git root or a parent.
 - Fresh `orchestrator-stage-decomposer` performs bounded no-write repository discovery in `INITIAL` mode and proposes ordered implementation stages.
 - Fresh `orchestrator-stage-question-reviewer` independently checks the proposal and emits one exhaustive batch of material user-visible questions only when repository evidence and reversible defaults cannot decide them.
-- If questions exist, analyst stops with exact questions. Any explicit answer turn consumes the batch; no follow-up question gate exists.
+- If questions exist, analyst calls native OpenCode `question` once with the complete batch. Questions use normal readable Russian, detailed options/consequences, and no caveman compression. Decisions are preserved per card; a clarification-only custom response may reopen only unresolved existing cards. No new follow-up question may be invented.
 - After answers, or immediately when no questions exist, a new decomposer session runs `RESTAGE`. It must reanalyze evidence and regenerate stages rather than confirm `INITIAL`.
 - Analyst always presents the complete RESTAGE proposal and stops. No task or journal may be written before exact `APPROVE <approval-id>` matching the current proposal.
 - Approval binds authoritative request, answers, target, generation, ordered stages, boundaries, dependencies, contracts, expected path areas, test ownership, ordering, approvals, and non-goals.
@@ -50,9 +50,9 @@ This repository versions four user-facing OpenCode primary agents, their least-p
 
 - Plugin exposes `workflow_certificate`, a schema-validated custom tool. Analyst primary calls it after every accepted transition and before every user wait, blocker, or completion.
 - Certificate protocol version `3` records lineage, state, phase, target, approval, stage, revision, pair, generation, next action, and compact summary.
-- Free-form model prose has no transition authority. Guard reads completed root-session certificate tool calls directly.
+- Free-form model prose has no transition authority. Guard reads completed root-session certificate tool calls directly. Only a current `RUNNING` certificate may trigger recovery; uncertified idle turns fail closed.
 - Terminal-for-now states are `WAITING_ANSWERS`, `WAITING_APPROVAL`, `BLOCKED`, and `COMPLETE`. A certificate from before a new explicit user turn cannot terminate that new turn.
-- `RUNNING` or absent current-turn certificate means incomplete workflow and may trigger hidden continuation.
+- `RUNNING` means incomplete workflow and may trigger hidden continuation. Missing current-turn certificate never triggers recovery. Synthetic continuation is capped at two attempts per explicit user turn.
 - Guard listens to `session.status` idle and deprecated `session.idle`, ignores child, non-analyst, active, errored, cancelled, and mismatched-agent sessions, and rechecks messages/status before dispatch.
 - Continuation preserves original agent, provider/model, variant, session, and directory. Deterministic message ID, persisted marker, per-session lock, pending suppression, same-frontier cap, and total cap prevent duplicate loops.
 - Installer preserves unknown pre-existing guard collisions. Before changing released guard bytes, add every previous project-owned hash to `OWNED_PREVIOUS_FILE_HASHES`.
@@ -83,7 +83,7 @@ This repository versions four user-facing OpenCode primary agents, their least-p
 ## User communication
 
 - Primary agents send concise Russian updates at meaningful phase changes.
-- Analyst updates state phase, current/total stage, current action, and whether user action is needed.
+- Analyst updates state phase, current/total stage, current action, and whether user action is needed. Autonomous progress is immediately followed by next tool call and never ends a turn.
 - User waits state exact next message: answer batch, `APPROVE <id>`, backtrack choice, access/safety decision, or execution-lifecycle action.
 - Never expose internal prompts, role names, retries, certificates, signatures, journals, or handoffs. Approval ID and explicit control commands are intentionally user-visible.
 

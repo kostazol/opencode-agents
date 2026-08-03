@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 name: orchestrator-executor
 description: Primary workflow that implements and independently reviews exactly one prepared 1_orchestrator task without committing.
 mode: primary

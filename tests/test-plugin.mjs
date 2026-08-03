@@ -70,6 +70,10 @@ function certPart(id, args, options = {}) {
   return { id, sessionID: SESSION, messageID: "assistant", type: "tool", tool: "workflow_certificate", state: { status: options.status ?? "completed", input: args, output } }
 }
 
+function questionPart(id, status = "running") {
+  return { id, sessionID: SESSION, messageID: "assistant", type: "tool", tool: "question", state: { status, input: { questions: [] }, output: "" } }
+}
+
 function markerUser(id, triggerAssistantID, frontier, extra = {}) {
   const marker = { [MARKER]: { triggerAssistantID: messageID(triggerAssistantID), frontier, messageID: messageID(`marker-${id}`), ...extra } }
   return user(id, { value: "continue", synthetic: true, metadata: marker })
@@ -118,10 +122,10 @@ test("COMPLETE and BLOCKED stop recovery", () => {
   assert.deepEqual(decisionWith(certificate({ state: "BLOCKED", nextAction: "grant repository access" })), { resume: false, reason: "terminal" })
 })
 
-test("stale waiting certificate before user answer cannot stop recovery", () => {
+test("certificate from prior user turn cannot terminate or resume current uncertified turn", () => {
   for (const stale of [certificate({ state: "WAITING_ANSWERS", phase: "QUESTIONS", nextAction: "ANSWER" }), certificate({ state: "BLOCKED", nextAction: "grant access" })]) {
-    const messages = [user("request"), assistant("waiting", [certPart("wait", stale)]), user("answer", { value: "Q1: permanent" }), assistant("reply")]
-    assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
+    const messages = [user("request"), assistant("waiting", [certPart("wait", stale)]), user("answer", { value: "explain option B" }), assistant("reply")]
+    assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "uncertified" })
   }
 })
 
@@ -136,7 +140,7 @@ test("new-turn terminal certificate from wrong lineage is ignored", () => {
   const waiting = certificate({ state: "WAITING_ANSWERS", phase: "QUESTIONS", nextAction: "ANSWER" })
   const forged = certificate({ lineageID: "lineage-2", state: "COMPLETE", phase: "FINALIZE" })
   const messages = [user("request"), assistant("waiting", [certPart("wait", waiting)]), user("answer", { value: "Q1: permanent" }), assistant("reply", [certPart("forged", forged)])]
-  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
+  assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "uncertified" })
 })
 
 test("new discovery certificate starts a new lineage", () => {
@@ -164,15 +168,10 @@ test("future generation jump cannot forge terminal state", () => {
   assert.equal(decision.certificate.generation, 2)
 })
 
-test("answered question cannot return to waiting answers", () => {
+test("current turn may remain waiting while user asks for question explanation", () => {
   const waiting = certificate({ state: "WAITING_ANSWERS", phase: "QUESTIONS", nextAction: "ANSWER" })
-  const running = certificate({ phase: "RESTAGE", nextAction: "dispatch fresh restage" })
-  for (const parts of [[certPart("repeat", waiting)], [certPart("running", running), certPart("repeat-after-running", waiting)]]) {
-    const messages = [user("question-request"), assistant("question-wait", [certPart("wait", waiting)]), user("question-answer", { value: "Q01: option A" }), assistant("question-repeat", parts)]
-    const decision = AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION)
-    assert.equal(decision.resume, true)
-    if (parts.length > 1) assert.equal(decision.certificate.state, "RUNNING")
-  }
+  const messages = [user("question-request"), assistant("question-wait", [certPart("wait", waiting)]), user("question-explain", { value: "Explain option B" }), assistant("question-repeat", [certPart("repeat", waiting)])]
+  assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "terminal" })
 })
 
 test("unsupported trigger ID does not create maximal fallback ID", () => {
@@ -187,8 +186,8 @@ test("terminal certificate cannot be reopened in same turn", () => {
   assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "terminal" })
 })
 
-test("no certificate and RUNNING certificate resume", () => {
-  assert.equal(decisionWith(null).resume, true)
+test("only RUNNING certificate resumes", () => {
+  assert.deepEqual(decisionWith(null), { resume: false, reason: "uncertified" })
   const decision = decisionWith(certificate())
   assert.equal(decision.resume, true)
   assert.equal(decision.certificate.nextAction, "dispatch planner")
@@ -210,7 +209,7 @@ test("certificate from child message or child part is ignored", () => {
   const childPart = certPart("child-part", complete)
   childPart.sessionID = "child"
   const messages = [user("user"), childMessage, assistant("assistant", [childPart])]
-  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
+  assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "uncertified" })
 })
 
 test("child, nonanalyst, error, active tool, and cancellation are ignored", async () => {
@@ -224,6 +223,11 @@ test("child, nonanalyst, error, active tool, and cancellation are ignored", asyn
   const hooks = await AnalystWorkflowGuard({ client, directory: "/repo" })
   await hooks.event({ event: { type: "session.idle", properties: { sessionID: SESSION } } })
   assert.equal(readMessages, false)
+})
+
+test("pending native question prevents recovery", () => {
+  const messages = [user("question-user"), assistant("question-assistant", [certPart("question-running", certificate({ phase: "QUESTIONS", nextAction: "ASK_REVIEWED_QUESTIONS" })), questionPart("question-tool")])]
+  assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "tool-active" })
 })
 
 test("declared nonanalyst root is rejected before messages", async () => {
@@ -240,11 +244,11 @@ test("latest user and completed assistant must use same analyst", () => {
   assert.deepEqual(decisionWith(null, { assistant: { incomplete: true } }), { resume: false, reason: "not-completed" })
 })
 
-test("same-frontier no-progress cap is three", () => {
+test("same-frontier no-progress cap is two", () => {
   const running = certificate()
   const frontier = AnalystWorkflowGuard.testing.certificateFrontier(running)
   const messages = [user("user"), assistant("initial", [certPart("cert-0", running)])]
-  for (let index = 1; index <= 3; index += 1) {
+  for (let index = 1; index <= 2; index += 1) {
     messages.push(markerUser(`guard-${index}`, `assistant-${index - 1}`, frontier))
     messages.push(assistant(`assistant-${index}`, [certPart(`cert-${index}`, running)]))
   }
@@ -262,13 +266,29 @@ test("stage, phase, revision, pair, and generation alter frontier", () => {
   assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, true)
 })
 
-test("total continuation cap is forty", () => {
+test("total continuation cap is two", () => {
   const messages = [user("user")]
-  for (let index = 0; index < 40; index += 1) {
+  for (let index = 0; index < 2; index += 1) {
     messages.push(markerUser(`guard-${index}`, `assistant-${index}`, `frontier-${index}`))
-    messages.push(assistant(`assistant-${index + 1}`))
+    messages.push(assistant(`assistant-${index + 1}`, [certPart(`cert-${index}`, certificate({ stageRevision: index + 1 }))]))
   }
   assert.deepEqual(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION), { resume: false, reason: "continuation-cap" })
+})
+
+test("continuation cap resets after next explicit user turn", () => {
+  const running = certificate()
+  const frontier = AnalystWorkflowGuard.testing.certificateFrontier(running)
+  const messages = [user("cap-request"), assistant("cap-start", [certPart("cap-start-cert", running)])]
+  for (let index = 0; index < 2; index += 1) {
+    messages.push(markerUser(`cap-guard-${index}`, `cap-assistant-${index}`, `cap-frontier-${index}`))
+    messages.push(assistant(`cap-assistant-${index + 1}`, [certPart(`cap-cert-${index}`, certificate({ stageRevision: index + 1 }))]))
+  }
+  assert.equal(AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION).resume, false)
+  messages.push(user("cap-new-user", { value: "Continue approved workflow" }))
+  messages.push(assistant("cap-new-assistant", [certPart("cap-new-cert", certificate({ stageRevision: 3, nextAction: "review S02" }))]))
+  const decision = AnalystWorkflowGuard.testing.continuationDecision(messages, SESSION)
+  assert.equal(decision.resume, true)
+  assert.notEqual(decision.frontier, frontier)
 })
 
 test("variant, model, deterministic messageID, and RUNNING action are preserved", async () => {
@@ -292,7 +312,7 @@ test("variant, model, deterministic messageID, and RUNNING action are preserved"
 })
 
 test("dual idle events deduplicate before marker persistence", async () => {
-  const messages = [user("user"), assistant("assistant")]
+  const messages = [user("user"), assistant("assistant", [certPart("running", certificate())])]
   let prompts = 0
   const client = minimalClient(messages, { onPrompt: () => { prompts += 1 } })
   const hooks = await AnalystWorkflowGuard({ client, directory: "/repo" })
@@ -312,7 +332,7 @@ test("non-idle session.status event is ignored", async () => {
 })
 
 test("absent status means idle; busy status suppresses continuation", async () => {
-  const messages = [user("user"), assistant("assistant")]
+  const messages = [user("user"), assistant("assistant", [certPart("running", certificate())])]
   let idlePrompts = 0
   const idleHooks = await AnalystWorkflowGuard({ client: minimalClient(messages, { status: {}, onPrompt: () => { idlePrompts += 1 } }), directory: "/repo" })
   await idleHooks.event({ event: { type: "session.idle", properties: { sessionID: SESSION } } })
@@ -324,7 +344,7 @@ test("absent status means idle; busy status suppresses continuation", async () =
 })
 
 test("second status recheck catches newly busy session", async () => {
-  const messages = [user("user"), assistant("assistant")]
+  const messages = [user("user"), assistant("assistant", [certPart("running", certificate())])]
   let statusCalls = 0
   let prompts = 0
   const client = minimalClient(messages, { onPrompt: () => { prompts += 1 } })

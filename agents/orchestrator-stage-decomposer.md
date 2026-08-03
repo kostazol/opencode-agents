@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 3.0.0
+# OpenCode Agents version: 3.0.1
 description: Fresh read-only model-inheriting analyst decomposer for bounded evidence discovery and ordered planning-stage proposals.
 mode: subagent
 hidden: true
