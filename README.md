@@ -164,9 +164,10 @@ python3 tests/test-cli.py
 python3 -m py_compile opencode-agents.py
 opencode debug config >/dev/null
 python3 tests/test-analyst-e2e.py
+python3 tests/test-analyst-questions-e2e.py
 ```
 
-Последняя команда обязательна после любых изменений. Она требует установленный и авторизованный OpenCode, поднимает isolated `opencode serve --pure`, создаёт временный workspace fixture, проводит analyst через approval и проверяет S01/S02 `PASS` на revision 1 без `REVISE`, pair review, `FINALIZE`, отсутствие executor calls, synthetic user turns и product writes. Допускаются максимум три bounded `REJECTED` retry для malformed internal input и одна повторная RESTAGE-регенерация до user-visible approval. Timeout на session по умолчанию 1800 секунд; переопределение: `ANALYST_E2E_TIMEOUT_SECONDS`.
+Обе последние команды обязательны после любых изменений и требуют установленный и авторизованный OpenCode. Первая поднимает isolated `opencode serve --pure`, создаёт временный workspace fixture, проводит analyst через approval и проверяет S01/S02 `PASS` на revision 1 без `REVISE`, pair review, `FINALIZE`, отсутствие executor calls, synthetic user turns и product writes. Вторая требует один native OpenCode `question` call с тремя карточками, отвечает через `/question/{requestID}/reply`, проверяет превращение INITIAL из двух этапов в RESTAGE из трёх, согласование S01+S02 и S02+S03, три READY task и отсутствие обычных user messages для ответов. Допускаются максимум три bounded `REJECTED`/`BLOCKED` retry для malformed internal input и одна повторная RESTAGE-регенерация до user-visible approval. Timeout на session по умолчанию 1800 секунд; переопределение: `ANALYST_E2E_TIMEOUT_SECONDS`.
 
 ## Источники OpenCode harness
 

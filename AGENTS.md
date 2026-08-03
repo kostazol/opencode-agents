@@ -77,7 +77,7 @@ This repository versions exactly two user-facing OpenCode primary agents and the
 2. Update role contracts, permissions, tests, installer behavior, and user docs together; remove superseded rules instead of layering exceptions.
 3. Preserve exactly two primaries, pinned model assignments, least privilege, native task-loop semantics, workflow-base semantics, and executor safety.
 4. For releases, update `VERSION`, `opencode-agents.py:VERSION`, every agent version marker, and `CHANGELOG.md` together.
-5. After any change, run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, `opencode debug config`, and the isolated live-model acceptance test `python3 tests/test-analyst-e2e.py`.
+5. After any change, run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, `opencode debug config`, and both isolated live-model acceptance tests: `python3 tests/test-analyst-e2e.py` and `python3 tests/test-analyst-questions-e2e.py`.
 6. Obtain independent workflow and permission review before release.
 
 ## Repository exclusions

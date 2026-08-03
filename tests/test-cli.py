@@ -248,10 +248,11 @@ class CliTests(unittest.TestCase):
         self.assertFalse((ROOT / "plugins/analyst-workflow-guard.js").exists())
 
     def test_live_analyst_e2e_is_mandatory(self):
-        command = "python3 tests/test-analyst-e2e.py"
-        self.assertTrue((ROOT / "tests/test-analyst-e2e.py").is_file())
-        self.assertIn(command, (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
-        self.assertIn(command, (ROOT / "README.md").read_text(encoding="utf-8"))
+        commands = ("python3 tests/test-analyst-e2e.py", "python3 tests/test-analyst-questions-e2e.py")
+        for command in commands:
+            self.assertTrue((ROOT / command.split()[-1]).is_file())
+            self.assertIn(command, (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
+            self.assertIn(command, (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn("After any change", (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
 
     def test_primary_task_allowlists_are_exact(self):

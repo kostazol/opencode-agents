@@ -10,6 +10,7 @@
 - Invoke pinned Sol only as authority for demonstrated substantive backtracking; remove whole-plan Sol final review.
 - Forbid progress-only final text during autonomous work; phase updates must continue immediately with the next tool call.
 - Add mandatory isolated live-model analyst acceptance test covering approval, revision-1 two-stage and pair reviews without `REVISE`, finalization, and absence of executor calls or synthetic turns.
+- Add native-question live-model acceptance covering three user decisions, two-to-three-stage RESTAGE expansion, adjacent-pair coordination, and final three-task readiness.
 - Preserve executor's one-task, clean-worktree, non-detached-HEAD, no-Git-mutation flow with fresh implementation and review roles.
 - Make installation agents-only. Retire known project-owned old plugin and single-model files while preserving unknown and customized files.
 
