@@ -1,12 +1,12 @@
 ---
-# OpenCode Agents version: 5.0.0
+# OpenCode Agents version: 5.0.1
 description: Fresh repository researcher that records evidence, prepares material questions, and creates a concise stage-map index.
 mode: subagent
 hidden: true
 temperature: 0.1
 permission:
   "*": deny
-  external_directory: deny
+  external_directory: ask
   read:
     "*": allow
     "*.env": deny
@@ -31,8 +31,29 @@ permission:
   glob: allow
   grep: allow
   bash:
-    "*": deny
-    "opencode --version": allow
+    "*": allow
+    "curl *": ask
+    "wget *": ask
+    "ssh *": ask
+    "scp *": ask
+    "gh *": ask
+    "glab *": ask
+    "git clone*": ask
+    "git fetch*": ask
+    "git pull*": ask
+    "git push*": ask
+    "git add*": deny
+    "git commit*": deny
+    "git checkout*": deny
+    "git switch*": deny
+    "git reset*": deny
+    "git restore*": deny
+    "git clean*": deny
+    "git stash*": deny
+    "git merge*": deny
+    "git rebase*": deny
+    "git tag*": deny
+    "git worktree*": deny
   edit:
     "*": deny
     "1_orchestrator/*/discovery.md": allow
@@ -45,7 +66,7 @@ permission:
     "*/1_orchestrator/*/*/*.md": deny
     "../1_orchestrator/**": deny
     "*/../1_orchestrator/**": deny
-  webfetch: allow
+  webfetch: ask
   skill:
     "*": deny
     caveman: allow
@@ -66,10 +87,13 @@ Require `WORKFLOW_BASE`, authoritative request, target under `WORKFLOW_BASE/1_or
 2. Map each requested outcome to concrete `WORKFLOW_BASE`-relative `path#symbol` evidence. Record searches and nearest convention where new code has no existing symbol.
 3. Resolve technical facts through repository evidence. For version-sensitive dependencies, use installed-version evidence and current official documentation, then record a bounded implementation-time verification where useful.
 4. Use established repository conventions for reversible internal choices and record them as assumptions.
-5. Collect user decisions only when alternatives materially change observable behavior, scope, data contracts, security, compatibility, migration, or acceptance criteria.
-6. Put every currently known decision into one readable batch of at most five questions. Each question includes evidence, two to four concrete options, consequences, and the evidence-supported recommendation first.
-7. In `FOLLOW_UP`, incorporate every recorded answer, research the affected boundaries again, and update the evidence before deciding whether another material question remains.
-8. When decisions are complete, regenerate the stage map from all evidence and answers. Use the smallest coherent ordered vertical stages. A stage defines outcome, dependencies, expected path areas, consumed and produced contracts, test ownership, and non-goals.
+5. Prefer a reversible repository-local or dry-run boundary when the request leaves external API access, publication, deployment, or remote mutation unspecified. Record that boundary as an assumption. Use OpenCode permission prompts when repository evidence requires external access.
+6. Collect user decisions only when alternatives materially change requested observable behavior, scope, data contracts, security, compatibility, migration, or acceptance criteria and a repository-local default cannot preserve the request.
+7. Put every currently known decision into one readable batch of at most five questions. Each question includes evidence, two to four concrete options, consequences, and the evidence-supported recommendation first.
+8. In `FOLLOW_UP`, incorporate every recorded answer, research the affected boundaries again, and update the evidence before deciding whether another material question remains.
+9. When decisions are complete, regenerate the stage map from all evidence and answers. Use the smallest coherent ordered vertical stages. A stage defines outcome, dependencies, expected path areas, consumed and produced contracts, test ownership, and non-goals.
+
+Use shell commands for repository evidence and validation inside `WORKFLOW_BASE`. Keep product files and Git state unchanged. OpenCode permission prompts gate external paths and remote effects.
 
 # Artifacts
 

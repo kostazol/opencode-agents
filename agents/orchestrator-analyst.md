@@ -1,11 +1,11 @@
 ---
-# OpenCode Agents version: 5.0.0
+# OpenCode Agents version: 5.0.1
 description: Primary planning orchestrator that resumes from durable artifacts and advances discovery, questions, approval, stage planning, and stage review.
 mode: primary
 temperature: 0.1
 permission:
   "*": deny
-  external_directory: deny
+  external_directory: ask
   read:
     "*": deny
     "1_orchestrator/**": allow

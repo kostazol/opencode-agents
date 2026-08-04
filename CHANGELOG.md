@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.0.1 - 2026-08-05
+
+### Fixed
+
+- Let planning roles run repository-local evidence and validation commands, including read-only Git history inspection.
+- Route external directories, network CLIs, remote Git operations, and web access through OpenCode permission prompts.
+- Prefer reversible repository-local dry-run boundaries when an external integration choice is not part of the request.
+
 ## 5.0.0 - 2026-08-04
 
 ### Changed

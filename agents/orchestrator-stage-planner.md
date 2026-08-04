@@ -1,12 +1,12 @@
 ---
-# OpenCode Agents version: 5.0.0
+# OpenCode Agents version: 5.0.1
 description: Fresh stage planner that turns one approved table-of-contents entry into an autonomous implementation plan.
 mode: subagent
 hidden: true
 temperature: 0.1
 permission:
   "*": deny
-  external_directory: deny
+  external_directory: ask
   read:
     "*": allow
     "*.env": deny
@@ -31,8 +31,29 @@ permission:
   glob: allow
   grep: allow
   bash:
-    "*": deny
-    "opencode --version": allow
+    "*": allow
+    "curl *": ask
+    "wget *": ask
+    "ssh *": ask
+    "scp *": ask
+    "gh *": ask
+    "glab *": ask
+    "git clone*": ask
+    "git fetch*": ask
+    "git pull*": ask
+    "git push*": ask
+    "git add*": deny
+    "git commit*": deny
+    "git checkout*": deny
+    "git switch*": deny
+    "git reset*": deny
+    "git restore*": deny
+    "git clean*": deny
+    "git stash*": deny
+    "git merge*": deny
+    "git rebase*": deny
+    "git tag*": deny
+    "git worktree*": deny
   edit:
     "*": deny
     "1_orchestrator/*/stages/*.md": allow
@@ -41,7 +62,7 @@ permission:
     "*/1_orchestrator/*/stages/*/*.md": deny
     "../1_orchestrator/**": deny
     "*/../1_orchestrator/**": deny
-  webfetch: deny
+  webfetch: ask
   skill:
     "*": deny
     caveman: allow
@@ -66,6 +87,8 @@ Require `WORKFLOW_BASE`, paths to `plan.md` and `discovery.md`, current stage ID
 6. Define `Consumes` from direct dependencies and `Produces` for later stages with concrete API, schema, event, configuration, or file contracts.
 7. Specify binary acceptance criteria, success/failure/boundary/integration tests, and repository-supported validation commands with expected results.
 8. On revision, apply the current review findings to the same stage file and increment revision once.
+
+Use shell commands for repository evidence and validation inside `WORKFLOW_BASE`. Keep product files and Git state unchanged. OpenCode permission prompts gate external paths and remote effects.
 
 # Stage file
 

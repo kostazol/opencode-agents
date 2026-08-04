@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
-VERSION = "5.0.0"
+VERSION = "5.0.1"
 AGENT_NAMES = [
     "orchestrator-analyst.md",
     "orchestrator-discovery.md",
@@ -79,11 +79,17 @@ class CliTests(unittest.TestCase):
         self.assertIn('"1_orchestrator/*/discovery.md": allow', agents["orchestrator-discovery.md"])
         self.assertIn('"1_orchestrator/*/stages/*.md": allow', agents["orchestrator-stage-planner.md"])
         self.assertIn('"1_orchestrator/*/reviews/*.md": allow', agents["orchestrator-stage-reviewer.md"])
-        self.assertIn("webfetch: allow", agents["orchestrator-discovery.md"])
-        self.assertIn("webfetch: deny", agents["orchestrator-stage-planner.md"])
-        self.assertIn("webfetch: deny", agents["orchestrator-stage-reviewer.md"])
+        self.assertIn("webfetch: ask", agents["orchestrator-discovery.md"])
+        self.assertIn("webfetch: ask", agents["orchestrator-stage-planner.md"])
+        self.assertIn("webfetch: ask", agents["orchestrator-stage-reviewer.md"])
+        for name in ("orchestrator-discovery.md", "orchestrator-stage-planner.md", "orchestrator-stage-reviewer.md"):
+            content = agents[name]
+            self.assertIn('    "*": allow\n    "curl *": ask', content)
+            self.assertIn('    "git push*": ask', content)
+            self.assertIn('    "git add*": deny', content)
+            self.assertIn("Keep product files and Git state unchanged", content)
         for content in agents.values():
-            self.assertIn('external_directory: deny', content)
+            self.assertIn('external_directory: ask', content)
             self.assertIn('"*": deny', content)
 
     def test_fresh_install_and_status(self):

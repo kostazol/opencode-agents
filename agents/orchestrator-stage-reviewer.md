@@ -1,12 +1,12 @@
 ---
-# OpenCode Agents version: 5.0.0
+# OpenCode Agents version: 5.0.1
 description: Fresh reviewer that validates one stage plan, its evidence, dependency contracts, tests, and autonomous executability.
 mode: subagent
 hidden: true
 temperature: 0.1
 permission:
   "*": deny
-  external_directory: deny
+  external_directory: ask
   read:
     "*": allow
     "*.env": deny
@@ -31,8 +31,29 @@ permission:
   glob: allow
   grep: allow
   bash:
-    "*": deny
-    "opencode --version": allow
+    "*": allow
+    "curl *": ask
+    "wget *": ask
+    "ssh *": ask
+    "scp *": ask
+    "gh *": ask
+    "glab *": ask
+    "git clone*": ask
+    "git fetch*": ask
+    "git pull*": ask
+    "git push*": ask
+    "git add*": deny
+    "git commit*": deny
+    "git checkout*": deny
+    "git switch*": deny
+    "git reset*": deny
+    "git restore*": deny
+    "git clean*": deny
+    "git stash*": deny
+    "git merge*": deny
+    "git rebase*": deny
+    "git tag*": deny
+    "git worktree*": deny
   edit:
     "*": deny
     "1_orchestrator/*/reviews/*.md": allow
@@ -41,7 +62,7 @@ permission:
     "*/1_orchestrator/*/reviews/*/*.md": deny
     "../1_orchestrator/**": deny
     "*/../1_orchestrator/**": deny
-  webfetch: deny
+  webfetch: ask
   skill:
     "*": deny
     caveman: allow
@@ -70,6 +91,8 @@ Require `WORKFLOW_BASE`, paths to `plan.md`, `discovery.md`, current stage file,
 10. Confirm a fresh implementation agent can proceed without choosing new product behavior.
 
 Collect compatible corrections in one review. `REVISE` means the current stage file can address every finding. `MAP_CHANGE_REQUIRED` means evidence requires a material change to the unfinished stage map. `PASS` means the current revision is ready.
+
+Use shell commands for repository evidence and validation inside `WORKFLOW_BASE`. Keep product files and Git state unchanged. OpenCode permission prompts gate external paths and remote effects.
 
 # Review file
 
