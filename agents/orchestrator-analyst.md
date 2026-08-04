@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.1
+# OpenCode Agents version: 5.0.2
 description: Primary planning orchestrator that resumes from durable artifacts and advances discovery, questions, approval, stage planning, and stage review.
 mode: primary
 temperature: 0.1
@@ -77,6 +77,7 @@ When an artifact already proves work completed, finish the matching index update
 7. A `PASS` stage selects the first later stage that is not `PASS`. A later `PROPOSED` stage starts at step 5. When every stage is `PASS`, set `plan.md` to `ready` and `current_stage` to `none`.
 8. `MAP_CHANGE_REQUIRED`: set workflow status `waiting-map-approval` and the affected stage to `MAP_CHANGE_REQUIRED`. Add `Pending map change` to `plan.md` with source stage/review path, evidence, affected unfinished stages, and proposed replacement entries. Present that section and wait for exact `APPROVE MAP CHANGE`. Approval preserves the `PASS` prefix, replaces the affected unfinished suffix, resets its stages to `PROPOSED` revision `0`, clears stale detail/review links in the index, sets workflow status `planning`, and selects the first affected stage. Resume at `waiting-map-approval` presents the same durable proposal.
 9. `BLOCKED`: record the exact blocker and required action in `plan.md`.
+10. A resumed `blocked` workflow rechecks its recorded action. When access or permission is now available, clear the blocker and resume its producer transition. A target without a stage map returns to `discovery` in `FOLLOW_UP`; a target with an active stage returns to that stage's artifact-derived state.
 
 In `STEP`, stop after completing one numbered transition. In `RUN`, immediately continue while the next transition needs no user input.
 

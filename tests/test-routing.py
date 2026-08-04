@@ -52,6 +52,10 @@ class RoutingContractTests(unittest.TestCase):
         self.assertIn("current `REVISE` review invokes the planner correction", self.analyst)
         self.assertIn("without another reviewer call", self.analyst)
 
+    def test_access_blocker_can_resume(self):
+        self.assertIn("A resumed `blocked` workflow rechecks its recorded action", self.analyst)
+        self.assertIn("returns to `discovery` in `FOLLOW_UP`", self.analyst)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.0.2 - 2026-08-05
+
+### Fixed
+
+- Resume an access-blocked workflow at discovery after permissions become available.
+
 ## 5.0.1 - 2026-08-05
 
 ### Fixed

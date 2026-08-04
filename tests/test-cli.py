@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
-VERSION = "5.0.1"
+VERSION = "5.0.2"
 AGENT_NAMES = [
     "orchestrator-analyst.md",
     "orchestrator-discovery.md",
