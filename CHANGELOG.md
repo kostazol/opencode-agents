@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.0 - 2026-08-03
+
+### Changed
+
+- Replace one-shot clarification with an unbounded pre-RESTAGE cycle: native current-batch questions, fresh `DISCOVERY` research after answers, and fresh question review.
+- Gate RESTAGE on terminal `PASS_NO_QUESTIONS` tied to latest discovery and cumulative decisions; close all discovery and questions after accepted RESTAGE.
+- Add separate discovery, question-review, and batch identities without reusing post-approval generation semantics.
+- Extend native-question live-model acceptance to one answer, additional discovery, a second two-question batch, terminal review, approval, and full planning finalization.
+- Let discovery/planning roles resolve OpenCode runtime contracts from project-owned `.opencode` evidence, exact installed version, official docs, and upstream source/types; missing local SDK artifacts no longer create a user blocker.
+
 ## 4.0.0 - 2026-08-03
 
 ### Changed

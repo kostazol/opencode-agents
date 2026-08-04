@@ -7,7 +7,8 @@
 ```text
 orchestrator-analyst (рекомендуется: Terra)
   fresh INITIAL decomposition
-  independent exhaustive question review
+  iterative independent question review / native question / fresh DISCOVERY
+  terminal PASS_NO_QUESTIONS
   fresh RESTAGE decomposition
   explicit user approval
   per-stage planning/review loops
@@ -26,7 +27,11 @@ orchestrator-executor <one-task.md> (рекомендуется: Luna)
 
 Выберите `orchestrator-analyst` и отправьте полный запрос. Fresh decomposer исследует repository и предлагает этапы. Другой fresh reviewer независимо ищет material user-visible решения, которые нельзя определить по evidence или reversible defaults.
 
-Если ответы нужны, analyst сначала вызывает native OpenCode `question` один раз с полным batch: отдельные карточки, нормальный русский, подробные варианты, последствия и custom answer. Clarification-only ответ повторно открывает только ту же unresolved карточку, без нового решения. После ответов новый subagent повторно исследует задачу в `RESTAGE`. Когда вопросов нет, fresh RESTAGE всё равно обязателен; INITIAL proposal автоматически не принимается.
+Если ответы нужны, analyst вызывает native OpenCode `question` для полного текущего batch: отдельные карточки, нормальный русский, подробные варианты, последствия и custom answer. После полного ответа fresh decomposer дополнительно исследует repository в `DISCOVERY`, учитывает накопленные решения, затем fresh reviewer снова ищет material decisions. Ответы могут открыть новые факты и новые вопросы, поэтому фиксированного ограничения на число batches или вопросов нет. Clarification-only ответ повторно открывает только unresolved карточки текущего batch; новый discovery round начинается после их решения.
+
+Цикл завершается только fresh `PASS_NO_QUESTIONS`, связанным с последним discovery и всеми накопленными решениями. Затем fresh RESTAGE обязателен; provisional INITIAL/DISCOVERY proposal автоматически не принимается. После accepted RESTAGE вопросы, question review и DISCOVERY запрещены для этой proposal lineage. Изменённый запрос инвалидирует proposal и начинает новый discovery workflow.
+
+Для задач про OpenCode/runtime discovery роли читают project-owned `.opencode` source/config, определяют установленную версию через `opencode --version`, сверяются с актуальной официальной документацией и при необходимости official upstream source/types. Версия `@opencode-ai/plugin` не считается версией runtime. Отсутствие локального `node_modules`, checked-in tool catalog или direct-invocation fixture не переносится на пользователя: version-sensitive schema/dispatch проверяется bounded isolated `opencode serve --pure` localhost test на этапе реализации.
 
 ### 2. Approval
 
@@ -135,12 +140,13 @@ Executor проверяет status и prerequisites, требует non-detached
 - Secrets, deploy, publish, release, destructive actions, unrelated external effects, material product choices и user-owned overlap требуют решения пользователя.
 - Git mutation запрещена: agents не выполняют branch creation, checkout, stage, commit, reset, restore, clean, stash, merge, rebase или push.
 - Prompt permissions уменьшают accidental access, но не являются OS sandbox.
+- Analyst discovery/planning roles имеют только exact `opencode --version` и read-only `webfetch`, prompt-ограниченный официальными OpenCode docs/upstream; arbitrary shell запрещён. OpenCode 1.18.11 принимает для `webfetch` только scalar permission, поэтому URL allowlist в frontmatter недоступен.
 
 ## Состав
 
 - `orchestrator-analyst` — staged planning primary.
-- `orchestrator-stage-decomposer` — INITIAL/RESTAGE evidence и decomposition.
-- `orchestrator-stage-question-reviewer` — independent exhaustive question review.
+- `orchestrator-stage-decomposer` — INITIAL/DISCOVERY/RESTAGE evidence и decomposition.
+- `orchestrator-stage-question-reviewer` — independent current-batch question review до terminal PASS.
 - `orchestrator-task-planner` — sole task/journal writer, one stage per call.
 - `orchestrator-plan-reviewer` — one-stage review.
 - `orchestrator-stage-pair-reviewer` — adjacent-pair consistency review.
@@ -167,7 +173,7 @@ python3 tests/test-analyst-e2e.py
 python3 tests/test-analyst-questions-e2e.py
 ```
 
-Обе последние команды обязательны после любых изменений и требуют установленный и авторизованный OpenCode. Первая поднимает isolated `opencode serve --pure`, создаёт временный workspace fixture, проводит analyst через approval и проверяет S01/S02 `PASS` на revision 1 без `REVISE`, pair review, `FINALIZE`, отсутствие executor calls, synthetic user turns и product writes. Вторая требует один native OpenCode `question` call с тремя карточками, отвечает через `/question/{requestID}/reply`, проверяет превращение INITIAL из двух этапов в RESTAGE из трёх, согласование S01+S02 и S02+S03, три READY task и отсутствие обычных user messages для ответов. Допускаются максимум три bounded `REJECTED`/`BLOCKED` retry для malformed internal input и одна повторная RESTAGE-регенерация до user-visible approval. Timeout на session по умолчанию 1800 секунд; переопределение: `ANALYST_E2E_TIMEOUT_SECONDS`.
+Обе последние команды обязательны после любых изменений и требуют установленный и авторизованный OpenCode. Первая поднимает isolated `opencode serve --pure`, создаёт временный workspace fixture, проводит analyst через no-question terminal PASS и approval, проверяет S01/S02 `PASS` на revision 1 без `REVISE`, pair review, `FINALIZE`, отсутствие executor calls, synthetic user turns и product writes. Вторая отвечает первому native question batch через `/question/{requestID}/reply`, требует fresh DISCOVERY, затем второй batch из двух вопросов, ещё один DISCOVERY, terminal `PASS_NO_QUESTIONS`, единственный accepted RESTAGE из трёх этапов, обе adjacent pair проверки, три READY task и отсутствие обычных user messages для ответов. Она также запрещает question/discovery после RESTAGE. Допускаются максимум три bounded malformed `REJECTED` либо contract-invalid `BLOCKED` retry; substantive `BLOCKED` всегда завершает acceptance failure. Timeout на session по умолчанию 1800 секунд; переопределение: `ANALYST_E2E_TIMEOUT_SECONDS`.
 
 ## Источники OpenCode harness
 

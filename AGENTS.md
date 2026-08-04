@@ -15,12 +15,14 @@ This repository versions exactly two user-facing OpenCode primary agents and the
 ### Discovery and approval
 
 - Analyst captures session working directory as immutable `WORKFLOW_BASE`. `1_orchestrator` is anchored there, never at Git root or a parent.
-- Fresh `orchestrator-stage-decomposer` performs bounded no-write discovery in `INITIAL` mode and proposes ordered stages.
-- Fresh `orchestrator-stage-question-reviewer` independently finds material user-visible decisions not settled by repository evidence or reversible defaults.
-- Questions, when needed, are sent once through native OpenCode `question` as one exhaustive readable Russian batch with options and consequences.
-- After answers, or immediately when none are needed, a new decomposer runs `RESTAGE` and regenerates the proposal from evidence.
+- Fresh `orchestrator-stage-decomposer` performs bounded no-write discovery in `INITIAL` mode and proposes provisional ordered stages.
+- Fresh `orchestrator-stage-question-reviewer` independently finds material user-visible decisions not settled by repository evidence, prior decisions, or reversible defaults.
+- Each current batch is sent through one native OpenCode `question` call with readable Russian cards, options, and consequences. Answers trigger fresh `DISCOVERY` research and another fresh question review. This cycle has no fixed batch or question limit.
+- Only a fresh `PASS_NO_QUESTIONS` tied to latest discovery and cumulative decisions permits a new decomposer to run `RESTAGE` and regenerate the proposal from evidence.
+- Accepted RESTAGE closes discovery and questions for that proposal lineage. No question review, `DISCOVERY`, or native `question` call is allowed after it.
+- OpenCode/runtime facts are technical discovery: inspect project-owned `.opencode` evidence, query installed version, use current official docs and upstream source/types, then plan bounded implementation-time `opencode serve --pure` verification. Missing local `node_modules`, checked-in runtime catalog, or direct-invocation fixture is not a user blocker by itself.
 - Analyst presents the complete RESTAGE proposal and stops for exact `APPROVE <approval-id>`. No task or journal is written before approval.
-- Approval binds request, answers, target, ordered stages, boundaries, dependencies, contracts, expected path areas, tests, ordering, approvals, and non-goals.
+- Approval binds request, cumulative decisions, terminal discovery/question-review identities, target, ordered stages, boundaries, dependencies, contracts, expected path areas, tests, ordering, approvals, and non-goals.
 
 ### Stage planning and review
 

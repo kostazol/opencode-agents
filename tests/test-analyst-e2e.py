@@ -54,7 +54,7 @@ EXPECTED_TASK_SEQUENCE = [
 ]
 PROMPT = """Подготовь план, не реализуй. Это CREATE: используй Target `1_orchestrator/analyst-e2e-bounds`, Lineage ID `analyst-e2e-bounds`, Generation `0`, Approval ID `analyst-e2e-bounds-g0`; существующий target не предоставлен, completed task paths — none. Ровно два этапа, без дополнительных этапов и без вопросов: все решения ниже окончательны.
 S01: создать src/bounds.py с функцией clamp(value: int, lower: int, upper: int) -> int. Если lower > upper, поднять ValueError с точным сообщением lower must not exceed upper. Иначе вернуть lower для value < lower, upper для value > upper, иначе value. Создать tests/test_bounds.py на unittest: ниже, внутри, выше, равенство обеим границам, lower == upper, lower > upper и точное сообщение. Пути S01 только src/bounds.py и tests/test_bounds.py. Проверка: python3 -m unittest discover -s tests.
-S02: создать src/bounds_batch.py с exact import `from src.bounds import clamp` и функцией clamp_all(values: Iterable[int], lower: int, upper: int) -> list[int], вызывающей clamp ровно один раз для каждого элемента. Сохранять порядок, поддержать пустой iterable и обычный одноразовый generator, propagating ValueError из clamp без изменения. Создать tests/test_bounds_batch.py на unittest: список; пустой iterable; native generator, проверяемый одним вызовом clamp_all; invalid bounds с точным сообщением; unittest.mock.patch для src.bounds_batch.clamp, доказывающий ordered one-call-per-element delegation и delegated return values; отдельный patched clamp, поднимающий заранее созданный ValueError, с assert что наружу вышел тот же exception object. Пути S02 только src/bounds_batch.py и tests/test_bounds_batch.py. Проверка: python3 -m unittest discover -s tests.
+S02: создать src/bounds_batch.py с exact import `from src.bounds import clamp` и функцией clamp_all(values: Iterable[int], lower: int, upper: int) -> list[int], вызывающей clamp ровно один раз для каждого элемента. Сохранять порядок, поддержать пустой iterable и обычный одноразовый generator, propagating ValueError из clamp без изменения. Создать tests/test_bounds_batch.py на unittest: список; пустой iterable с patched clamp и exact zero-call assertion; native generator, проверяемый одним вызовом clamp_all; invalid bounds с точным сообщением; unittest.mock.patch для src.bounds_batch.clamp, доказывающий ordered one-call-per-element delegation и delegated return values; отдельный patched clamp, поднимающий заранее созданный ValueError, с assert что наружу вышел тот же exception object. Пути S02 только src/bounds_batch.py и tests/test_bounds_batch.py. Проверка: python3 -m unittest discover -s tests.
 Порядок строго S01 затем S02. S02 execution prerequisite: task S01 должен завершиться COMPLETE/PASS; при planning/review до FINALIZE S01 ожидаемо DRAFT/PENDING, а его current stage PASS output authoritative. S02 использует публичный контракт clamp без изменения S01. Только Python standard library. Не менять README.md, AGENTS.md, src/__init__.py, tests/__init__.py, конфигурацию, зависимости или Git. Пользовательские approvals кроме общего approval плана не нужны. После approval создай task files, добейся PASS каждого stage с первого review, проверь пару S01+S02 с первого review и FINALIZE до READY. Executor не запускай."""
 
 
@@ -206,28 +206,81 @@ def has_labeled_value(text: str, field: str, value: str) -> bool:
     return any(candidate.strip().strip("`").strip() == value for candidate in field_values(text, field))
 
 
+def malformed_contract_output(output: str) -> bool:
+    allowed = {
+        "STAGE_DECOMPOSITION": {"PASS", "BLOCKED", "REJECTED"},
+        "QUESTION_REVIEW": {"PASS_NO_QUESTIONS", "QUESTIONS", "BLOCKED", "REJECTED"},
+        "PLANNING": {"PASS", "BLOCKED", "REJECTED"},
+        "STAGE_REVIEW": {"PASS", "REVISE", "MINOR_LEFT_NEEDED", "SUBSTANTIVE_BACKTRACK_NEEDED", "BLOCKED", "REJECTED"},
+        "PAIR_REVIEW": {"PASS", "REVISE_RIGHT", "MINOR_LEFT", "SUBSTANTIVE_LEFT", "BLOCKED", "REJECTED"},
+    }
+    recognized = [(contract, values) for contract, statuses in allowed.items() if (values := field_values(output, contract)) and values != [value for value in values if value in statuses]]
+    return bool(recognized)
+
+
+def retryable_blocked_output(output: str) -> bool:
+    blocked = any(line.strip().endswith(": BLOCKED") for line in output.splitlines())
+    rejection_values = [value for value in field_values(output, "Rejection") if value != "none"]
+    blocker_values = field_values(output, "Блокер")
+    reasons = " ".join(rejection_values).casefold()
+    malformed_markers = ("malformed input", "malformed payload", "stale input", "stale payload", "incomplete input", "missing required field", "missing required input", "identity mismatch", "does not match authoritative", "invalid input")
+    return blocked and len(rejection_values) == 1 and blocker_values == ["none"] and any(marker in reasons for marker in malformed_markers)
+
+
+def ambiguous_contract_output(subagent: str, output: str) -> bool:
+    expected_by_subagent = {
+        "orchestrator-stage-decomposer": "STAGE_DECOMPOSITION",
+        "orchestrator-stage-question-reviewer": "QUESTION_REVIEW",
+        "orchestrator-task-planner": "PLANNING",
+        "orchestrator-plan-reviewer": "STAGE_REVIEW",
+        "orchestrator-stage-pair-reviewer": "PAIR_REVIEW",
+    }
+    contracts = ("STAGE_DECOMPOSITION", "QUESTION_REVIEW", "PLANNING", "STAGE_REVIEW", "PAIR_REVIEW")
+    expected = expected_by_subagent.get(subagent)
+    return expected is None or len(field_values(output, expected)) != 1 or any(field != expected and field_values(output, field) for field in contracts)
+
+
+def task_phase(subagent: str, output: str) -> tuple[str, ...]:
+    if subagent == "orchestrator-task-planner":
+        return (subagent, *(field_values(output, field)[0] if field_values(output, field) else "none" for field in ("MODE", "Stage ID", "Stage revision")))
+    return (subagent, *(field_values(output, field)[0] if field_values(output, field) else "none" for field in ("MODE", "Reviewed discovery ID", "Stage ID", "Stage revision", "Pair ID", "Left stage", "Right stage")))
+
+
 def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: str, workflow_base: str) -> None:
     calls = [completed_task_output(part) for part in parts]
     all_subagents = [subagent for subagent, _, _ in calls]
     if any(subagent not in ANALYST_SUBAGENTS for subagent in all_subagents):
         fail(f"unexpected or executor subagent invoked: {all_subagents}")
-    rejected_statuses = {"STAGE_DECOMPOSITION: REJECTED", "QUESTION_REVIEW: REJECTED", "PLANNING: REJECTED", "STAGE_REVIEW: REJECTED", "PAIR_REVIEW: REJECTED"}
-    rejected_indices = [index for index, (_, _, output) in enumerate(calls) if rejected_statuses.intersection(line.strip() for line in output.splitlines())]
+    rejected_statuses = {f"{contract}: REJECTED" for contract in ("STAGE_DECOMPOSITION", "QUESTION_REVIEW", "PLANNING", "STAGE_REVIEW", "PAIR_REVIEW")}
+    substantive_blocked = [output for _, _, output in calls if any(line.strip().endswith(": BLOCKED") for line in output.splitlines()) and not retryable_blocked_output(output)]
+    if substantive_blocked:
+        fail(f"substantive BLOCKED output cannot be retried:\n{substantive_blocked[0]}")
+    rejected_indices = [index for index, (subagent, _, output) in enumerate(calls) if rejected_statuses.intersection(line.strip() for line in output.splitlines()) or retryable_blocked_output(output) or malformed_contract_output(output) or ambiguous_contract_output(subagent, output)]
     if len(rejected_indices) > 3:
         fail(f"too many malformed-input retries: {len(rejected_indices)}")
     for index in rejected_indices:
         _, _, output = calls[index]
-        rejection_values = [line.strip()[len("Rejection: "):] for line in output.splitlines() if line.strip().startswith("Rejection: ")]
-        if len(rejection_values) != 1 or rejection_values[0] == "none":
-            fail(f"rejected retry lacks one exact reason:\n{output}")
+        rejection_values = [value for value in field_values(output, "Rejection") if value != "none"]
+        blocker_values = [value for value in field_values(output, "Блокер") if value != "none"]
+        if not malformed_contract_output(output) and not ambiguous_contract_output(calls[index][0], output) and len(rejection_values) + len(blocker_values) != 1:
+            fail(f"malformed retry lacks one exact reason:\n{output}")
     accepted_calls = [call for index, call in enumerate(calls) if index not in rejected_indices]
+    accepted_restages = [index for index, (subagent, _, output) in enumerate(accepted_calls) if subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["RESTAGE"]]
+    if len(accepted_restages) != 1:
+        fail(f"expected exactly one accepted RESTAGE, got {accepted_restages}")
+    first_restage = accepted_restages[0]
+    if any(subagent == "orchestrator-stage-question-reviewer" or (subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["DISCOVERY"]) for subagent, _, output in accepted_calls[first_restage + 1:]):
+        fail("discovery or question review occurred after accepted RESTAGE")
+    canonical_calls = []
+    for call in accepted_calls:
+        if canonical_calls and task_phase(call[0], call[2]) == task_phase(canonical_calls[-1][0], canonical_calls[-1][2]):
+            canonical_calls[-1] = call
+        else:
+            canonical_calls.append(call)
+    accepted_calls = canonical_calls
     restage_indices = [index for index, (subagent, _, output) in enumerate(accepted_calls) if subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["RESTAGE"]]
-    if len(restage_indices) not in (1, 2):
-        fail(f"expected one RESTAGE or one bounded regeneration, got {len(restage_indices)}")
-    if len(restage_indices) == 2:
-        if restage_indices != [2, 3]:
-            fail(f"RESTAGE regeneration occurred out of order: {restage_indices}")
-        del accepted_calls[restage_indices[0]]
+    if len(restage_indices) != 1:
+        fail(f"expected one accepted RESTAGE, got {len(restage_indices)}")
     subagents = [subagent for subagent, _, _ in accepted_calls]
     prompts = [prompt for _, prompt, _ in accepted_calls]
     outputs = [output for _, _, output in accepted_calls]
@@ -239,9 +292,9 @@ def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: 
         fail(f"unexpected analyst task sequence: {subagents}\n{summaries}")
     if len(outputs) != 9:
         fail(f"expected 9 accepted analyst task calls, got {len(outputs)}: {subagents}")
-    require_fields(outputs[0], {"STAGE_DECOMPOSITION": "PASS", "MODE": "INITIAL", "Rejection": "none"})
-    require_fields(outputs[1], {"QUESTION_REVIEW": "PASS_NO_QUESTIONS", "Rejection": "none"})
-    require_fields(outputs[2], {"STAGE_DECOMPOSITION": "PASS", "MODE": "RESTAGE", "Stage count": "2", "Rejection": "none"})
+    require_fields(outputs[0], {"STAGE_DECOMPOSITION": "PASS", "MODE": "INITIAL", "Discovery round": "0", "Parent discovery ID": "none", "Question batch ID": "none", "Terminal question-review ID": "none", "Rejection": "none"})
+    require_fields(outputs[1], {"QUESTION_REVIEW": "PASS_NO_QUESTIONS", "Reviewed discovery round": "0", "Question batch ID": "none", "Rejection": "none"})
+    require_fields(outputs[2], {"STAGE_DECOMPOSITION": "PASS", "MODE": "RESTAGE", "Discovery round": "0", "Stage count": "2", "Rejection": "none"})
     require_fields(outputs[3], {"PLANNING": "PASS", "MODE": "PLAN_STAGE", "Stage ID": "S01", "Stage revision": "1", "Rejection": "none"})
     require_fields(outputs[4], {"STAGE_REVIEW": "PASS", "Stage ID": "S01", "Stage revision": "1", "Rejection": "none"})
     require_fields(outputs[5], {"PLANNING": "PASS", "MODE": "PLAN_STAGE", "Stage ID": "S02", "Stage revision": "1", "Rejection": "none"})
@@ -254,6 +307,12 @@ def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: 
         fail("analyst used empty lineage ID")
     if generation != "0":
         fail(f"CREATE workflow must use generation 0, got {generation}")
+    discovery_id = single_field(outputs[0], "Discovery ID")
+    terminal_review_id = single_field(outputs[1], "Question-review ID")
+    if discovery_id in ("", "none") or terminal_review_id in ("", "none"):
+        fail("no-question workflow used empty discovery identity")
+    if single_field(outputs[1], "Reviewed discovery ID") != discovery_id or single_field(outputs[2], "Discovery ID") != discovery_id or single_field(outputs[2], "Terminal question-review ID") != terminal_review_id:
+        fail("no-question RESTAGE is not tied to terminal discovery review")
     for index, output in enumerate(outputs):
         if single_field(output, "Lineage ID") != lineage_id:
             fail("analyst task outputs use inconsistent lineage IDs")
@@ -278,6 +337,12 @@ def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: 
             fail(f"task prompt {index} lacks target")
         if index >= 3 and approval_id not in prompt:
             fail(f"post-approval task prompt {index} lacks approval ID")
+    for required in (discovery_id, "STAGE_DECOMPOSITION: PASS", "MODE: INITIAL", "Stage count: 2"):
+        if required not in prompts[1]:
+            fail(f"question review prompt omits INITIAL contract value {required}")
+    for required in (discovery_id, terminal_review_id, "STAGE_DECOMPOSITION: PASS", "QUESTION_REVIEW: PASS_NO_QUESTIONS"):
+        if required not in prompts[2]:
+            fail(f"RESTAGE prompt omits terminal discovery value {required}")
 
 
 def verify_messages(messages: list[dict[str, Any]], approval_message: str, approval_id: str, target: str) -> None:
@@ -408,6 +473,8 @@ def run() -> None:
         environment["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
         environment["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"] = "1"
         environment["OPENCODE_DISABLE_CLAUDE_CODE_SKILLS"] = "1"
+        environment["OPENCODE_DISABLE_EXTERNAL_SKILLS"] = "1"
+        environment["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "1"
         log_path = temporary_root / "server.log"
         session_id = None
         with log_path.open("w", encoding="utf-8") as log_file:
