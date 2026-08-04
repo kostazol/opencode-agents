@@ -1,5 +1,19 @@
 # Changelog
 
+## 5.0.0 - 2026-08-04
+
+### Changed
+
+- Replace the previous analyst/executor network with four planning-only `orchestrator-*` agents: analyst, discovery, stage planner, and stage reviewer.
+- Make `plan.md` a durable table of contents and plan/review exactly one stage before advancing to the next stage.
+- Add resumable `RUN` and one-transition `STEP` modes backed by readable discovery, question, stage, and review artifacts.
+- Consolidate repository research and material question formation in one fresh discovery role with concise positive prompts.
+- Retire known unmodified 4.1.1 agent files during update while preserving customized files.
+
+### Removed
+
+- Remove execution agents, pair review, Sol backtrack authority, task files, planning journals, lineage IDs, generation IDs, approval hashes, and verbatim handoff contracts.
+
 ## 4.1.1 - 2026-08-04
 
 ### Fixed

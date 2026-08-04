@@ -22,7 +22,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-VERSION = "4.1.1"
+VERSION = "5.0.0"
 DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
 DEFAULT_GITHUB_API = "https://api.github.com"
 SOURCE_GROUP_PATTERNS = {"agents": "*.md"}
@@ -97,6 +97,39 @@ RETIRED_FILE_HASHES = {
         "1a0b6c87512fbf79ea77cd139ba6fd7d55d75227159259396980670cf7792e57",
         "b7f55885c03cdbc268556b4911c3b53fd3815da0e1e55107e67e98afdd3ea41e",
         "65b7ca216b9890b276e756c2e48a1ac052f9c4e495bcf56b528adeca2b07ae33",
+    }),
+    Path("agents/orchestrator-executor.md"): frozenset({
+        "e773069705c3066ceac653a95090b25418a4fa1e69f6d237c704f4a7b90fa60a",
+    }),
+    Path("agents/orchestrator-final-reviewer.md"): frozenset({
+        "4b3cb64790aca6c36acb66e98da9b29a372e18cec91b09b41d12ddfe9999541d",
+    }),
+    Path("agents/orchestrator-plan-reviewer.md"): frozenset({
+        "2de24a6f24acae8bab50b9594450085adabeaa6b651ccf3d89ebe1e801df64db",
+    }),
+    Path("agents/orchestrator-plan-ultra-reviewer.md"): frozenset({
+        "a737435905707491e23216de10292f626fa61e201c357c574e483a27e675fd28",
+    }),
+    Path("agents/orchestrator-stage-decomposer.md"): frozenset({
+        "d8f2c7c1b74c9796aa87f7cba0d566cf35fbf8f3618c41a9a2d5b64d9f592449",
+    }),
+    Path("agents/orchestrator-stage-pair-reviewer.md"): frozenset({
+        "95fa89c69f395181c9d1bb58534d7e3546edf764dd0ea816a01268c6d58a63ef",
+    }),
+    Path("agents/orchestrator-stage-question-reviewer.md"): frozenset({
+        "cad48ccb65bf2e8334e0830d758839714ffd1e3b740f0ab31607361b38d05795",
+    }),
+    Path("agents/orchestrator-task-adjuster.md"): frozenset({
+        "f4817a1e96a8ff19e1d749cd5816bfb96919c7d9992cae80690b296de17a4870",
+    }),
+    Path("agents/orchestrator-task-executor.md"): frozenset({
+        "3a0f3e59c8084f72bf2d1737845e8b988c4e0d3dc7005ac85eedb5d05c9a131b",
+    }),
+    Path("agents/orchestrator-task-planner.md"): frozenset({
+        "9ddf675f7712b1ecc674b079f76748eed70a122413480564a0467b7e394c9f93",
+    }),
+    Path("agents/orchestrator-task-reviewer.md"): frozenset({
+        "99ac59d2bf7063e4cfb513cf08985ff218ee71c8eaf36ee2a26b46b365973e4c",
     }),
 }
 GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
