@@ -9,6 +9,8 @@
 !.env.example
 opencode.json
 opencode.jsonc
+!.opencode/
+!.opencode/opencode.json
 auth.json
 account.json
 *.db

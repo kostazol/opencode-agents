@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 4.1.0
+# OpenCode Agents version: 4.1.1
 description: Fresh read-only reviewer producing each current material-question batch during iterative discovery before RESTAGE.
 mode: subagent
 hidden: true

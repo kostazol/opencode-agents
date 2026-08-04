@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 4.1.0
+# OpenCode Agents version: 4.1.1
 description: Fresh read-only analyst decomposer for iterative bounded discovery and ordered RESTAGE proposals.
 mode: subagent
 hidden: true

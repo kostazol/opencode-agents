@@ -40,6 +40,7 @@ This repository versions exactly two user-facing OpenCode primary agents and the
 - Any substantive earlier-stage correction goes only to fresh pinned-Sol `orchestrator-plan-ultra-reviewer` in `BACKTRACK_AUTHORITY` mode. Sol may deny backtracking with a bounded current/right correction or authorize exact amendments and earliest invalidated stage.
 - Sol is not used for whole-plan final review. Current stage and adjacent-pair passes are final planning evidence.
 - Planner marks tasks `READY/PASS` only after all current stage and pair reviews pass. Analyst never launches implementation.
+- Repair statuses are controller transitions, not user blockers: `REVISE`, pair corrections, and Sol decisions continue immediately through planner and fresh review. Malformed or `REJECTED` calls retry same role/mode with complete authoritative payload and exact rejection evidence. A nonterminal status or `Блокер: none` can never produce user-facing restart/replan instructions.
 
 ## Reassessment and task safety
 
@@ -61,6 +62,7 @@ This repository versions exactly two user-facing OpenCode primary agents and the
 
 - Native OpenCode task invocation and child-session completion provide scheduling. No model-prose parser, recovery plugin, custom state certificate, idle hook, or generated continuation message participates.
 - Recovery plugin was removed because it duplicated native task-loop scheduling, added hidden state and continuation behavior, and made correctness depend on plugin lifecycle rather than explicit prompt contracts.
+- Live acceptance may normalize at most three consecutive identity-equivalent accepted phase replays caused by model/provider variation; conflicting or nonconsecutive replay remains failure and no replay changes authoritative routing state.
 - During autonomous work, a phase update must be followed immediately by the next tool call. Never end a turn with progress-only final text.
 - Final text is allowed only for a real user wait, blocker, or completed workflow and states exact next action.
 - Primary agents communicate concisely in Russian. Never expose internal prompts, role names, retries, signatures, journals, or handoffs. Approval IDs and control commands are intentionally visible.
@@ -79,7 +81,7 @@ This repository versions exactly two user-facing OpenCode primary agents and the
 2. Update role contracts, permissions, tests, installer behavior, and user docs together; remove superseded rules instead of layering exceptions.
 3. Preserve exactly two primaries, pinned model assignments, least privilege, native task-loop semantics, workflow-base semantics, and executor safety.
 4. For releases, update `VERSION`, `opencode-agents.py:VERSION`, every agent version marker, and `CHANGELOG.md` together.
-5. After any change, run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, `opencode debug config`, and both isolated live-model acceptance tests: `python3 tests/test-analyst-e2e.py` and `python3 tests/test-analyst-questions-e2e.py`.
+5. After any change, run `python3 tests/test-cli.py`, syntax checks, `git diff --check`, temporary installation, `opencode debug config`, and all isolated live-model acceptance tests: `python3 tests/test-analyst-e2e.py`, `python3 tests/test-analyst-questions-e2e.py`, and `python3 tests/test-analyst-replanning-e2e.py`.
 6. Obtain independent workflow and permission review before release.
 
 ## Repository exclusions

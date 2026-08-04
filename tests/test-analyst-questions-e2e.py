@@ -34,6 +34,13 @@ EXPECTED_OPTIONS = {
     "Формат": ["CSV", "JSONL"],
     "Запуск": ["Immediate", "Feature flag"],
 }
+
+
+def contract_payload(output: str) -> str:
+    text = output
+    if "<task_result>" in text and "</task_result>" in text:
+        text = text.split("<task_result>", 1)[1].split("</task_result>", 1)[0]
+    return "\n".join(line for line in text.strip().splitlines() if not line.strip().startswith("```")).strip()
 def fail(message: str) -> NoReturn:
     raise AssertionError(message)
 
@@ -56,36 +63,57 @@ def load_e2e() -> ModuleType:
     return module
 
 
-def wait_for_question(e2e: ModuleType, base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path) -> dict[str, Any]:
-    deadline = time.monotonic() + e2e.TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
+def wait_for_question(e2e: ModuleType, base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path, deadline: float | None = None) -> dict[str, Any]:
+    effective_deadline = deadline if deadline is not None else time.monotonic() + e2e.TIMEOUT_SECONDS
+    last_progress = time.monotonic()
+    last_marker = None
+    while time.monotonic() < effective_deadline:
         if process.poll() is not None:
             fail(f"opencode serve exited with {process.returncode}:\n{log_path.read_text(encoding='utf-8', errors='replace')[-4000:]}")
-        pending = e2e.request_json(base_url, "GET", "/question")
+        log_failure = e2e.fatal_log_failure(log_path)
+        if log_failure is not None:
+            fail(f"analyst provider failed before question: {log_failure}")
+        marker, failure, _ = e2e.observe_session(base_url, session_id)
+        if failure is not None:
+            fail(f"analyst session failed before question: {failure}")
+        if marker != last_marker:
+            last_marker = marker
+            last_progress = time.monotonic()
+        elif time.monotonic() - last_progress >= e2e.NO_PROGRESS_SECONDS:
+            fail(f"native question made no progress for {e2e.NO_PROGRESS_SECONDS} seconds")
+        response = e2e.request_json(base_url, "GET", f"/api/session/{session_id}/question")
+        pending = response.get("data") if isinstance(response, dict) else None
         if isinstance(pending, list):
-            owned = [request for request in pending if isinstance(request, dict) and request.get("sessionID") == session_id]
+            owned = [request for request in pending if isinstance(request, dict)]
             if len(owned) == 1:
-                return owned[0]
+                return {**owned[0], "_transport": "v2"}
             if len(owned) > 1:
                 fail(f"expected one native question request, got {owned}")
+        legacy = e2e.request_json(base_url, "GET", "/question")
+        if isinstance(legacy, list):
+            owned = [request for request in legacy if isinstance(request, dict) and request.get("sessionID") == session_id]
+            if len(owned) == 1:
+                return {**owned[0], "_transport": "legacy"}
+            if len(owned) > 1:
+                fail(f"expected one legacy native question request, got {owned}")
         time.sleep(2)
     fail("native question request did not appear")
 
 
-def wait_for_approval(e2e: ModuleType, base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path) -> tuple[list[dict[str, Any]], str]:
-    deadline = time.monotonic() + e2e.TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            fail(f"opencode serve exited with {process.returncode}:\n{log_path.read_text(encoding='utf-8', errors='replace')[-4000:]}")
-        messages = e2e.request_json(base_url, "GET", f"/session/{session_id}/message")
-        if isinstance(messages, list):
-            typed = [message for message in messages if isinstance(message, dict)]
-            texts = ["\n".join(e2e.text_parts(message)) for message in typed if isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and e2e.text_parts(message)]
-            approval_texts = [text for text in texts if "Итог: НУЖНО_ОДОБРЕНИЕ" in text]
-            if len(approval_texts) == 1:
-                return typed, approval_texts[0]
-        time.sleep(3)
-    fail("analyst did not produce approval proposal after question reply")
+def wait_for_approval(e2e: ModuleType, base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path, deadline: float | None = None) -> tuple[list[dict[str, Any]], str]:
+    return e2e.wait_for_approval(base_url, session_id, process, log_path, deadline)
+
+
+def reply_to_question(e2e: ModuleType, base_url: str, session_id: str, request: dict[str, Any], answers: list[list[str]]) -> None:
+    request_id = request.get("id")
+    if not isinstance(request_id, str):
+        fail(f"native question request lacks ID: {request}")
+    legacy = request.get("_transport") == "legacy"
+    path = f"/question/{request_id}/reply" if legacy else f"/api/session/{session_id}/question/{request_id}/reply"
+    response = e2e.request_json(base_url, "POST", path, {"answers": answers})
+    expected = True if legacy else None
+    if response is not expected:
+        fail(f"native question reply failed: {response}")
 
 
 def verify_question(request: dict[str, Any], expected_answers: dict[str, str]) -> list[list[str]]:
@@ -110,7 +138,7 @@ def verify_question(request: dict[str, Any], expected_answers: dict[str, str]) -
         normalized_labels = [label.removesuffix(" (Recommended)") if isinstance(label, str) else label for label in labels]
         expected = expected_answers.get(header)
         expected_options = EXPECTED_OPTIONS.get(header)
-        if expected is None or normalized_labels != expected_options:
+        if expected is None or expected_options is None or len(normalized_labels) != len(expected_options) or set(normalized_labels) != set(expected_options):
             fail(f"question {header} has wrong options: {labels}, expected {expected_options}")
         selected = [label for label, normalized in zip(labels, normalized_labels) if normalized == expected]
         if len(selected) != 1 or not isinstance(selected[0], str):
@@ -131,25 +159,43 @@ def accepted_task_calls(e2e: ModuleType, messages: list[dict[str, Any]]) -> tupl
     if len(rejected) > 3:
         details = "\n--- MALFORMED ---\n".join(f"{subagent}\n{output}" for subagent, _, output in rejected)
         fail(f"too many malformed-input retries: {len(rejected)}\n{details}")
-    for subagent, _, output in rejected:
+    for index, (subagent, _, output) in ((index, call) for index, call in enumerate(calls) if call in rejected):
         rejection_reasons = [reason for reason in e2e.field_values(output, "Rejection") if reason.strip() != "none"]
         blocker_reasons = [reason for reason in e2e.field_values(output, "Блокер") if reason.strip() != "none"]
         if not e2e.malformed_contract_output(output) and not e2e.ambiguous_contract_output(subagent, output) and len(rejection_reasons) + len(blocker_reasons) != 1:
             fail(f"malformed retry lacks one reason:\n{output}")
+        intended = e2e.intended_retry_subagent(subagent, output)
+        if index + 1 >= len(calls) or calls[index + 1][0] != intended:
+            fail(f"malformed call was not retried immediately by intended role: {subagent} -> {intended}")
+        current_mode = e2e.field_values(output, "MODE")
+        next_mode = e2e.field_values(calls[index + 1][2], "MODE")
+        if current_mode and next_mode and current_mode != next_mode:
+            fail(f"malformed retry changed logical mode: {current_mode} -> {next_mode}")
+        if contract_payload(output) not in calls[index + 1][1]:
+            fail("malformed retry prompt omits exact rejected output")
     accepted = [call for call in calls if call not in rejected]
+    canonical = []
+    seen_phases = {}
+    equivalent_replays = 0
+    for call in accepted:
+        phase = e2e.task_phase(call[0], call[2])
+        if phase in seen_phases:
+            if seen_phases[phase] != len(canonical) - 1 or not e2e.equivalent_contract_identity(canonical[-1][2], call[2]):
+                fail(f"conflicting or nonconsecutive accepted logical phase replay: {phase}")
+            equivalent_replays += 1
+            canonical[-1] = call
+        else:
+            seen_phases[phase] = len(canonical)
+            canonical.append(call)
+    if equivalent_replays > 3:
+        fail(f"too many equivalent accepted phase replays: {equivalent_replays}")
+    accepted = canonical
     accepted_restages = [index for index, (subagent, _, output) in enumerate(accepted) if subagent == "orchestrator-stage-decomposer" and e2e.field_values(output, "MODE") == ["RESTAGE"]]
     if len(accepted_restages) != 1:
         fail(f"expected exactly one accepted RESTAGE, got {accepted_restages}")
     first_restage = accepted_restages[0]
     if any(subagent == "orchestrator-stage-question-reviewer" or (subagent == "orchestrator-stage-decomposer" and e2e.field_values(output, "MODE") == ["DISCOVERY"]) for subagent, _, output in accepted[first_restage + 1:]):
         fail("discovery or question review occurred after accepted RESTAGE")
-    canonical = []
-    for call in accepted:
-        if canonical and e2e.task_phase(call[0], call[2]) == e2e.task_phase(canonical[-1][0], canonical[-1][2]):
-            canonical[-1] = call
-        else:
-            canonical.append(call)
-    accepted = canonical
     restage_indices = [index for index, (subagent, _, output) in enumerate(accepted) if subagent == "orchestrator-stage-decomposer" and e2e.field_values(output, "MODE") == ["RESTAGE"]]
     if len(restage_indices) != 1:
         fail(f"expected one accepted RESTAGE, got {restage_indices}")
@@ -186,11 +232,16 @@ def verify_planning(e2e: ModuleType, messages: list[dict[str, Any]], approval_id
             fail(f"stage {stage_id} has invalid final revision {revision}")
         final_revisions[stage_id] = int(revision)
     for pair_id, left, right in (("S01+S02", "S01", "S02"), ("S02+S03", "S02", "S03")):
-        reviews = [output for output in outputs if e2e.field_values(output, "PAIR_REVIEW") and e2e.field_values(output, "Pair ID") == [pair_id]]
-        if not reviews or e2e.field_values(reviews[-1], "PAIR_REVIEW") != ["PASS"]:
+        reviews = [(index, output) for index, output in enumerate(outputs) if e2e.field_values(output, "PAIR_REVIEW") and e2e.field_values(output, "Pair ID") == [pair_id]]
+        if not reviews or e2e.field_values(reviews[-1][1], "PAIR_REVIEW") != ["PASS"]:
             fail(f"pair {pair_id} lacks PASS")
-        if e2e.single_field(reviews[-1], "Left stage") != f"{left} revision {final_revisions[left]}" or e2e.single_field(reviews[-1], "Right stage") != f"{right} revision {final_revisions[right]}":
+        if e2e.single_field(reviews[-1][1], "Left stage") != f"{left} revision {final_revisions[left]}" or e2e.single_field(reviews[-1][1], "Right stage") != f"{right} revision {final_revisions[right]}":
             fail(f"pair {pair_id} PASS is stale")
+        for review_index, review in reviews[:-1]:
+            stale = e2e.single_field(review, "Left stage") != f"{left} revision {final_revisions[left]}" or e2e.single_field(review, "Right stage") != f"{right} revision {final_revisions[right]}"
+            later_correction = any(e2e.field_values(candidate, "PLANNING") == ["PASS"] and e2e.field_values(candidate, "MODE") in (["REVISE_STAGE"], ["REVISE_PAIR_RIGHT"], ["MINOR_LEFT"], ["BACKTRACK_STAGE"]) and e2e.field_values(candidate, "Stage ID") in ([left], [right]) for candidate in outputs[review_index + 1:])
+            if stale and not later_correction:
+                fail(f"stale pair {pair_id} PASS lacks intervening correction")
     finalizations = [output for output in outputs if e2e.field_values(output, "PLANNING") == ["PASS"] and e2e.field_values(output, "MODE") == ["FINALIZE"]]
     if len(finalizations) != 1 or outputs[-1] != finalizations[0]:
         fail(f"workflow lacks one final FINALIZE PASS:\n{outputs[-1]}")
@@ -240,7 +291,37 @@ def verify_messages(e2e: ModuleType, messages: list[dict[str, Any]], approval_id
     question_parts = [part for message in messages for part in message.get("parts", []) if isinstance(part, dict) and part.get("type") == "tool" and part.get("tool") == "question"]
     if len(question_parts) != 2 or any(not isinstance(part.get("state"), dict) or part["state"].get("status") != "completed" for part in question_parts):
         fail(f"expected two completed native question tool calls, got {question_parts}")
-    tool_parts = [part for message in messages for part in message.get("parts", []) if isinstance(part, dict) and part.get("type") == "tool"]
+    raw_tool_parts = [part for message in messages for part in message.get("parts", []) if isinstance(part, dict) and part.get("type") == "tool"]
+    raw_restage_positions = [index for index, part in enumerate(raw_tool_parts) if part.get("tool") == "task" and e2e.field_values(e2e.completed_task_output(part)[2], "MODE") == ["RESTAGE"] and e2e.field_values(e2e.completed_task_output(part)[2], "STAGE_DECOMPOSITION") == ["PASS"]]
+    if raw_restage_positions:
+        for part in raw_tool_parts[min(raw_restage_positions) + 1:]:
+            if part.get("tool") == "question":
+                fail("native question occurred after accepted RESTAGE")
+            if part.get("tool") == "task":
+                subagent, _, output = e2e.completed_task_output(part)
+                if subagent == "orchestrator-stage-question-reviewer" or (subagent == "orchestrator-stage-decomposer" and e2e.field_values(output, "MODE") == ["DISCOVERY"]):
+                    fail("question review or discovery occurred after accepted RESTAGE")
+    tool_parts = []
+    rejected_statuses = {f"{contract}: REJECTED" for contract in ("STAGE_DECOMPOSITION", "QUESTION_REVIEW", "PLANNING", "STAGE_REVIEW", "PAIR_REVIEW")}
+    for message in messages:
+        for part in message.get("parts", []):
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            if part.get("tool") == "task":
+                subagent, _, output = e2e.completed_task_output(part)
+                if rejected_statuses.intersection(line.strip() for line in output.splitlines()) or e2e.retryable_blocked_output(output) or e2e.malformed_contract_output(output) or e2e.ambiguous_contract_output(subagent, output):
+                    continue
+            tool_parts.append(part)
+    canonical_tool_parts = []
+    for part in tool_parts:
+        if part.get("tool") == "task" and canonical_tool_parts and canonical_tool_parts[-1].get("tool") == "task":
+            current = e2e.completed_task_output(part)
+            previous = e2e.completed_task_output(canonical_tool_parts[-1])
+            if e2e.task_phase(current[0], current[2]) == e2e.task_phase(previous[0], previous[2]) and e2e.equivalent_contract_identity(current[2], previous[2]):
+                canonical_tool_parts[-1] = part
+                continue
+        canonical_tool_parts.append(part)
+    tool_parts = canonical_tool_parts
     restage_positions = [index for index, part in enumerate(tool_parts) if part.get("tool") == "task" and e2e.field_values(e2e.completed_task_output(part)[2], "MODE") == ["RESTAGE"]]
     question_positions = [index for index, part in enumerate(tool_parts) if part.get("tool") == "question"]
     if len(restage_positions) != 1 or not question_positions or max(question_positions) >= min(restage_positions):
@@ -331,9 +412,6 @@ def run() -> None:
         config_home = temporary_root / "config-home"
         config = config_home / "opencode"
         subprocess.run([sys.executable, str(e2e.CLI), "install", "--source", str(ROOT), "--target", str(config)], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
-        environment = os.environ.copy()
-        for variable in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"):
-            environment.pop(variable, None)
         data_home = temporary_root / "data-home"
         auth_directory = data_home / "opencode"
         auth_directory.mkdir(parents=True)
@@ -342,11 +420,12 @@ def run() -> None:
         if not source_auth.is_file():
             fail(f"OpenCode authentication not found at {source_auth}")
         shutil.copy2(source_auth, auth_directory / "auth.json")
-        isolated_home = temporary_root / "home"
-        isolated_home.mkdir()
-        environment.update({"HOME": str(isolated_home), "XDG_CONFIG_HOME": str(config_home), "XDG_DATA_HOME": str(data_home), "XDG_STATE_HOME": str(temporary_root / "state-home"), "XDG_CACHE_HOME": str(temporary_root / "cache-home"), "OPENCODE_CONFIG_DIR": str(config), "OPENCODE_DISABLE_CLAUDE_CODE": "1", "OPENCODE_DISABLE_CLAUDE_CODE_PROMPT": "1", "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS": "1", "OPENCODE_DISABLE_EXTERNAL_SKILLS": "1", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1"})
+        environment = e2e.isolated_environment(config, temporary_root, data_home)
         log_path = temporary_root / "server.log"
         session_id = None
+        started = time.monotonic()
+        checkpoints = {}
+        timing_emitted = False
         with log_path.open("w", encoding="utf-8") as log_file:
             process, base_url = e2e.start_server(opencode, fixture, environment, log_file, log_path)
             try:
@@ -354,24 +433,24 @@ def run() -> None:
                 if not isinstance(session, dict) or not isinstance(session.get("id"), str):
                     fail(f"unexpected session response: {session}")
                 session_id = session["id"]
+                deadline = time.monotonic() + e2e.TIMEOUT_SECONDS
                 e2e.request_json(base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": PROMPT}]})
-                first_question = wait_for_question(e2e, base_url, session_id, process, log_path)
+                first_question = wait_for_question(e2e, base_url, session_id, process, log_path, deadline)
+                checkpoints["first_question"] = time.monotonic()
                 first_answers = verify_question(first_question, EXPECTED_BATCHES[0])
                 if (fixture / "1_orchestrator").exists():
                     fail("analyst wrote workflow artifacts before question answers")
-                first_reply = e2e.request_json(base_url, "POST", f"/question/{first_question['id']}/reply", {"answers": first_answers})
-                if first_reply is not True:
-                    fail(f"first native question reply failed: {first_reply}")
-                second_question = wait_for_question(e2e, base_url, session_id, process, log_path)
+                reply_to_question(e2e, base_url, session_id, first_question, first_answers)
+                second_question = wait_for_question(e2e, base_url, session_id, process, log_path, deadline)
+                checkpoints["second_question"] = time.monotonic()
                 if second_question.get("id") == first_question.get("id"):
                     fail("second question reused first request ID")
                 second_answers = verify_question(second_question, EXPECTED_BATCHES[1])
                 if (fixture / "1_orchestrator").exists():
                     fail("analyst wrote workflow artifacts before second question answers")
-                second_reply = e2e.request_json(base_url, "POST", f"/question/{second_question['id']}/reply", {"answers": second_answers})
-                if second_reply is not True:
-                    fail(f"second native question reply failed: {second_reply}")
-                _, approval_text = wait_for_approval(e2e, base_url, session_id, process, log_path)
+                reply_to_question(e2e, base_url, session_id, second_question, second_answers)
+                _, approval_text = wait_for_approval(e2e, base_url, session_id, process, log_path, deadline)
+                checkpoints["approval"] = time.monotonic()
                 if (fixture / "1_orchestrator").exists():
                     fail("analyst wrote workflow artifacts before approval")
                 approval_id = e2e.single_field(approval_text, "Approval ID")
@@ -380,17 +459,26 @@ def run() -> None:
                     fail(f"unexpected approval identity: {approval_id}, {target}")
                 approval_message = f"APPROVE {approval_id}"
                 e2e.request_json(base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": approval_message}]})
-                e2e.wait_for_idle(base_url, session_id, process, log_path)
+                e2e.wait_for_idle(base_url, session_id, process, log_path, deadline)
+                checkpoints["ready"] = time.monotonic()
                 messages = e2e.request_json(base_url, "GET", f"/session/{session_id}/message")
                 if not isinstance(messages, list) or not all(isinstance(message, dict) for message in messages):
                     fail(f"unexpected messages response: {messages}")
                 final_revisions = verify_planning(e2e, messages, approval_id, target, str(fixture))
                 verify_messages(e2e, messages, approval_id, target, approval_message, final_revisions)
                 verify_artifacts(e2e, fixture, original_snapshot, approval_id, target, final_revisions)
-                pending = e2e.request_json(base_url, "GET", "/question")
-                if isinstance(pending, list) and any(isinstance(request, dict) and request.get("sessionID") == session_id for request in pending):
+                response = e2e.request_json(base_url, "GET", f"/api/session/{session_id}/question")
+                pending = response.get("data") if isinstance(response, dict) else None
+                if isinstance(pending, list) and pending:
                     fail("native question request remained pending")
+                legacy = e2e.request_json(base_url, "GET", "/question")
+                if isinstance(legacy, list) and any(isinstance(request, dict) and request.get("sessionID") == session_id for request in legacy):
+                    fail("legacy native question request remained pending")
+                e2e.emit_timing_summary("analyst-questions", base_url, session_id, started, checkpoints)
+                timing_emitted = True
             except Exception as error:
+                if session_id is not None and not timing_emitted:
+                    e2e.emit_timing_summary("analyst-questions", base_url, session_id, started, checkpoints)
                 log_file.flush()
                 log = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
                 raise AssertionError(f"{error}\nserver log:\n{log}") from error

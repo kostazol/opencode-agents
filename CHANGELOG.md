@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.1 - 2026-08-04
+
+### Fixed
+
+- Treat stage, pair, and Sol corrective statuses as immediate native-loop controller transitions instead of user-facing restart or replan blockers.
+- Rebuild malformed and `REJECTED` retries from complete authoritative state with exact rejection evidence; forbid summary-only repair handoffs.
+- Add isolated live-model replanning acceptance covering `REVISE`, `REVISE_STAGE`, fresh revision review, and `FINALIZE` without executor calls, synthetic turns, or product writes.
+- Make live acceptance fail fast on fatal provider/child-task errors, use async initial prompts, and enforce bounded no-progress and total timeouts.
+- Align live harness isolation with OpenCode smoke-test flags, use session-scoped V2 question APIs and V2 wait with documented legacy fallback, and emit per-phase timing/token telemetry.
+
 ## 4.1.0 - 2026-08-03
 
 ### Changed

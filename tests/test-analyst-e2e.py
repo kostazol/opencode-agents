@@ -20,6 +20,8 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
 TIMEOUT_SECONDS = int(os.environ.get("ANALYST_E2E_TIMEOUT_SECONDS", "1800"))
+NO_PROGRESS_SECONDS = int(os.environ.get("ANALYST_E2E_NO_PROGRESS_SECONDS", "300"))
+MODEL = os.environ.get("ANALYST_E2E_MODEL", "openai/gpt-5.6-luna")
 EXPECTED_ORCHESTRATOR_AGENTS = {
     "orchestrator-analyst",
     "orchestrator-executor",
@@ -73,6 +75,34 @@ def request_json(base_url: str, method: str, path: str, body: object | None = No
     except HTTPError as error:
         detail = error.read().decode(errors="replace")
         raise RuntimeError(f"{method} {path} failed with HTTP {error.code}: {detail}") from error
+
+
+def isolated_environment(config: Path, temporary_root: Path, data_home: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    for variable in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"):
+        environment.pop(variable, None)
+    isolated_home = temporary_root / "home"
+    isolated_home.mkdir()
+    environment.update({
+        "HOME": str(isolated_home),
+        "XDG_CONFIG_HOME": str(temporary_root / "config-home"),
+        "XDG_DATA_HOME": str(data_home),
+        "XDG_STATE_HOME": str(temporary_root / "state-home"),
+        "XDG_CACHE_HOME": str(temporary_root / "cache-home"),
+        "OPENCODE_TEST_HOME": str(isolated_home),
+        "OPENCODE_CONFIG_DIR": str(config),
+        "OPENCODE_CONFIG_CONTENT": json.dumps({"model": MODEL}),
+        "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
+        "OPENCODE_PURE": "1",
+        "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+        "OPENCODE_DISABLE_MODELS_FETCH": "1",
+        "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+        "OPENCODE_DISABLE_CLAUDE_CODE_PROMPT": "1",
+        "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS": "1",
+        "OPENCODE_DISABLE_EXTERNAL_SKILLS": "1",
+    })
+    return environment
 
 
 def free_port() -> int:
@@ -131,24 +161,125 @@ def start_server(opencode: str, fixture: Path, environment: dict[str, str], log_
     fail("opencode serve failed to bind after five attempts")
 
 
-def wait_for_idle(base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path) -> None:
-    deadline = time.monotonic() + TIMEOUT_SECONDS
-    last_status = None
-    last_text_count = 0
+def wait_for_session_idle(base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path, deadline: float, minimum_assistant_texts: int) -> dict[str, list[dict[str, Any]]]:
+    last_progress = time.monotonic()
+    last_marker = None
+    use_v2_wait = True
     while time.monotonic() < deadline:
+        wait_completed = False
+        if use_v2_wait:
+            try:
+                request_json(base_url, "POST", f"/api/session/{session_id}/wait", timeout=min(10, max(1, int(deadline - time.monotonic()))))
+                wait_completed = True
+            except TimeoutError:
+                pass
+            except RuntimeError as error:
+                if "HTTP 503" not in str(error) or "Session wait is not available yet" not in str(error):
+                    raise
+                use_v2_wait = False
         if process.poll() is not None:
             fail(f"opencode serve exited with {process.returncode}:\n{log_path.read_text(encoding='utf-8', errors='replace')[-4000:]}")
-        statuses = request_json(base_url, "GET", "/session/status")
-        last_status = statuses.get(session_id) if isinstance(statuses, dict) else None
-        messages = request_json(base_url, "GET", f"/session/{session_id}/message")
-        if isinstance(messages, list):
-            last_text_count = sum(1 for message in messages if isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and text_parts(message))
-        active = isinstance(last_status, dict) and last_status.get("type") in ("busy", "retry")
-        if last_text_count >= 2 and not active:
-            return
-        time.sleep(5)
-    log = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
-    fail(f"analyst session did not complete within {TIMEOUT_SECONDS} seconds; status={last_status}; assistant_texts={last_text_count}\nserver log:\n{log}")
+        log_failure = fatal_log_failure(log_path)
+        if log_failure is not None:
+            fail(f"analyst provider failed: {log_failure}")
+        marker, failure, observed = observe_session(base_url, session_id)
+        if failure is not None:
+            fail(f"analyst session failed: {failure}")
+        messages = observed.get(session_id, [])
+        text_count = sum(1 for message in messages if isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and text_parts(message))
+        if use_v2_wait:
+            if wait_completed and text_count >= minimum_assistant_texts:
+                return observed
+        else:
+            statuses = request_json(base_url, "GET", "/session/status")
+            status = statuses.get(session_id) if isinstance(statuses, dict) else None
+            active = isinstance(status, dict) and status.get("type") in ("busy", "retry")
+            if text_count >= minimum_assistant_texts and not active:
+                return observed
+        if marker != last_marker:
+            last_marker = marker
+            last_progress = time.monotonic()
+        elif time.monotonic() - last_progress >= NO_PROGRESS_SECONDS:
+            fail(f"analyst session made no progress for {NO_PROGRESS_SECONDS} seconds")
+        if not use_v2_wait:
+            time.sleep(2)
+    fail(f"analyst session did not become idle within {TIMEOUT_SECONDS} seconds")
+
+
+def wait_for_idle(base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path, deadline: float | None = None) -> None:
+    if deadline is None:
+        deadline = time.monotonic() + TIMEOUT_SECONDS
+    observed = wait_for_session_idle(base_url, session_id, process, log_path, deadline, 2)
+    messages = observed.get(session_id, [])
+    text_count = sum(1 for message in messages if isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and text_parts(message))
+    if text_count < 2:
+        fail(f"analyst session became idle before final response; assistant_texts={text_count}")
+
+
+def error_text(error: object) -> str:
+    if not isinstance(error, dict):
+        return str(error)
+    data = error.get("data")
+    message = data.get("message") if isinstance(data, dict) else None
+    return f"{error.get('name', 'Error')}: {message or error}"
+
+
+def fatal_error(error: object) -> bool:
+    text = error_text(error).casefold()
+    if any(marker in text for marker in ("weekly usage limit", "usage limit reached", "authentication", "unauthorized", "insufficient", "billing", "credit balance")):
+        return True
+    if isinstance(error, dict) and isinstance(error.get("data"), dict) and error["data"].get("isRetryable") is False:
+        return True
+    return False
+
+
+def fatal_log_failure(log_path: Path) -> str | None:
+    text = log_path.read_text(encoding="utf-8", errors="replace")[-20000:]
+    markers = ("weekly usage limit", "usage limit reached", "authentication failed", "unauthorized", "insufficient balance", "billing", "credit balance", "providermodelnotfounderror", "prompt_async failed")
+    for line in reversed(text.splitlines()):
+        if any(marker in line.casefold() for marker in markers):
+            return line[-1000:]
+    return None
+
+
+def observe_session(base_url: str, session_id: str) -> tuple[tuple[object, ...], str | None, dict[str, list[dict[str, Any]]]]:
+    children = request_json(base_url, "GET", f"/session/{session_id}/children")
+    session_ids = [session_id]
+    if isinstance(children, list):
+        session_ids.extend(child["id"] for child in children if isinstance(child, dict) and isinstance(child.get("id"), str))
+    observed = {}
+    marker = []
+    for current_id in session_ids:
+        messages = request_json(base_url, "GET", f"/session/{current_id}/message")
+        typed = [message for message in messages if isinstance(message, dict)] if isinstance(messages, list) else []
+        observed[current_id] = typed
+        part_marker = []
+        for message in typed:
+            info = message.get("info")
+            if isinstance(info, dict) and info.get("error") is not None and fatal_error(info["error"]):
+                return tuple(marker), f"{current_id}: {error_text(info['error'])}", observed
+            for part in message.get("parts", []):
+                if not isinstance(part, dict):
+                    continue
+                state = part.get("state")
+                status = state.get("status") if isinstance(state, dict) else None
+                part_marker.append((part.get("id"), part.get("type"), part.get("tool"), status, len(part.get("text", "")) if isinstance(part.get("text"), str) else 0))
+                if part.get("type") == "tool" and part.get("tool") == "task" and isinstance(state, dict) and status == "error":
+                    return tuple(marker), f"{current_id}: task failed: {state.get('error')}", observed
+        marker.append((current_id, len(typed), tuple(part_marker)))
+    return tuple(marker), None, observed
+
+
+def wait_for_approval(base_url: str, session_id: str, process: subprocess.Popen[str], log_path: Path, deadline: float | None = None) -> tuple[list[dict[str, Any]], str]:
+    if deadline is None:
+        deadline = time.monotonic() + TIMEOUT_SECONDS
+    observed = wait_for_session_idle(base_url, session_id, process, log_path, deadline, 1)
+    messages = observed.get(session_id, [])
+    texts = ["\n".join(text_parts(message)) for message in messages if isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and text_parts(message)]
+    approvals = [text for text in texts if "Итог: НУЖНО_ОДОБРЕНИЕ" in text]
+    if len(approvals) != 1:
+        fail(f"expected one approval proposal after session became idle, got {len(approvals)}")
+    return messages, approvals[0]
 
 
 def text_parts(message: dict[str, Any]) -> list[str]:
@@ -246,6 +377,66 @@ def task_phase(subagent: str, output: str) -> tuple[str, ...]:
     return (subagent, *(field_values(output, field)[0] if field_values(output, field) else "none" for field in ("MODE", "Reviewed discovery ID", "Stage ID", "Stage revision", "Pair ID", "Left stage", "Right stage")))
 
 
+def equivalent_contract_identity(left: str, right: str) -> bool:
+    ignored_prefixes = ("Coverage checked: ", "Coverage: ", "Изменено: ")
+    normalize = lambda text: "\n".join(line.rstrip() for line in contract_payload(text).splitlines() if not line.strip().startswith(ignored_prefixes)).strip()
+    return normalize(left) == normalize(right)
+
+
+def intended_retry_subagent(subagent: str, output: str) -> str:
+    producers = {
+        "STAGE_DECOMPOSITION": "orchestrator-stage-decomposer",
+        "QUESTION_REVIEW": "orchestrator-stage-question-reviewer",
+        "PLANNING": "orchestrator-task-planner",
+        "STAGE_REVIEW": "orchestrator-plan-reviewer",
+        "PAIR_REVIEW": "orchestrator-stage-pair-reviewer",
+    }
+    emitted = [producer for contract, producer in producers.items() if field_values(output, contract)]
+    return emitted[0] if len(emitted) == 1 else subagent
+
+
+def contract_payload(output: str) -> str:
+    text = output
+    if "<task_result>" in text and "</task_result>" in text:
+        text = text.split("<task_result>", 1)[1].split("</task_result>", 1)[0]
+    return "\n".join(line for line in text.strip().splitlines() if not line.strip().startswith("```")).strip()
+
+
+def emit_timing_summary(test_name: str, base_url: str, session_id: str, started: float, checkpoints: dict[str, float]) -> None:
+    try:
+        _, _, observed = observe_session(base_url, session_id)
+        messages = observed.get(session_id, [])
+        tasks = []
+        for part in task_parts(messages):
+            state = part.get("state")
+            if not isinstance(state, dict):
+                continue
+            task_input = state.get("input")
+            timing = state.get("time")
+            start = timing.get("start") if isinstance(timing, dict) else None
+            end = timing.get("end") if isinstance(timing, dict) else None
+            duration = round((end - start) / 1000, 3) if isinstance(start, (int, float)) and isinstance(end, (int, float)) else None
+            tasks.append({"subagent": task_input.get("subagent_type") if isinstance(task_input, dict) else None, "status": state.get("status"), "seconds": duration})
+        tokens = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+        for session_messages in observed.values():
+            for message in session_messages:
+                info = message.get("info")
+                usage = info.get("tokens") if isinstance(info, dict) else None
+                if not isinstance(usage, dict):
+                    continue
+                tokens["input"] += int(usage.get("input", 0) or 0)
+                tokens["output"] += int(usage.get("output", 0) or 0)
+                tokens["reasoning"] += int(usage.get("reasoning", 0) or 0)
+                cache = usage.get("cache")
+                if isinstance(cache, dict):
+                    tokens["cache_read"] += int(cache.get("read", 0) or 0)
+                    tokens["cache_write"] += int(cache.get("write", 0) or 0)
+        summary = {"test": test_name, "model": MODEL, "total_seconds": round(time.monotonic() - started, 3), "checkpoints": {name: round(value - started, 3) for name, value in checkpoints.items()}, "task_calls": tasks, "tokens": tokens}
+        print(f"ANALYST_E2E_TIMING {json.dumps(summary, ensure_ascii=False, sort_keys=True)}", flush=True)
+    except Exception as error:
+        print(f"ANALYST_E2E_TIMING_ERROR test={test_name} error={error}", flush=True)
+
+
 def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: str, workflow_base: str) -> None:
     calls = [completed_task_output(part) for part in parts]
     all_subagents = [subagent for subagent, _, _ in calls]
@@ -259,25 +450,41 @@ def verify_task_sequence(parts: list[dict[str, Any]], approval_id: str, target: 
     if len(rejected_indices) > 3:
         fail(f"too many malformed-input retries: {len(rejected_indices)}")
     for index in rejected_indices:
-        _, _, output = calls[index]
+        subagent, _, output = calls[index]
         rejection_values = [value for value in field_values(output, "Rejection") if value != "none"]
         blocker_values = [value for value in field_values(output, "Блокер") if value != "none"]
         if not malformed_contract_output(output) and not ambiguous_contract_output(calls[index][0], output) and len(rejection_values) + len(blocker_values) != 1:
             fail(f"malformed retry lacks one exact reason:\n{output}")
+        intended = intended_retry_subagent(subagent, output)
+        if index + 1 >= len(calls) or calls[index + 1][0] != intended:
+            fail(f"malformed call was not retried immediately by intended role: {subagent} -> {intended}")
+        current_mode = field_values(output, "MODE")
+        next_mode = field_values(calls[index + 1][2], "MODE")
+        if current_mode and next_mode and current_mode != next_mode:
+            fail(f"malformed retry changed logical mode: {current_mode} -> {next_mode}")
+        if contract_payload(output) not in calls[index + 1][1]:
+            fail("malformed retry prompt omits exact rejected output")
     accepted_calls = [call for index, call in enumerate(calls) if index not in rejected_indices]
-    accepted_restages = [index for index, (subagent, _, output) in enumerate(accepted_calls) if subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["RESTAGE"]]
-    if len(accepted_restages) != 1:
-        fail(f"expected exactly one accepted RESTAGE, got {accepted_restages}")
-    first_restage = accepted_restages[0]
-    if any(subagent == "orchestrator-stage-question-reviewer" or (subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["DISCOVERY"]) for subagent, _, output in accepted_calls[first_restage + 1:]):
-        fail("discovery or question review occurred after accepted RESTAGE")
     canonical_calls = []
+    equivalent_replays = 0
     for call in accepted_calls:
         if canonical_calls and task_phase(call[0], call[2]) == task_phase(canonical_calls[-1][0], canonical_calls[-1][2]):
+            if not equivalent_contract_identity(canonical_calls[-1][2], call[2]):
+                fail(f"conflicting accepted logical phase replay: {task_phase(call[0], call[2])}\nFIRST:\n{canonical_calls[-1][2]}\nSECOND:\n{call[2]}")
+            equivalent_replays += 1
             canonical_calls[-1] = call
         else:
             canonical_calls.append(call)
+    if equivalent_replays > 3:
+        fail(f"too many equivalent accepted phase replays: {equivalent_replays}")
     accepted_calls = canonical_calls
+    accepted_restages = [index for index, (subagent, _, output) in enumerate(accepted_calls) if subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["RESTAGE"]]
+    if len(accepted_restages) != 1:
+        details = "\n---\n".join(f"{subagent}\n{output}" for subagent, _, output in calls)
+        fail(f"expected exactly one accepted RESTAGE, got {accepted_restages}\n{details}")
+    first_restage = accepted_restages[0]
+    if any(subagent == "orchestrator-stage-question-reviewer" or (subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["DISCOVERY"]) for subagent, _, output in accepted_calls[first_restage + 1:]):
+        fail("discovery or question review occurred after accepted RESTAGE")
     restage_indices = [index for index, (subagent, _, output) in enumerate(accepted_calls) if subagent == "orchestrator-stage-decomposer" and field_values(output, "MODE") == ["RESTAGE"]]
     if len(restage_indices) != 1:
         fail(f"expected one accepted RESTAGE, got {len(restage_indices)}")
@@ -451,9 +658,6 @@ def run() -> None:
         config_home = temporary_root / "config-home"
         config = config_home / "opencode"
         subprocess.run([sys.executable, str(CLI), "install", "--source", str(ROOT), "--target", str(config)], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
-        environment = os.environ.copy()
-        for variable in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"):
-            environment.pop(variable, None)
         data_home = temporary_root / "data-home"
         auth_directory = data_home / "opencode"
         auth_directory.mkdir(parents=True)
@@ -462,21 +666,12 @@ def run() -> None:
         if not source_auth.is_file():
             fail(f"OpenCode authentication not found at {source_auth}")
         shutil.copy2(source_auth, auth_directory / "auth.json")
-        isolated_home = temporary_root / "home"
-        isolated_home.mkdir()
-        environment["HOME"] = str(isolated_home)
-        environment["XDG_CONFIG_HOME"] = str(config_home)
-        environment["XDG_DATA_HOME"] = str(data_home)
-        environment["XDG_STATE_HOME"] = str(temporary_root / "state-home")
-        environment["XDG_CACHE_HOME"] = str(temporary_root / "cache-home")
-        environment["OPENCODE_CONFIG_DIR"] = str(config)
-        environment["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
-        environment["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"] = "1"
-        environment["OPENCODE_DISABLE_CLAUDE_CODE_SKILLS"] = "1"
-        environment["OPENCODE_DISABLE_EXTERNAL_SKILLS"] = "1"
-        environment["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "1"
+        environment = isolated_environment(config, temporary_root, data_home)
         log_path = temporary_root / "server.log"
         session_id = None
+        started = time.monotonic()
+        checkpoints = {}
+        timing_emitted = False
         with log_path.open("w", encoding="utf-8") as log_file:
             process, base_url = start_server(opencode, fixture, environment, log_file, log_path)
             try:
@@ -494,24 +689,29 @@ def run() -> None:
                 if not isinstance(session, dict) or not isinstance(session.get("id"), str):
                     fail(f"unexpected session response: {session}")
                 session_id = session["id"]
-                approval_response = request_json(base_url, "POST", f"/session/{session_id}/message", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": PROMPT}]}, timeout=TIMEOUT_SECONDS)
-                if not isinstance(approval_response, dict):
-                    fail(f"unexpected approval response: {approval_response}")
-                approval_text = "\n".join(text_parts(approval_response))
+                deadline = time.monotonic() + TIMEOUT_SECONDS
+                request_json(base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": PROMPT}]})
+                _, approval_text = wait_for_approval(base_url, session_id, process, log_path, deadline)
+                checkpoints["approval"] = time.monotonic()
                 approval_id = single_field(approval_text, "Approval ID")
                 target = single_field(approval_text, "Target")
                 if (fixture / "1_orchestrator").exists():
                     fail("analyst wrote workflow artifacts before approval")
                 approval_message = f"APPROVE {approval_id}"
                 request_json(base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": approval_message}]})
-                wait_for_idle(base_url, session_id, process, log_path)
+                wait_for_idle(base_url, session_id, process, log_path, deadline)
+                checkpoints["ready"] = time.monotonic()
                 messages = request_json(base_url, "GET", f"/session/{session_id}/message")
                 if not isinstance(messages, list) or not all(isinstance(message, dict) for message in messages):
                     fail(f"unexpected messages response: {messages}")
                 verify_task_sequence(task_parts(messages), approval_id, target, str(fixture))
                 verify_messages(messages, approval_message, approval_id, target)
                 verify_artifacts(fixture, original_snapshot, approval_id, target)
+                emit_timing_summary("analyst", base_url, session_id, started, checkpoints)
+                timing_emitted = True
             except Exception as error:
+                if session_id is not None and not timing_emitted:
+                    emit_timing_summary("analyst", base_url, session_id, started, checkpoints)
                 log_file.flush()
                 log = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
                 raise AssertionError(f"{error}\nserver log:\n{log}") from error

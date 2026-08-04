@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -39,6 +40,18 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError("cannot load opencode-agents.py")
 OPENCODE_AGENTS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(OPENCODE_AGENTS)
+E2E_PATH = ROOT / "tests/test-analyst-e2e.py"
+E2E_SPEC = importlib.util.spec_from_file_location("analyst_e2e_test_helpers", E2E_PATH)
+if E2E_SPEC is None or E2E_SPEC.loader is None:
+    raise RuntimeError("cannot load tests/test-analyst-e2e.py")
+ANALYST_E2E = importlib.util.module_from_spec(E2E_SPEC)
+E2E_SPEC.loader.exec_module(ANALYST_E2E)
+QUESTIONS_PATH = ROOT / "tests/test-analyst-questions-e2e.py"
+QUESTIONS_SPEC = importlib.util.spec_from_file_location("analyst_questions_test_helpers", QUESTIONS_PATH)
+if QUESTIONS_SPEC is None or QUESTIONS_SPEC.loader is None:
+    raise RuntimeError("cannot load tests/test-analyst-questions-e2e.py")
+ANALYST_QUESTIONS = importlib.util.module_from_spec(QUESTIONS_SPEC)
+QUESTIONS_SPEC.loader.exec_module(ANALYST_QUESTIONS)
 
 
 class CliTests(unittest.TestCase):
@@ -98,7 +111,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(plugins, {})
             self.assertFalse((target / "plugins").exists())
             self.assertEqual([name for name, content in agents.items() if re.search(r"^mode: primary$", content, re.MULTILINE)], ["orchestrator-analyst.md", "orchestrator-executor.md"])
-            version = "4.1.0"
+            version = "4.1.1"
             self.assertEqual(OPENCODE_AGENTS.VERSION, version)
             for content in agents.values():
                 self.assertNotRegex(content, r"__[A-Z][A-Z0-9_]+__")
@@ -118,6 +131,103 @@ class CliTests(unittest.TestCase):
             self.assertIsNotNone(re.search(rf"^model: {re.escape(model)}$", source_agents[name], re.MULTILINE))
         for name in ("orchestrator-plan-reviewer.md", "orchestrator-stage-decomposer.md", "orchestrator-stage-pair-reviewer.md", "orchestrator-stage-question-reviewer.md", "orchestrator-task-executor.md", "orchestrator-task-planner.md", "orchestrator-task-reviewer.md"):
             self.assertIsNone(re.search(r"^model:", source_agents[name], re.MULTILINE))
+
+    def test_live_harness_uses_official_isolation_flags(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.dict(os.environ, {"OPENCODE_CONFIG": "bad", "OPENCODE_PERMISSION": "bad"}):
+                environment = ANALYST_E2E.isolated_environment(root / "config-home/opencode", root, root / "data-home")
+            for variable in ("OPENCODE_TEST_HOME", "OPENCODE_DISABLE_PROJECT_CONFIG", "OPENCODE_PURE", "OPENCODE_DISABLE_AUTOUPDATE", "OPENCODE_DISABLE_AUTOCOMPACT", "OPENCODE_DISABLE_MODELS_FETCH"):
+                self.assertIn(variable, environment)
+            self.assertNotIn("OPENCODE_CONFIG", environment)
+            self.assertNotIn("OPENCODE_PERMISSION", environment)
+            self.assertEqual(json.loads(environment["OPENCODE_CONFIG_CONTENT"]), {"model": ANALYST_E2E.MODEL})
+
+    def test_live_harness_contract_helpers_are_deterministic(self):
+        rejected = "PLANNING: REJECTED\nMODE: PLAN_STAGE\nRejection: missing input\nБлокер: none"
+        self.assertEqual(ANALYST_E2E.intended_retry_subagent("orchestrator-plan-reviewer", rejected), "orchestrator-task-planner")
+        self.assertEqual(ANALYST_E2E.contract_payload(f"<task_result>\n{rejected}\n</task_result>"), rejected)
+        self.assertTrue(ANALYST_E2E.ambiguous_contract_output("orchestrator-plan-reviewer", rejected))
+        self.assertTrue(ANALYST_E2E.equivalent_contract_identity(rejected, rejected))
+        self.assertFalse(ANALYST_E2E.equivalent_contract_identity(rejected, rejected.replace("missing input", "changed finding")))
+        self.assertTrue(ANALYST_E2E.equivalent_contract_identity(f"{rejected}\nCoverage checked: first wording", f"{rejected}\nCoverage checked: equivalent wording"))
+
+    def test_live_harness_uses_v2_wait_and_questions(self):
+        common = E2E_PATH.read_text(encoding="utf-8")
+        questions = QUESTIONS_PATH.read_text(encoding="utf-8")
+        self.assertIn('f"/api/session/{session_id}/wait"', common)
+        self.assertIn('f"/api/session/{session_id}/question"', questions)
+        self.assertIn('f"/api/session/{session_id}/question/{request_id}/reply"', questions)
+        self.assertIn('f"/question/{request_id}/reply"', questions)
+
+    def test_live_harness_wait_requires_successful_v2_wait(self):
+        process = MagicMock()
+        process.poll.return_value = None
+        observed = {"ses_test": [{"info": {"role": "assistant"}, "parts": [{"type": "text", "text": "done"}]}]}
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "server.log"
+            log_path.write_text("", encoding="utf-8")
+            with patch.object(ANALYST_E2E, "request_json", side_effect=[TimeoutError(), None]) as request, patch.object(ANALYST_E2E, "observe_session", return_value=(("progress",), None, observed)), patch.object(ANALYST_E2E, "fatal_log_failure", return_value=None):
+                result = ANALYST_E2E.wait_for_session_idle("http://test", "ses_test", process, log_path, ANALYST_E2E.time.monotonic() + 5, 1)
+            self.assertEqual(result, observed)
+            self.assertEqual(request.call_count, 2)
+
+    def test_live_harness_wait_falls_back_on_documented_503(self):
+        process = MagicMock()
+        process.poll.return_value = None
+        observed = {"ses_test": [{"info": {"role": "assistant"}, "parts": [{"type": "text", "text": "done"}]}]}
+        def request(_base_url, _method, path, body=None, timeout=30):
+            if path.endswith("/wait"):
+                raise RuntimeError("HTTP 503: Session wait is not available yet")
+            if path == "/session/status":
+                return {"ses_test": {"type": "idle"}}
+            self.fail(path)
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "server.log"
+            log_path.write_text("", encoding="utf-8")
+            with patch.object(ANALYST_E2E, "request_json", side_effect=request), patch.object(ANALYST_E2E, "observe_session", return_value=(("progress",), None, observed)), patch.object(ANALYST_E2E, "fatal_log_failure", return_value=None):
+                result = ANALYST_E2E.wait_for_session_idle("http://test", "ses_test", process, log_path, ANALYST_E2E.time.monotonic() + 5, 1)
+            self.assertEqual(result, observed)
+
+    def test_live_harness_session_question_list_and_reply(self):
+        process = MagicMock()
+        process.poll.return_value = None
+        request = {"id": "que_test", "sessionID": "ses_test", "questions": []}
+        expected = {**request, "_transport": "v2"}
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "server.log"
+            log_path.write_text("", encoding="utf-8")
+            with patch.object(ANALYST_E2E, "request_json", return_value={"data": [request]}), patch.object(ANALYST_E2E, "observe_session", return_value=(("progress",), None, {})), patch.object(ANALYST_E2E, "fatal_log_failure", return_value=None):
+                self.assertEqual(ANALYST_QUESTIONS.wait_for_question(ANALYST_E2E, "http://test", "ses_test", process, log_path, ANALYST_E2E.time.monotonic() + 5), expected)
+            with patch.object(ANALYST_E2E, "request_json", return_value=None) as reply:
+                ANALYST_QUESTIONS.reply_to_question(ANALYST_E2E, "http://test", "ses_test", expected, [["answer"]])
+            self.assertEqual(reply.call_args.args[2], "/api/session/ses_test/question/que_test/reply")
+
+    def test_live_harness_legacy_question_fallback(self):
+        process = MagicMock()
+        process.poll.return_value = None
+        request = {"id": "que_test", "sessionID": "ses_test", "questions": []}
+        expected = {**request, "_transport": "legacy"}
+        responses = [{"data": []}, [request]]
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "server.log"
+            log_path.write_text("", encoding="utf-8")
+            with patch.object(ANALYST_E2E, "request_json", side_effect=responses), patch.object(ANALYST_E2E, "observe_session", return_value=(("progress",), None, {})), patch.object(ANALYST_E2E, "fatal_log_failure", return_value=None):
+                self.assertEqual(ANALYST_QUESTIONS.wait_for_question(ANALYST_E2E, "http://test", "ses_test", process, log_path, ANALYST_E2E.time.monotonic() + 5), expected)
+            with patch.object(ANALYST_E2E, "request_json", return_value=True) as reply:
+                ANALYST_QUESTIONS.reply_to_question(ANALYST_E2E, "http://test", "ses_test", expected, [["answer"]])
+            self.assertEqual(reply.call_args.args[2], "/question/que_test/reply")
+
+    def test_live_harness_telemetry_aggregates_without_outputs(self):
+        task = {"type": "tool", "tool": "task", "state": {"status": "completed", "input": {"subagent_type": "worker"}, "output": "secret-output", "time": {"start": 1000, "end": 3500}}}
+        observed = {"ses_test": [{"info": {"role": "assistant", "tokens": {"input": 2, "output": 3, "reasoning": 4, "cache": {"read": 5, "write": 6}}}, "parts": [task]}], "ses_child": [{"info": {"tokens": {"input": 7, "output": 8, "reasoning": 9, "cache": {"read": 10, "write": 11}}}, "parts": []}]}
+        output = StringIO()
+        with patch.object(ANALYST_E2E, "observe_session", return_value=((), None, observed)), redirect_stdout(output):
+            ANALYST_E2E.emit_timing_summary("test", "http://test", "ses_test", ANALYST_E2E.time.monotonic(), {})
+        summary = output.getvalue()
+        self.assertIn('"seconds": 2.5', summary)
+        self.assertIn('"input": 9', summary)
+        self.assertNotIn("secret-output", summary)
 
     def test_staged_analyst_role_contracts_are_complete(self):
         decomposer = (ROOT / "agents/orchestrator-stage-decomposer.md").read_text(encoding="utf-8")
@@ -205,6 +315,29 @@ class CliTests(unittest.TestCase):
         self.assertIn("in `BACKTRACK_AUTHORITY` only", analyst)
         self.assertIn("Sol is not called for whole-plan final review", analyst)
         self.assertIn("call planner `FINALIZE`", analyst)
+        self.assertIn("Treat each accepted subagent contract status as routing data", analyst)
+        self.assertIn("never report a repairable `REVISE` as `BLOCKED`", analyst)
+        self.assertIn("paste the approved RESTAGE as one untouched contiguous block", analyst)
+        self.assertIn("selected-field reconstruction is malformed even when omitted values are `none`", analyst)
+        self.assertIn("Never omit a field already present in upstream output", analyst)
+        self.assertIn("Rebuild the retry prompt from complete authoritative state", analyst)
+        self.assertIn("include the exact rejected output as diagnostic evidence", analyst)
+        self.assertIn("If latest accepted status is nonterminal or says `Блокер: none`", analyst)
+        self.assertIn("after one accepted status for a logical phase, never call that same role/phase/revision again", analyst)
+        self.assertIn("Use exactly these next transitions for accepted statuses", analyst)
+        self.assertIn("Never redispatch the producer of an accepted status", analyst)
+        self.assertIn("A pair may be reviewed only by `orchestrator-stage-pair-reviewer`", analyst)
+        self.assertIn("wrong-role or wrong-contract output is malformed and must be corrected", analyst)
+        self.assertIn("wrong-role dispatch requires the intended role", analyst)
+        self.assertIn("a one-stage plan has no pair and dispatches `FINALIZE` directly", analyst)
+        self.assertIn("`MODE: INVALIDATE_SUFFIX` dispatches `BACKTRACK_STAGE`", analyst)
+        self.assertIn("`REVISE` requires immediate same-turn planner `REVISE_STAGE`", (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8"))
+        self.assertIn("`REVISE_RIGHT`, `MINOR_LEFT`, and `SUBSTANTIVE_LEFT` require immediate same-turn corrective routing", (ROOT / "agents/orchestrator-stage-pair-reviewer.md").read_text(encoding="utf-8"))
+        self.assertIn("`AUTHORIZED` and `DENIED` both require immediate same-turn planner/review continuation", (ROOT / "agents/orchestrator-plan-ultra-reviewer.md").read_text(encoding="utf-8"))
+        self.assertIn("`REJECTED` means primary must correct payload and retry this same role/mode", (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8"))
+        self.assertIn("reject selected-field reconstruction before any read or edit", (ROOT / "agents/orchestrator-task-planner.md").read_text(encoding="utf-8"))
+        self.assertIn("RESTAGE and planner inputs must be contiguous verbatim contract blocks", (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8"))
+        self.assertIn("Mandatory harness fields and executor safety invariants from planner task shape", (ROOT / "agents/orchestrator-plan-reviewer.md").read_text(encoding="utf-8"))
 
     def test_executor_and_workflow_base_contracts_are_preserved(self):
         executor = (ROOT / "agents/orchestrator-executor.md").read_text(encoding="utf-8")
@@ -293,7 +426,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.evaluate(self.permission_rules(agents["orchestrator-stage-question-reviewer.md"], "webfetch"), "https://opencode.ai/docs/custom-tools/"), "deny")
 
     def test_live_analyst_e2e_is_mandatory(self):
-        commands = ("python3 tests/test-analyst-e2e.py", "python3 tests/test-analyst-questions-e2e.py")
+        commands = ("python3 tests/test-analyst-e2e.py", "python3 tests/test-analyst-questions-e2e.py", "python3 tests/test-analyst-replanning-e2e.py")
         for command in commands:
             self.assertTrue((ROOT / command.split()[-1]).is_file())
             self.assertIn(command, (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
