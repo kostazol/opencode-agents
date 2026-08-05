@@ -4,7 +4,7 @@ from harness import SystemWorkspace
 
 
 with SystemWorkspace() as system:
-    messages = system.run_step("MODE: STEP\nПодготовь план добавления configurable output format. Формат существенно влияет на API, но пользователь ещё не выбрал JSON или plain text. Исследуй repository и сохрани вопросы.")
+    messages = system.run_transition("Подготовь план добавления configurable output format. Формат существенно влияет на API, но пользователь ещё не выбрал JSON или plain text. Исследуй repository и сохрани вопросы.")
     targets = list((system.workspace / "1_orchestrator").glob("*/questions.md"))
     assert len(targets) == 1, (targets, messages)
     content = targets[0].read_text(encoding="utf-8")

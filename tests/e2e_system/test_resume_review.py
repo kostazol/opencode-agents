@@ -9,7 +9,7 @@ with SystemWorkspace() as system:
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.unlink()
     plan.write_text(plan.read_text(encoding="utf-8").replace("- Revision: 0", "- Revision: 1"), encoding="utf-8")
-    messages = system.run_step("MODE: STEP\nRESUME: 1_orchestrator/e2e/plan.md")
+    messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     assert review.is_file()
     assert "stage: S01" in review.read_text(encoding="utf-8")
     assert system.task_agents(messages) == ["orchestrator-stage-reviewer"]

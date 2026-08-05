@@ -62,7 +62,7 @@ try:
     plan.write_text(plan.read_text(encoding="utf-8").replace("- Revision: 0", "- Revision: 3"), encoding="utf-8")
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.write_text("---\nstage: S01\nstage_revision: 3\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add deterministic detail.\n", encoding="utf-8")
-    messages = system.run_step("MODE: RUN\nRESUME: 1_orchestrator/e2e/plan.md")
+    messages = system.run_step("RESUME: 1_orchestrator/e2e/plan.md")
     assert system.task_agents(messages) == ["orchestrator-stage-planner", "orchestrator-stage-reviewer"], system.task_agents(messages)
     content = plan.read_text(encoding="utf-8")
     assert "status: ready" in content, content

@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.1.0 - 2026-08-05
+
+### Changed
+
+- Run system E2E with isolated HOME, session database, state, and cache while loading the real OpenCode config directory read-only.
+- Remove all test runtime state automatically with the temporary workspace, including child-agent sessions after interrupted tests.
+- Remove production `MODE`, `STEP`, and `PAUSED` concepts. The analyst always continues until user input, approval, blocker, or completion.
+- Move one-transition checkpoints entirely into the E2E harness.
+
 ## 5.0.4 - 2026-08-05
 
 ### Fixed

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
-VERSION = "5.0.4"
+VERSION = "5.1.0"
 AGENT_NAMES = [
     "orchestrator-analyst.md",
     "orchestrator-discovery.md",
@@ -65,8 +65,9 @@ class CliTests(unittest.TestCase):
             self.assertIn(f"    {name}: allow", analyst)
         for old_name in RETIRED_411_AGENTS:
             self.assertNotIn(f"    {old_name.removesuffix('.md')}: allow", analyst)
-        self.assertIn("MODE: STEP", analyst)
-        self.assertIn("one state transition", analyst)
+        self.assertNotIn("MODE: STEP", analyst)
+        self.assertNotIn("PAUSED", analyst)
+        self.assertIn("Continue through transitions", analyst)
         self.assertIn("first later stage that is not `PASS`", analyst)
         self.assertIn("DISCOVERY: QUESTIONS|READY_FOR_APPROVAL|BLOCKED", agents["orchestrator-discovery.md"])
         self.assertIn("STAGE_PLAN: REVIEW|MAP_CHANGE_REQUIRED|BLOCKED", agents["orchestrator-stage-planner.md"])
@@ -129,6 +130,15 @@ class CliTests(unittest.TestCase):
         retired = {str(path) for path in OPENCODE_AGENTS.RETIRED_FILE_HASHES}
         for name in RETIRED_411_AGENTS:
             self.assertIn(f"agents/{name}", retired)
+
+    def test_system_e2e_isolates_mutable_opencode_state(self):
+        harness = (ROOT / "tests/e2e_system/harness.py").read_text(encoding="utf-8")
+        for variable in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "OPENCODE_TEST_HOME"):
+            self.assertIn(f'"{variable}"', harness)
+        self.assertIn('"OPENCODE_CONFIG_DIR": str(source_config)', harness)
+        self.assertIn('"OPENCODE_PURE": "1"', harness)
+        self.assertIn("shutil.copy2(source_auth, isolated_auth)", harness)
+        self.assertIn("env=self._isolated_environment()", harness)
 
     def test_status_reports_known_retired_file(self):
         with tempfile.TemporaryDirectory() as temporary:

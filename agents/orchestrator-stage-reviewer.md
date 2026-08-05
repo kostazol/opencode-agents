@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.4
+# OpenCode Agents version: 5.1.0
 description: Fresh reviewer that validates one stage plan, its evidence, dependency contracts, tests, and autonomous executability.
 mode: subagent
 hidden: true

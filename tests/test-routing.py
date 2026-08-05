@@ -11,12 +11,11 @@ class RoutingContractTests(unittest.TestCase):
         cls.analyst = (ROOT / "agents/orchestrator-analyst.md").read_text(encoding="utf-8")
         cls.guide = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    def test_step_is_one_transition_and_run_continues(self):
-        self.assertIn("`MODE: STEP` as one state transition", self.analyst)
-        self.assertIn("`MODE: RUN` as continuous progress", self.analyst)
-        self.assertIn("Keep the selected mode for the complete user turn", self.analyst)
-        self.assertIn("In `STEP`, stop after completing one numbered transition", self.analyst)
-        self.assertIn("`PAUSED` belongs to `STEP`", self.analyst)
+    def test_workflow_continues_without_test_modes(self):
+        self.assertNotIn("MODE: STEP", self.analyst)
+        self.assertNotIn("MODE: RUN", self.analyst)
+        self.assertNotIn("PAUSED", self.analyst)
+        self.assertIn("Continue through transitions until a user decision", self.analyst)
         self.assertIn("every other accepted status continues through a tool call", self.analyst)
 
     def test_questions_are_durable_before_follow_up(self):

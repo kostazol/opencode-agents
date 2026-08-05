@@ -8,7 +8,7 @@ with SystemWorkspace() as system:
     write_passed_stage(system.workspace, 1, "Value contract")
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.unlink()
-    messages = system.run_step("MODE: STEP\nRESUME: 1_orchestrator/e2e/plan.md")
+    messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     content = plan.read_text(encoding="utf-8")
     assert "- Status: REVIEW" in content, (content, messages)
     assert "- Revision: 1" in content

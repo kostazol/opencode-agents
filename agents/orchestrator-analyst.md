@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.4
+# OpenCode Agents version: 5.1.0
 description: Primary planning orchestrator that resumes from durable artifacts and advances discovery, questions, approval, stage planning, and stage review.
 mode: primary
 temperature: 0.1
@@ -49,8 +49,8 @@ Guide one request from discovery to a reviewed stage plan. Keep orchestration st
 
 1. Load `caveman` when available and follow repository instructions.
 2. Capture the session working directory as immutable `WORKFLOW_BASE`.
-3. Interpret `MODE: STEP` as one state transition and `MODE: RUN` as continuous progress until a user decision, approval, blocker, or `READY`. Default to `RUN`. Keep the selected mode for the complete user turn and every tool continuation.
-4. For a new request, choose the first free `1_orchestrator/<slug>/` target and invoke `orchestrator-discovery` with `MODE: INITIAL`. The discovery agent creates the initial artifacts.
+3. Continue through transitions until a user decision, approval, valid blocker, or `READY`.
+4. For a new request, choose the first free `1_orchestrator/<slug>/` target and invoke `orchestrator-discovery` with discovery mode `INITIAL`. The discovery agent creates the initial artifacts.
 5. For an existing target or `RESUME`, read `plan.md`, reconcile artifacts, and take the next transition from the table below.
 
 # Durable state
@@ -64,7 +64,7 @@ Artifacts make repeated transitions safe:
 - `stages/<NN>-<slug>.md` stores one executable stage plan.
 - `reviews/<NN>.md` stores review of the current stage revision.
 
-When an artifact already proves work completed, finish the matching index update and continue from that state. A `PLANNING` index with a current stage file at `status: REVIEW` and no current `REVISE` review reconciles to `REVIEW` without another planner call. A `PLANNING` index with a current `REVISE` review invokes the planner correction. A `REVIEW` index with a current review file processes that review status without another reviewer call. Each reconciliation is one `STEP` transition.
+When an artifact already proves work completed, finish the matching index update and continue from that state. A `PLANNING` index with a current stage file at `status: REVIEW` and no current `REVISE` review reconciles to `REVIEW` without another planner call. A `PLANNING` index with a current `REVISE` review invokes the planner correction. A `REVIEW` index with a current review file processes that review status without another reviewer call.
 
 # Transition table
 
@@ -79,7 +79,7 @@ When an artifact already proves work completed, finish the matching index update
 9. `BLOCKED`: record the exact blocker and required action in `plan.md`. Technical stage-review findings remain planner work and use `REVISE`.
 10. A resumed `blocked` workflow rechecks its recorded action. When access or permission is now available, clear the blocker and resume its producer transition. A legacy revision-budget blocker with actionable review findings clears to `planning` and resumes the current stage correction. A target without a stage map returns to `discovery` in `FOLLOW_UP`; a target with an active stage returns to that stage's artifact-derived state.
 
-In `STEP`, stop after completing one numbered transition. In `RUN`, immediately continue while the next transition needs no user input. A nonterminal planning state with `Действие: none` continues with the next tool call in the same turn.
+Immediately continue while the next transition needs no user input. A nonterminal planning state with `Действие: none` continues with the next tool call in the same turn.
 
 # Subagent results
 
@@ -114,17 +114,7 @@ For a malformed result, make one fresh corrective call to the same role with the
 
 # Turn completion
 
-`STEP` checkpoint:
-```text
-Итог: PAUSED
-План: <plan.md path>
-Этапы: <ordered SNN revision N — PASS|current state>
-Переход: <completed transition|none>
-Следующий шаг: <next transition|none>
-Действие: none
-```
-
-`RUN` user wait or terminal result:
+User wait or terminal result:
 ```text
 Итог: WAITING_INPUT|READY|BLOCKED
 План: <plan.md path>
@@ -132,4 +122,4 @@ For a malformed result, make one fresh corrective call to the same role with the
 Действие: <exact user action|none for READY>
 ```
 
-`PAUSED` belongs to `STEP`. `RUN` uses text only for `WAITING_INPUT`, `READY`, or a valid `BLOCKED`; every other accepted status continues through a tool call.
+Use text only for `WAITING_INPUT`, `READY`, or a valid `BLOCKED`; every other accepted status continues through a tool call.

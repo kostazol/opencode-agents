@@ -15,7 +15,7 @@ All agent names start with `orchestrator-`. Prompts use short positive instructi
 
 `plan.md` is the table of contents and durable workflow index. Detailed planning proceeds one stage at a time. A fresh reviewer gates each stage. `PASS` advances to the first later non-PASS stage. All stages at `PASS` produce `READY`.
 
-`RUN` continues through transitions until user input, approval, blocker, or completion. `STEP` performs exactly one transition. Resume derives the next action from artifacts and remains safe after interruption between an artifact write and index update.
+The primary continues through transitions until user input, approval, blocker, or completion. Resume derives the next action from artifacts and remains safe after interruption between an artifact write and index update. Test-only transition checkpoints live in the E2E harness, outside production prompts.
 
 Artifacts are limited to:
 
@@ -45,7 +45,7 @@ Primary reads and updates workflow state and delegates only to the three plannin
 
 ## Tests
 
-Fast tests cover inventory, permissions, installer retirement, prompt contracts, artifact schemas, and routing rules. Small system E2E tests use the normal user OpenCode configuration with a temporary product workspace. Each micro-E2E seeds one durable state, runs `MODE: STEP`, and checks one transition. Together the seeded snapshots cover continuation from every durable state.
+Fast tests cover inventory, permissions, installer retirement, prompt contracts, artifact schemas, and routing rules. Small system E2E tests load the real user OpenCode config directory read-only while using temporary HOME, session database, state, cache, and product workspace. External plugins stay disabled in micro-E2E so their installation and cache cannot mutate the working environment. Each micro-E2E seeds one durable state, adds a harness-only checkpoint, and checks one transition. Together the seeded snapshots cover continuation from every durable state.
 
 Main transition cases:
 

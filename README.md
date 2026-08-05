@@ -58,23 +58,15 @@ APPROVE
 
 После approval этапы планируются и проверяются последовательно.
 
-## Resume и диагностика
+## Resume
 
-Обычный режим продолжает workflow автоматически:
+Workflow продолжает работу автоматически:
 
 ```text
-MODE: RUN
 RESUME: 1_orchestrator/<request>/plan.md
 ```
 
-Диагностический режим выполняет один переход:
-
-```text
-MODE: STEP
-RESUME: 1_orchestrator/<request>/plan.md
-```
-
-`STEP` используется маленькими E2E-тестами. Любая новая session восстанавливает следующий шаг из artifacts, а не из истории чата.
+Любая новая session восстанавливает следующий шаг из artifacts, а не из истории чата. Однопереходные checkpoints существуют только внутри E2E harness и не входят в production prompt.
 
 ## Установка
 
@@ -97,7 +89,7 @@ python3 -m py_compile opencode-agents.py tests/e2e_system/harness.py
 git diff --check
 ```
 
-System E2E используют обычную пользовательскую OpenCode-конфигурацию и временный product workspace:
+System E2E читают реальную пользовательскую OpenCode-конфигурацию, но используют временные HOME, session DB, state, cache и product workspace. Micro-E2E отключают external plugins, чтобы plugin installation/cache не меняли рабочую среду:
 
 ```bash
 python3 tests/e2e_system/test_discovery_questions.py
@@ -116,7 +108,7 @@ python3 tests/e2e_system/test_run_revise_continues.py
 python3 tests/e2e_system/test_complete.py
 ```
 
-Каждый micro-E2E запускает `MODE: STEP` и проверяет один переход. Вместе snapshots покрывают продолжение из каждого durable состояния.
+Каждый micro-E2E использует test-only checkpoint из harness и проверяет один переход. Вместе snapshots покрывают продолжение из каждого durable состояния.
 
 ## Источники подхода
 

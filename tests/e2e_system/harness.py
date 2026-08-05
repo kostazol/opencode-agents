@@ -48,6 +48,37 @@ class SystemWorkspace:
         self.session_ids: list[str] = []
         self._write_fixture()
 
+    def _isolated_environment(self) -> dict[str, str]:
+        environment = os.environ.copy()
+        source_home = Path.home()
+        source_config = Path(os.environ.get("OPENCODE_CONFIG_DIR", source_home / ".config/opencode")).expanduser().resolve()
+        source_data = Path(os.environ.get("XDG_DATA_HOME", source_home / ".local/share")).expanduser().resolve()
+        isolated_home = self.root / "home"
+        isolated_data = self.root / "data-home"
+        isolated_auth = isolated_data / "opencode/auth.json"
+        isolated_home.mkdir()
+        isolated_auth.parent.mkdir(parents=True)
+        source_auth = source_data / "opencode/auth.json"
+        if not source_auth.is_file():
+            raise AssertionError(f"OpenCode authentication not found at {source_auth}")
+        shutil.copy2(source_auth, isolated_auth)
+        for variable in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_PURE", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"):
+            environment.pop(variable, None)
+        environment.update({
+            "HOME": str(isolated_home),
+            "XDG_CONFIG_HOME": str(self.root / "config-home"),
+            "XDG_DATA_HOME": str(isolated_data),
+            "XDG_STATE_HOME": str(self.root / "state-home"),
+            "XDG_CACHE_HOME": str(self.root / "cache-home"),
+            "OPENCODE_TEST_HOME": str(isolated_home),
+            "OPENCODE_CONFIG_DIR": str(source_config),
+            "OPENCODE_PURE": "1",
+            "OPENCODE_DISABLE_AUTOUPDATE": "1",
+            "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+            "OPENCODE_DISABLE_MODELS_FETCH": "1",
+        })
+        return environment
+
     def _write_fixture(self) -> None:
         agent_dir = self.workspace / ".opencode/agents"
         agent_dir.mkdir(parents=True)
@@ -63,12 +94,10 @@ class SystemWorkspace:
         executable = shutil.which("opencode")
         if executable is None:
             raise AssertionError("opencode executable not found")
-        if os.environ.get("OPENCODE_PURE") == "1":
-            raise AssertionError("system E2E requires normal OpenCode configuration; unset OPENCODE_PURE")
         port = free_port()
         self.base_url = f"http://127.0.0.1:{port}"
         log = self.log_path.open("w", encoding="utf-8")
-        self.process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port), "--print-logs", "--log-level", "INFO"], cwd=self.workspace, env=os.environ.copy(), stdout=log, stderr=subprocess.STDOUT, text=True)
+        self.process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port), "--print-logs", "--log-level", "INFO"], cwd=self.workspace, env=self._isolated_environment(), stdout=log, stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
@@ -84,7 +113,16 @@ class SystemWorkspace:
                     return
             except (OSError, RuntimeError, URLError):
                 time.sleep(1)
-        raise AssertionError("opencode serve did not become healthy")
+        if self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=10)
+        log.flush()
+        details = self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+        raise AssertionError(f"opencode serve did not become healthy:\n{details}")
 
     def run_step(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
         session = request_json(self.base_url, "POST", "/session", {"title": "orchestrator micro E2E"})
@@ -109,6 +147,10 @@ class SystemWorkspace:
         if not isinstance(messages, list):
             raise AssertionError(f"unexpected messages: {messages}")
         return messages
+
+    def run_transition(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
+        checkpoint = "E2E CHECKPOINT: complete one durable transition, persist its resulting state, then return WAITING_INPUT with action `continue test`."
+        return self.run_step(f"{prompt}\n{checkpoint}", answer_labels)
 
     def _wait_for_question(self, session_id: str) -> dict[str, Any]:
         deadline = time.monotonic() + TIMEOUT_SECONDS
