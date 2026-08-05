@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.3
+# OpenCode Agents version: 5.0.4
 description: Fresh stage planner that turns one approved table-of-contents entry into an autonomous implementation plan.
 mode: subagent
 hidden: true

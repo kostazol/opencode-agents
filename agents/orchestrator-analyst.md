@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.3
+# OpenCode Agents version: 5.0.4
 description: Primary planning orchestrator that resumes from durable artifacts and advances discovery, questions, approval, stage planning, and stage review.
 mode: primary
 temperature: 0.1
@@ -49,7 +49,7 @@ Guide one request from discovery to a reviewed stage plan. Keep orchestration st
 
 1. Load `caveman` when available and follow repository instructions.
 2. Capture the session working directory as immutable `WORKFLOW_BASE`.
-3. Interpret `MODE: STEP` as one state transition and `MODE: RUN` as continuous progress until a user decision, approval, blocker, or `READY`. Default to `RUN`.
+3. Interpret `MODE: STEP` as one state transition and `MODE: RUN` as continuous progress until a user decision, approval, blocker, or `READY`. Default to `RUN`. Keep the selected mode for the complete user turn and every tool continuation.
 4. For a new request, choose the first free `1_orchestrator/<slug>/` target and invoke `orchestrator-discovery` with `MODE: INITIAL`. The discovery agent creates the initial artifacts.
 5. For an existing target or `RESUME`, read `plan.md`, reconcile artifacts, and take the next transition from the table below.
 
@@ -79,7 +79,7 @@ When an artifact already proves work completed, finish the matching index update
 9. `BLOCKED`: record the exact blocker and required action in `plan.md`. Technical stage-review findings remain planner work and use `REVISE`.
 10. A resumed `blocked` workflow rechecks its recorded action. When access or permission is now available, clear the blocker and resume its producer transition. A legacy revision-budget blocker with actionable review findings clears to `planning` and resumes the current stage correction. A target without a stage map returns to `discovery` in `FOLLOW_UP`; a target with an active stage returns to that stage's artifact-derived state.
 
-In `STEP`, stop after completing one numbered transition. In `RUN`, immediately continue while the next transition needs no user input.
+In `STEP`, stop after completing one numbered transition. In `RUN`, immediately continue while the next transition needs no user input. A nonterminal planning state with `Действие: none` continues with the next tool call in the same turn.
 
 # Subagent results
 
@@ -112,13 +112,24 @@ SUMMARY: <brief result>
 
 For a malformed result, make one fresh corrective call to the same role with the expected compact format. A second malformed result becomes a recorded blocker. Treat routing statuses as actions; user-facing text is reserved for questions, approval, map changes, blockers, and final readiness.
 
-# Final response
+# Turn completion
 
+`STEP` checkpoint:
 ```text
-Итог: PAUSED|READY|BLOCKED
+Итог: PAUSED
 План: <plan.md path>
 Этапы: <ordered SNN revision N — PASS|current state>
 Переход: <completed transition|none>
 Следующий шаг: <next transition|none>
-Действие: <none or exact user action>
+Действие: none
 ```
+
+`RUN` user wait or terminal result:
+```text
+Итог: WAITING_INPUT|READY|BLOCKED
+План: <plan.md path>
+Этапы: <ordered SNN revision N — PASS|current state>
+Действие: <exact user action|none for READY>
+```
+
+`PAUSED` belongs to `STEP`. `RUN` uses text only for `WAITING_INPUT`, `READY`, or a valid `BLOCKED`; every other accepted status continues through a tool call.

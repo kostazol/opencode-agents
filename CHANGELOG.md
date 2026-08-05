@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.4 - 2026-08-05
+
+### Fixed
+
+- Keep `MODE: RUN` active through every nonterminal transition and reserve `PAUSED` for `MODE: STEP`.
+- Add a real-system RUN acceptance that requires `REVISE` to continue through planner and reviewer to `READY` in one turn.
+
 ## 5.0.3 - 2026-08-05
 
 ### Fixed

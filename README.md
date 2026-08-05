@@ -112,6 +112,7 @@ python3 tests/e2e_system/test_reconcile_stage.py
 python3 tests/e2e_system/test_map_change_approval.py
 python3 tests/e2e_system/test_revision_resume.py
 python3 tests/e2e_system/test_revision_four.py
+python3 tests/e2e_system/test_run_revise_continues.py
 python3 tests/e2e_system/test_complete.py
 ```
 

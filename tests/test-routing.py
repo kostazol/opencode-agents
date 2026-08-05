@@ -14,7 +14,10 @@ class RoutingContractTests(unittest.TestCase):
     def test_step_is_one_transition_and_run_continues(self):
         self.assertIn("`MODE: STEP` as one state transition", self.analyst)
         self.assertIn("`MODE: RUN` as continuous progress", self.analyst)
+        self.assertIn("Keep the selected mode for the complete user turn", self.analyst)
         self.assertIn("In `STEP`, stop after completing one numbered transition", self.analyst)
+        self.assertIn("`PAUSED` belongs to `STEP`", self.analyst)
+        self.assertIn("every other accepted status continues through a tool call", self.analyst)
 
     def test_questions_are_durable_before_follow_up(self):
         question = self.analyst.index("Discovery `QUESTIONS`")
@@ -45,7 +48,7 @@ class RoutingContractTests(unittest.TestCase):
     def test_every_routing_result_has_a_handler(self):
         for status in ("QUESTIONS", "READY_FOR_APPROVAL", "REVIEW", "PASS", "REVISE", "MAP_CHANGE_REQUIRED", "BLOCKED"):
             self.assertIn(status, self.analyst)
-        self.assertIn("Итог: PAUSED|READY|BLOCKED", self.analyst)
+        self.assertIn("Итог: WAITING_INPUT|READY|BLOCKED", self.analyst)
         self.assertIn("APPROVE MAP CHANGE", self.analyst)
 
     def test_artifact_index_reconciliation_is_explicit(self):
