@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.0.3 - 2026-08-05
+
+### Fixed
+
+- Keep actionable stage-review findings inside the planner/reviewer loop until `PASS`, without a revision-count limit.
+- Resume legacy revision-budget blockers as planner corrections.
+- Supply the reviewer output path on every review dispatch.
+
 ## 5.0.2 - 2026-08-05
 
 ### Fixed

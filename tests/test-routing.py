@@ -37,9 +37,10 @@ class RoutingContractTests(unittest.TestCase):
         for path in ("discovery.md", "questions.md", "plan.md", "stages/<NN>-<slug>.md", "reviews/<NN>.md"):
             self.assertIn(path, self.guide)
 
-    def test_stage_review_has_bounded_revision(self):
-        self.assertIn("revisions `2` and `3` are the correction budget", self.analyst)
-        self.assertIn("Two revisions after the initial plan", self.guide)
+    def test_stage_review_continues_until_pass(self):
+        self.assertIn("every actionable `REVISE` creates the next positive revision", self.analyst)
+        self.assertIn("revision count does not stop an actionable correction", self.analyst)
+        self.assertIn("always continues through a new planner revision", self.guide)
 
     def test_every_routing_result_has_a_handler(self):
         for status in ("QUESTIONS", "READY_FOR_APPROVAL", "REVIEW", "PASS", "REVISE", "MAP_CHANGE_REQUIRED", "BLOCKED"):
@@ -54,6 +55,7 @@ class RoutingContractTests(unittest.TestCase):
 
     def test_access_blocker_can_resume(self):
         self.assertIn("A resumed `blocked` workflow rechecks its recorded action", self.analyst)
+        self.assertIn("legacy revision-budget blocker", self.analyst)
         self.assertIn("returns to `discovery` in `FOLLOW_UP`", self.analyst)
 
 

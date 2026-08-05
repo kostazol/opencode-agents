@@ -110,7 +110,8 @@ python3 tests/e2e_system/test_revise_stage.py
 python3 tests/e2e_system/test_plan_revision.py
 python3 tests/e2e_system/test_reconcile_stage.py
 python3 tests/e2e_system/test_map_change_approval.py
-python3 tests/e2e_system/test_revision_limit.py
+python3 tests/e2e_system/test_revision_resume.py
+python3 tests/e2e_system/test_revision_four.py
 python3 tests/e2e_system/test_complete.py
 ```
 

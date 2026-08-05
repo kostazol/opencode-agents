@@ -1,5 +1,5 @@
 ---
-# OpenCode Agents version: 5.0.2
+# OpenCode Agents version: 5.0.3
 description: Fresh repository researcher that records evidence, prepares material questions, and creates a concise stage-map index.
 mode: subagent
 hidden: true

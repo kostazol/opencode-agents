@@ -37,7 +37,7 @@ The user approves the complete stage map with exact `APPROVE`. Detailed stage fi
 
 Planner reads the index, discovery, direct dependency stages, current stage, and current review. It writes one stage file with outcome, evidence, scope, paths, contracts, steps, acceptance, tests, validation, and non-goals.
 
-Reviewer reads the same approved boundary and writes one review file. `REVISE` returns actionable current-stage findings. `MAP_CHANGE_REQUIRED` presents the smallest evidence-backed delta for user approval. Two revisions after the initial plan form the bounded correction budget.
+Reviewer reads the same approved boundary and writes one review file. `REVISE` returns actionable current-stage findings and always continues through a new planner revision plus fresh review. `MAP_CHANGE_REQUIRED` presents the smallest evidence-backed delta for user approval.
 
 ## Permissions
 
