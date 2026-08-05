@@ -77,6 +77,7 @@ class SystemWorkspace:
             "OPENCODE_DISABLE_AUTOCOMPACT": "1",
             "OPENCODE_DISABLE_MODELS_FETCH": "1",
         })
+        environment["OPENCODE_CONFIG_CONTENT"] = json.dumps({"agent": self._agent_prompt_overrides()}, ensure_ascii=False)
         return environment
 
     def _write_fixture(self) -> None:
@@ -89,6 +90,15 @@ class SystemWorkspace:
         (self.workspace / "tests").mkdir()
         (self.workspace / "src/example.py").write_text("def current_value() -> int:\n    return 1\n", encoding="utf-8")
         (self.workspace / "tests/test_example.py").write_text("import unittest\n\nfrom src.example import current_value\n\n\nclass ExampleTests(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(current_value(), 1)\n", encoding="utf-8")
+
+    def _agent_prompt_overrides(self) -> dict[str, dict[str, str]]:
+        agents = {}
+        for path in sorted((self.workspace / ".opencode/agents").glob("orchestrator-*.md")):
+            parts = path.read_text(encoding="utf-8").split("---", 2)
+            if len(parts) != 3:
+                raise AssertionError(f"agent frontmatter missing: {path}")
+            agents[path.stem] = {"prompt": parts[2].lstrip("\n")}
+        return agents
 
     def start(self) -> None:
         executable = shutil.which("opencode")

@@ -15,6 +15,10 @@ All agent names start with `orchestrator-`. Prompts use short positive instructi
 
 `plan.md` is the table of contents and durable workflow index. Detailed planning proceeds one stage at a time. A fresh reviewer gates each stage. `PASS` advances to the first later non-PASS stage. All stages at `PASS` produce `READY`.
 
+Stage `PASS` certifies a future implementation plan, not completed product work. Planning keeps product and Git state unchanged. Reviewers inspect current repository state and distinguish existing partial outputs from paths planned for later creation.
+
+Human-readable questions, options, recommendations, stage-map prose, stage files, reviews, assumptions, decisions, and summaries use Russian. Protocol tokens, required section headings, paths, commands, and code identifiers remain exact.
+
 The primary continues through transitions until user input, approval, blocker, or completion. Resume derives the next action from artifacts and remains safe after interruption between an artifact write and index update. Test-only transition checkpoints live in the E2E harness, outside production prompts.
 
 Artifacts are limited to:
@@ -41,7 +45,7 @@ Reviewer reads the same approved boundary and writes one review file. `REVISE` r
 
 ## Permissions
 
-Primary reads and updates workflow state and delegates only to the three planning subagents. Discovery writes top-level discovery artifacts. Planner writes stage files. Reviewer writes review files. Product evidence access is read-only. Git mutation is denied. Secret-bearing paths remain denied.
+Primary reads and updates workflow state and delegates only the current workflow transition to the three planning subagents. Discovery writes top-level discovery artifacts. Planner writes one current stage file. Reviewer writes one current review file. Product evidence access is read-only. Git mutation is denied. Secret-bearing paths remain denied.
 
 ## Tests
 

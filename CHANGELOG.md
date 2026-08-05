@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.1.1 - 2026-08-05
+
+### Fixed
+
+- Keep planning `PASS` distinct from completed product work and route repository rechecks through evidence-capable subagents.
+- Resolve exact resume targets without treating `WORKFLOW_BASE` as a literal directory and validate compact subagent statuses semantically.
+- Keep one current stage, path-only handoffs, and Russian human-readable planning artifacts while preserving the unbounded revision loop.
+
 ## 5.1.0 - 2026-08-05
 
 ### Changed

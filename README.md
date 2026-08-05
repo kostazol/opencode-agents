@@ -29,6 +29,10 @@ discovery
 
 Одновременно активен один этап. Следующий этап начинается после `PASS` текущего.
 
+`PASS` подтверждает качество stage plan для будущей реализации. Planning agents исследуют текущее состояние repository, учитывают уже существующие partial outputs, но не считают отсутствие будущих planned files завершённостью или blocker само по себе.
+
+Вопросы, варианты, рекомендации, stage map, подробные stage plans, reviews, assumptions, decisions и summaries пишутся по-русски. Protocol statuses, обязательные section headings, пути, команды и code identifiers сохраняются без перевода.
+
 ## Артефакты
 
 ```text
@@ -66,7 +70,7 @@ Workflow продолжает работу автоматически:
 RESUME: 1_orchestrator/<request>/plan.md
 ```
 
-Любая новая session восстанавливает следующий шаг из artifacts, а не из истории чата. Однопереходные checkpoints существуют только внутри E2E harness и не входят в production prompt.
+Любая новая session восстанавливает следующий шаг из exact `RESUME` artifact, а не из истории чата. `WORKFLOW_BASE` означает текущую рабочую директорию и не добавляется в путь буквальным сегментом. Однопереходные checkpoints существуют только внутри E2E harness и не входят в production prompt.
 
 ## Установка
 

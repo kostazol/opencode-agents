@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "opencode-agents.py"
-VERSION = "5.1.0"
+VERSION = "5.1.1"
 AGENT_NAMES = [
     "orchestrator-analyst.md",
     "orchestrator-discovery.md",
@@ -69,9 +69,13 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("PAUSED", analyst)
         self.assertIn("Continue through transitions", analyst)
         self.assertIn("first later stage that is not `PASS`", analyst)
+        self.assertIn("Product implementation stays outside this workflow", analyst)
         self.assertIn("DISCOVERY: QUESTIONS|READY_FOR_APPROVAL|BLOCKED", agents["orchestrator-discovery.md"])
         self.assertIn("STAGE_PLAN: REVIEW|MAP_CHANGE_REQUIRED|BLOCKED", agents["orchestrator-stage-planner.md"])
         self.assertIn("STAGE_REVIEW: PASS|REVISE|MAP_CHANGE_REQUIRED|BLOCKED", agents["orchestrator-stage-reviewer.md"])
+        self.assertIn("unfinished implementation and absent planned outputs use `PASS` or `REVISE`", agents["orchestrator-stage-reviewer.md"])
+        for content in agents.values():
+            self.assertIn("по-русски", content)
 
     def test_permissions_match_role_boundaries(self):
         agents = self.agents(ROOT)
@@ -139,6 +143,8 @@ class CliTests(unittest.TestCase):
         self.assertIn('"OPENCODE_PURE": "1"', harness)
         self.assertIn("shutil.copy2(source_auth, isolated_auth)", harness)
         self.assertIn("env=self._isolated_environment()", harness)
+        self.assertIn('environment["OPENCODE_CONFIG_CONTENT"]', harness)
+        self.assertIn("self._agent_prompt_overrides()", harness)
 
     def test_status_reports_known_retired_file(self):
         with tempfile.TemporaryDirectory() as temporary:

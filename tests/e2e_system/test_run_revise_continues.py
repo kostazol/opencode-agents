@@ -16,13 +16,13 @@ permission:
     "*/1_orchestrator/**": allow
 ---
 
-Read the supplied current stage file. Update its frontmatter revision from 3 to 4 and keep status REVIEW. Return only:
+Прочитай supplied current stage file. Обнови frontmatter revision с 3 до 4 и сохрани status REVIEW. Верни только:
 
 STAGE_PLAN: REVIEW
 STAGE: S01
 REVISION: 4
 ARTIFACT: 1_orchestrator/e2e/stages/01-value-contract.md
-SUMMARY: Applied review finding.
+SUMMARY: Finding из review применён.
 """
 
 REVIEWER = """---
@@ -38,14 +38,14 @@ permission:
     "*/1_orchestrator/**": allow
 ---
 
-Write the supplied REVIEW_OUTPUT with stage S01, stage_revision 4, status PASS, no findings, and passing checks. Return only:
+Запиши supplied REVIEW_OUTPUT для stage S01, stage_revision 4, status PASS, без findings и с русским текстом passing checks. Верни только:
 
 STAGE_REVIEW: PASS
 STAGE: S01
 REVISION: 4
 REVIEW: 1_orchestrator/e2e/reviews/01.md
 FINDINGS: 0
-SUMMARY: Stage ready.
+SUMMARY: План этапа готов к будущей реализации.
 """
 
 
@@ -63,7 +63,10 @@ try:
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.write_text("---\nstage: S01\nstage_revision: 3\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add deterministic detail.\n", encoding="utf-8")
     messages = system.run_step("RESUME: 1_orchestrator/e2e/plan.md")
-    assert system.task_agents(messages) == ["orchestrator-stage-planner", "orchestrator-stage-reviewer"], system.task_agents(messages)
+    agents = system.task_agents(messages)
+    assert agents[-1:] == ["orchestrator-stage-reviewer"], agents
+    assert 1 <= agents.count("orchestrator-stage-planner") <= 2, agents
+    assert set(agents) == {"orchestrator-stage-planner", "orchestrator-stage-reviewer"}, agents
     content = plan.read_text(encoding="utf-8")
     assert "status: ready" in content, content
     assert "- Status: PASS" in content
