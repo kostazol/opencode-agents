@@ -87,6 +87,9 @@ class CliTests(unittest.TestCase):
         self.assertIn("webfetch: ask", agents["orchestrator-discovery.md"])
         self.assertIn("webfetch: ask", agents["orchestrator-stage-planner.md"])
         self.assertIn("webfetch: ask", agents["orchestrator-stage-reviewer.md"])
+        for content in agents.values():
+            self.assertIn('"mcp_*": allow', content)
+            self.assertNotIn("  mcp: allow", content)
         for name in ("orchestrator-discovery.md", "orchestrator-stage-planner.md", "orchestrator-stage-reviewer.md"):
             content = agents[name]
             self.assertIn('    "*": allow\n    "curl *": ask', content)

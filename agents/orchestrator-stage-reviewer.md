@@ -66,7 +66,7 @@ permission:
   skill:
     "*": deny
     caveman: allow
-  mcp: allow
+  "mcp_*": allow
   task: deny
 ---
 
