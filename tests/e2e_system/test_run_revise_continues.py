@@ -137,10 +137,7 @@ try:
     assert_fixture_state(plan, "planning", "S01", "S01", {"Status": "PLANNING", "Revision": "3"}, stage, {"revision": "3"}, review, {"stage_revision": "3", "status": "REVISE"})
     system.start()
     messages = system.run_step("RESUME: 1_orchestrator/e2e/plan.md")
-    agents = system.task_agents(messages)
-    assert agents.count("orchestrator-stage-planner") >= 1, agents
-    assert agents.count("orchestrator-stage-reviewer") >= 1, agents
-    assert set(agents) == {"orchestrator-stage-planner", "orchestrator-stage-reviewer"}, agents
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner", "orchestrator-stage-reviewer", "orchestrator-stage-planner", "orchestrator-stage-reviewer"])
     content = plan.read_text(encoding="utf-8")
     assert "status: waiting-plan-approval" in content, content
     assert "- Status: PASS" in content

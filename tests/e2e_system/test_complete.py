@@ -11,5 +11,5 @@ with SystemWorkspace() as system:
     content = plan.read_text(encoding="utf-8")
     assert "status: human-reviewing" in content, (content, messages)
     assert "current_stage: S01" in content, (content, messages)
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("human review phase E2E passed")

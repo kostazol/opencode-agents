@@ -32,5 +32,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     assert "- Status: PROPOSED" in s03 and "- Revision: 2" in s03, s03
     assert "- Human review revision: 2" in s03 and "- Human review status: PENDING" in s03, s03
     assert "- Details: stages/03-value-docs.md" in s03 and "- Human review: stages/03-value-docs.human-review.md" in s03, s03
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("map change approval E2E passed")

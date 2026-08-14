@@ -15,5 +15,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     content = plan.read_text(encoding="utf-8")
     assert "- Status: PLANNING" in content, (content, messages)
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("revise routing E2E passed")

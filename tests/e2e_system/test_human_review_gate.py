@@ -24,5 +24,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     assert "source_revision: 1" in review_content, review_content
     for check in ("Соответствие техническому плану", "Итог этапа и практическая работа", "Сценарии, ошибки и изменения состояния", "Границы, риски и вопросы для подтверждения", "Понятность без глубоких технических знаний"):
         assert f"- {check}: PASS" in review_content, review_content
-    assert system.task_agents(messages) == ["orchestrator-stage-reviewer"]
+    system.assert_task_sequence(messages, ["orchestrator-stage-reviewer"])
 print("human review gate E2E passed")

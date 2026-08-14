@@ -23,5 +23,5 @@ with SystemWorkspace() as system:
     assert "current_value()" in content and "int" in content, content
     for field in ("Вход/предусловия", "Действие", "Ожидаемый результат"):
         assert re.search(rf"`?{re.escape(field)}`?:", content), content
-    assert system.task_agents(messages)[:1] == ["orchestrator-stage-planner"], system.task_agents(messages)
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner"])
 print("first stage E2E passed")

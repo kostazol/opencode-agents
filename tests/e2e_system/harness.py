@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -9,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
 from typing import Iterator
 from urllib.error import HTTPError, URLError
@@ -17,6 +19,157 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT_SECONDS = int(os.environ.get("ORCHESTRATOR_E2E_TIMEOUT_SECONDS", "300"))
+TASK_AGENTS = frozenset({"orchestrator-discovery", "orchestrator-stage-planner", "orchestrator-stage-reviewer"})
+
+
+@dataclass(frozen=True)
+class TaskCall:
+    agent_name: str | None
+    call_id: str | None
+    order: int
+    input: dict[str, Any] | None
+    status: str
+    output: str | None
+    error: str | None
+    compact_result: str | None
+
+    @property
+    def successful(self) -> bool:
+        return self.agent_name in TASK_AGENTS and self.status == "completed" and self.error is None
+
+    @property
+    def failed(self) -> bool:
+        return self.status == "error" or self.error is not None
+
+    @property
+    def incomplete(self) -> bool:
+        return not self.successful and not self.failed
+
+
+@dataclass(frozen=True)
+class WorkspaceEntry:
+    kind: str
+    digest_or_target: str | None
+
+
+@dataclass(frozen=True)
+class WorkspaceSnapshot:
+    root: Path
+    allowed_target: Path
+    entries: dict[Path, WorkspaceEntry]
+    workflow_targets: frozenset[Path]
+    git_status: str
+
+
+def capture_workspace_snapshot(root: Path, allowed_target: Path) -> WorkspaceSnapshot:
+    root = root.resolve()
+    if allowed_target.is_absolute():
+        raise AssertionError(f"allowed request target must be relative: {allowed_target}")
+    canonical_target = Path(os.path.normpath(str(allowed_target)))
+    if canonical_target.parts[:1] != ("1_orchestrator",) or len(canonical_target.parts) != 2 or canonical_target.parts[1] in ("", ".", ".."):
+        raise AssertionError(f"allowed request target must be exact 1_orchestrator/<request>: {allowed_target}")
+    entries = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if relative.parts[:2] == (".opencode", "node_modules"):
+            continue
+        if relative in (Path(".opencode/package.json"), Path(".opencode/package-lock.json")):
+            continue
+        if path.is_symlink():
+            entries[relative] = WorkspaceEntry("symlink", os.readlink(path))
+        elif path.is_dir():
+            entries[relative] = WorkspaceEntry("directory", None)
+        elif path.is_file():
+            entries[relative] = WorkspaceEntry("file", hashlib.sha256(path.read_bytes()).hexdigest())
+        else:
+            entries[relative] = WorkspaceEntry("other", None)
+    orchestrator = root / "1_orchestrator"
+    workflow_targets = frozenset(path.relative_to(root) for path in orchestrator.iterdir() if path.is_dir()) if orchestrator.is_dir() else frozenset()
+    return WorkspaceSnapshot(root, canonical_target, entries, workflow_targets, _git_status(root, canonical_target))
+
+
+def assert_workspace_unchanged(before: WorkspaceSnapshot, after: WorkspaceSnapshot) -> None:
+    if before.root != after.root or before.allowed_target != after.allowed_target:
+        raise AssertionError(f"workspace snapshot identity mismatch: before={before}; after={after}")
+    changed = []
+    for path in sorted(before.entries.keys() | after.entries.keys()):
+        if before.entries.get(path) == after.entries.get(path):
+            continue
+        if _is_allowed_workspace_change(path, before.entries.get(path), after.entries.get(path), before.allowed_target):
+            continue
+        changed.append(f"{path}: {before.entries.get(path)!r} -> {after.entries.get(path)!r}")
+    unexpected_targets = sorted(target for target in after.workflow_targets - before.workflow_targets if target != before.allowed_target)
+    if unexpected_targets:
+        changed.append(f"unexpected workflow targets: {unexpected_targets!r}")
+    if before.git_status != after.git_status:
+        changed.append(f"git status changed: {before.git_status!r} -> {after.git_status!r}")
+    if changed:
+        raise AssertionError("product workspace mutation detected:\n" + "\n".join(changed))
+
+
+def _is_allowed_workspace_change(path: Path, before: WorkspaceEntry | None, after: WorkspaceEntry | None, allowed_target: Path) -> bool:
+    if path == allowed_target or allowed_target in path.parents:
+        return True
+    if path in allowed_target.parents and before is None and after == WorkspaceEntry("directory", None):
+        return True
+    return False
+
+
+def _git_status(root: Path, allowed_target: Path) -> str:
+    command = ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", ".", f":(exclude){allowed_target}", f":(exclude){allowed_target}/**", ":(exclude).opencode/node_modules", ":(exclude).opencode/node_modules/**", ":(exclude).opencode/package.json", ":(exclude).opencode/package-lock.json"]
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+    if result.returncode == 128 and "not a git repository" in result.stderr:
+        return "not-a-worktree"
+    if result.returncode != 0:
+        raise AssertionError(f"cannot capture workspace git status: exit={result.returncode}; stderr={result.stderr.strip()}")
+    return result.stdout
+
+
+def task_trace(messages: list[dict[str, Any]]) -> list[TaskCall]:
+    result = []
+    for message in messages:
+        for part in message.get("parts", []):
+            if not isinstance(part, dict) or part.get("type") != "tool" or part.get("tool") != "task":
+                continue
+            state = part.get("state")
+            task_input = state.get("input") if isinstance(state, dict) else None
+            output = state.get("output") if isinstance(state, dict) and isinstance(state.get("output"), str) else None
+            raw_error = state.get("error") if isinstance(state, dict) else None
+            error = raw_error if isinstance(raw_error, str) else repr(raw_error) if raw_error is not None else None
+            status = state.get("status") if isinstance(state, dict) else None
+            result.append(TaskCall(
+                agent_name=task_input.get("subagent_type") if isinstance(task_input, dict) and isinstance(task_input.get("subagent_type"), str) else None,
+                call_id=part.get("callID") if isinstance(part.get("callID"), str) else None,
+                order=len(result),
+                input=task_input if isinstance(task_input, dict) else None,
+                status=status if isinstance(status, str) else "unknown",
+                output=output,
+                error=error,
+                compact_result=output,
+            ))
+    return result
+
+
+def successful_task_calls(messages: list[dict[str, Any]]) -> list[TaskCall]:
+    return [call for call in task_trace(messages) if call.successful]
+
+
+def failed_task_calls(messages: list[dict[str, Any]]) -> list[TaskCall]:
+    return [call for call in task_trace(messages) if call.failed]
+
+
+def incomplete_task_calls(messages: list[dict[str, Any]]) -> list[TaskCall]:
+    return [call for call in task_trace(messages) if call.incomplete]
+
+
+def assert_task_sequence(messages: list[dict[str, Any]], expected_agents: list[str]) -> list[TaskCall]:
+    attempts = task_trace(messages)
+    successful = [call for call in attempts if call.successful]
+    actual_agents = [call.agent_name for call in successful]
+    invalid = [call for call in attempts if not call.successful]
+    if len(attempts) != len(expected_agents) or actual_agents != expected_agents or invalid:
+        raise AssertionError(f"task trace mismatch: expected={expected_agents!r}; attempts={attempts!r}; successful={successful!r}; failed_or_incomplete={invalid!r}")
+    return successful
 
 
 def request_json(base_url: str, method: str, path: str, body: object | None = None, timeout: int = 30) -> Any:
@@ -39,18 +192,22 @@ def free_port() -> int:
 
 
 class SystemWorkspace:
-    def __init__(self, start_on_enter: bool = True):
+    def __init__(self, start_on_enter: bool = True, expected_request: str = "e2e"):
         self.timings: dict[str, list[float]] = {}
         self._test_started_at = time.monotonic()
         self._start_attempted = False
         self._closed = False
         self._cleanup_started_at: float | None = None
         self._start_on_enter = start_on_enter
+        self.expected_request_target = Path("1_orchestrator") / expected_request
         self.process: subprocess.Popen[str] | None = None
         self.base_url = ""
         self._environment: dict[str, str] | None = None
         self.session_ids: list[str] = []
         self.task_call_count = 0
+        self.successful_task_call_count = 0
+        self.failed_task_call_count = 0
+        self.incomplete_task_call_count = 0
         self.task_agent_names: list[str] = []
         with self._measure("fixture_setup"):
             self.temporary = tempfile.TemporaryDirectory(prefix="orchestrator-system-e2e-")
@@ -76,6 +233,9 @@ class SystemWorkspace:
             "durations_seconds": {name: list(values) for name, values in self.timings.items()},
             "sessions_created": len(self.session_ids),
             "task_calls": self.task_call_count,
+            "successful_task_calls": self.successful_task_call_count,
+            "failed_task_calls": self.failed_task_call_count,
+            "incomplete_task_calls": self.incomplete_task_call_count,
             "task_agent_names": list(self.task_agent_names),
         }
 
@@ -113,6 +273,7 @@ class SystemWorkspace:
             "OPENCODE_DISABLE_AUTOUPDATE": "1",
             "OPENCODE_DISABLE_AUTOCOMPACT": "1",
             "OPENCODE_DISABLE_MODELS_FETCH": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
         })
         environment["OPENCODE_CONFIG_CONTENT"] = json.dumps({"agent": self._agent_prompt_overrides()}, ensure_ascii=False)
         return environment
@@ -185,6 +346,19 @@ class SystemWorkspace:
         raise AssertionError("agent inventory did not load before startup deadline")
 
     def run_step(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
+        before = capture_workspace_snapshot(self.workspace, self.expected_request_target)
+        try:
+            messages = self._run_step(prompt, answer_labels)
+        except BaseException as error:
+            try:
+                assert_workspace_unchanged(before, capture_workspace_snapshot(self.workspace, self.expected_request_target))
+            except Exception as guard_error:
+                error.add_note(str(guard_error))
+            raise
+        assert_workspace_unchanged(before, capture_workspace_snapshot(self.workspace, self.expected_request_target))
+        return messages
+
+    def _run_step(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
         session = request_json(self.base_url, "POST", "/session", {"title": "orchestrator micro E2E"})
         if not isinstance(session, dict) or not isinstance(session.get("id"), str):
             raise AssertionError(f"unexpected session: {session}")
@@ -222,9 +396,13 @@ class SystemWorkspace:
         messages = request_json(self.base_url, "GET", f"/session/{session_id}/message")
         if not isinstance(messages, list):
             raise AssertionError(f"unexpected messages: {messages}")
-        task_agents = self.task_agents(messages)
-        self.task_call_count += sum(1 for message in messages for part in message.get("parts", []) if isinstance(part, dict) and part.get("type") == "tool" and part.get("tool") == "task")
-        self.task_agent_names.extend(task_agents)
+        attempts = task_trace(messages)
+        completed = successful_task_calls(messages)
+        self.task_call_count += len(attempts)
+        self.successful_task_call_count += len(completed)
+        self.failed_task_call_count += len(failed_task_calls(messages))
+        self.incomplete_task_call_count += len(incomplete_task_calls(messages))
+        self.task_agent_names.extend(call.agent_name for call in completed if call.agent_name is not None)
         return messages
 
     def run_transition(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
@@ -261,23 +439,18 @@ class SystemWorkspace:
             statuses = request_json(self.base_url, "GET", "/session/status")
             status = statuses.get(session_id) if isinstance(statuses, dict) else None
             messages = request_json(self.base_url, "GET", f"/session/{session_id}/message")
-            has_assistant = isinstance(messages, list) and any(isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and isinstance(message.get("parts"), list) and len(message["parts"]) > 0 for message in messages)
-            if has_assistant and (not isinstance(status, dict) or status.get("type") not in ("busy", "retry")):
+            has_completed_assistant = isinstance(messages, list) and any(isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and isinstance(message["info"].get("time"), dict) and message["info"]["time"].get("completed") is not None for message in messages)
+            tasks_terminal = isinstance(messages, list) and all(call.status in ("completed", "error") for call in task_trace(messages))
+            if has_completed_assistant and tasks_terminal and (not isinstance(status, dict) or status.get("type") == "idle"):
                 return
             time.sleep(1)
         raise AssertionError("session did not become idle")
 
     def task_agents(self, messages: list[dict[str, Any]]) -> list[str]:
-        result = []
-        for message in messages:
-            for part in message.get("parts", []):
-                if not isinstance(part, dict) or part.get("type") != "tool" or part.get("tool") != "task":
-                    continue
-                state = part.get("state")
-                task_input = state.get("input") if isinstance(state, dict) else None
-                if isinstance(task_input, dict) and isinstance(task_input.get("subagent_type"), str):
-                    result.append(task_input["subagent_type"])
-        return result
+        return [call.agent_name for call in successful_task_calls(messages) if call.agent_name is not None]
+
+    def assert_task_sequence(self, messages: list[dict[str, Any]], expected_agents: list[str]) -> list[TaskCall]:
+        return assert_task_sequence(messages, expected_agents)
 
     def close(self) -> None:
         if self._closed:

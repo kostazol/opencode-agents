@@ -57,11 +57,11 @@ try:
         assert "- Human review revision: 2" in affected and "- Human review status: PENDING" in affected, affected
     assert "latest_revision: 1" in feedback_content and "mode: none" in feedback_content, feedback_content
     assert "Status: applied" in feedback_content and "Affected stages: [S02, S03]" in feedback_content, feedback_content
-    assert system.task_agents(messages) == ["orchestrator-discovery"]
+    system.assert_task_sequence(messages, ["orchestrator-discovery"])
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md\nAPPROVE")
     content = plan.read_text(encoding="utf-8")
     assert "status: planning" in content and "current_stage: S02" in content, (content, messages)
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 finally:
     system.close()
 print("plan feedback resume E2E passed")

@@ -21,7 +21,7 @@ with SystemWorkspace() as system:
     assert "- Human review revision: 0" in content, content
     assert "- Human review status: PENDING" in content, content
     assert "- Human review review: reviews/01-human-review.md" in content, content
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 
 with SystemWorkspace() as system:
     plan = seed_plan(system.workspace, [("PLANNING", "Value contract")], "S01", "planning")
@@ -33,5 +33,5 @@ with SystemWorkspace() as system:
     assert "- Status: PLANNING" in content, content
     assert "- Human review revision: 0" in content, content
     assert "- Human review status: PENDING" in content, content
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("legacy human review migration E2E passed")

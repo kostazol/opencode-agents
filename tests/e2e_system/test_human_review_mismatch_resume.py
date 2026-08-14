@@ -18,12 +18,12 @@ with SystemWorkspace(start_on_enter=False) as system:
     content = plan.read_text(encoding="utf-8")
     assert "- Human review revision: 2" in content, (content, messages)
     assert "- Human review mismatch source revision: 1" in content, content
-    assert system.task_agents(messages) == [], system.task_agents(messages)
+    system.assert_task_sequence(messages, [])
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     content = plan.read_text(encoding="utf-8")
     assert "- Human review revision: 2" in content, (content, messages)
     assert "- Human review revision: 3" not in content, content
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"], system.task_agents(messages)
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner"])
     corrected = human_review.read_text(encoding="utf-8")
     assert "revision: 2" in corrected and "source_revision: 1" in corrected, corrected
     assert "- Human review status: REVIEW" in content, content

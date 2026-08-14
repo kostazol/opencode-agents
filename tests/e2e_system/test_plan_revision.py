@@ -16,5 +16,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     content = plan.read_text(encoding="utf-8")
     assert "- Revision: 2" in content, (content, messages)
     assert "- Correction source revision: 1" in content, (content, messages)
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("plan revision E2E passed")

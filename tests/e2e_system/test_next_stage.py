@@ -10,5 +10,5 @@ with SystemWorkspace() as system:
     second = list((system.workspace / "1_orchestrator/e2e/stages").glob("02-*.md"))
     assert len(second) == 1, second
     assert "stage: S02" in second[0].read_text(encoding="utf-8")
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"]
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner"])
 print("next stage E2E passed")

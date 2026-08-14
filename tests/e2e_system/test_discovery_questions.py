@@ -5,8 +5,8 @@ import re
 from harness import SystemWorkspace
 
 
-with SystemWorkspace() as system:
-    messages = system.run_transition("Подготовь план добавления configurable output format. Формат существенно влияет на API, но пользователь ещё не выбрал JSON или plain text. Исследуй repository и сохрани вопросы.")
+with SystemWorkspace(expected_request="configurable-output-format") as system:
+    messages = system.run_transition("Подготовь план добавления configurable output format в `1_orchestrator/configurable-output-format/`. Формат существенно влияет на API, но пользователь ещё не выбрал JSON или plain text. Исследуй repository и сохрани вопросы.")
     targets = list((system.workspace / "1_orchestrator").glob("*/questions.md"))
     assert len(targets) == 1, (targets, messages)
     content = targets[0].read_text(encoding="utf-8")
@@ -15,6 +15,5 @@ with SystemWorkspace() as system:
     assert re.search(r"[А-Яа-яЁё]", content), content
     for english_label in ("Question", "Options", "Recommendation"):
         assert english_label not in content, content
-    agents = system.task_agents(messages)
-    assert 1 <= len(agents) <= 2 and set(agents) == {"orchestrator-discovery"}, (agents, messages)
+    system.assert_task_sequence(messages, ["orchestrator-discovery"])
 print("discovery questions E2E passed")

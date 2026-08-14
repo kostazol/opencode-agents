@@ -22,4 +22,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     for expected in ("latest_revision: 1", "mode: PLAN_FEEDBACK", "## Feedback 1", "Status: pending", remark, "Affected stages:", "Questions: none"):
         assert expected in feedback_content, feedback_content
     assert "status: discovery" in plan.read_text(encoding="utf-8")
+    system.assert_task_sequence(messages, [])
 print("plan feedback E2E passed")

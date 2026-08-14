@@ -20,5 +20,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     content = plan.read_text(encoding="utf-8")
     assert "status: planning" in content, (content, messages)
     assert "- Status: PLANNING" in content
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("revision resume E2E passed")

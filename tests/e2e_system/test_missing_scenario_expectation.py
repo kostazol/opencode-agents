@@ -19,6 +19,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     review_content = review.read_text(encoding="utf-8")
     assert "status: REVISE" in review_content, review_content
     assert "Ожидаемый результат" in review_content, review_content
-    agents = system.task_agents(messages)
-    assert 1 <= len(agents) <= 2 and set(agents) == {"orchestrator-stage-reviewer"}, agents
+    system.assert_task_sequence(messages, ["orchestrator-stage-reviewer"])
 print("missing scenario expectation E2E passed")

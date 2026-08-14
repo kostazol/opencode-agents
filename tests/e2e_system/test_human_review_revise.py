@@ -20,5 +20,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     assert "- Human review revision: 2" in content, (content, messages)
     assert "- Human review correction source revision: 1" in content, (content, messages)
     assert "revision: 1" in human_review.read_text(encoding="utf-8")
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("human review revise E2E passed")

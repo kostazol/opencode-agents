@@ -17,5 +17,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     assert stage.is_file(), (system.task_agents(messages), messages)
     assert "revision: 2" in stage.read_text(encoding="utf-8"), stage.read_text(encoding="utf-8")
     assert "- Revision: 2" in plan.read_text(encoding="utf-8"), plan.read_text(encoding="utf-8")
-    assert system.task_agents(messages)[:1] == ["orchestrator-stage-planner"], system.task_agents(messages)
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner"])
 print("reset stage reserved revision E2E passed")

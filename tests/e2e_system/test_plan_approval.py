@@ -18,5 +18,5 @@ with SystemWorkspace(start_on_enter=False) as system:
     content = plan.read_text(encoding="utf-8")
     assert "status: ready" in content, (content, messages)
     assert "current_stage: none" in content, (content, messages)
-    assert system.task_agents(messages) == []
+    system.assert_task_sequence(messages, [])
 print("plan approval E2E passed")

@@ -101,6 +101,14 @@ git diff --check
 System E2E читают реальную пользовательскую OpenCode-конфигурацию, но используют временные HOME, session DB, state, cache и product workspace. Micro-E2E отключают external plugins, чтобы plugin installation/cache не меняли рабочую среду:
 
 ```bash
+python3 tests/e2e_system/run_e2e.py
+python3 tests/e2e_system/run_e2e.py --filter test_resume_review.py
+python3 tests/e2e_system/run_e2e.py --continue-on-failure
+```
+
+Runner последовательно запускает каждый live E2E в отдельном process и показывает duration, aggregate status и путь к полному failure log. Отдельные scripts также можно запускать напрямую:
+
+```bash
 python3 tests/e2e_system/test_discovery_questions.py
 python3 tests/e2e_system/test_question_answers.py
 python3 tests/e2e_system/test_approval.py

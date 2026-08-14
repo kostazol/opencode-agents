@@ -12,8 +12,8 @@ with SystemWorkspace() as system:
     content = human_review.read_text(encoding="utf-8")
     assert "source_revision: 1" in content, content
     assert "## Что я получу после этапа" in content, content
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"]
+    system.assert_task_sequence(messages, ["orchestrator-stage-planner"])
 timing = system.timing_result()
 assert {"fixture_setup", "environment_setup", "process_startup_to_health", "agent_inventory_loading", "prompt_to_idle", "prompt_or_answer_to_idle", "cleanup", "test_case_total"}.issubset(timing["durations_seconds"]), timing
-assert timing["sessions_created"] == 1 and timing["task_calls"] == 1 and timing["task_agent_names"] == ["orchestrator-stage-planner"], (timing, messages)
+assert timing["sessions_created"] == 1 and timing["task_calls"] == 1 and timing["successful_task_calls"] == 1 and timing["task_agent_names"] == ["orchestrator-stage-planner"], (timing, messages)
 print("human review creation E2E passed")
