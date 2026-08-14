@@ -12,7 +12,8 @@ with SystemWorkspace() as system:
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.write_text("---\nstage: S01\nstage_revision: 3\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add one missing deterministic validation detail.\n", encoding="utf-8")
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
-    content = stage.read_text(encoding="utf-8")
-    assert "revision: 4" in content, (content, messages)
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"]
+    content = plan.read_text(encoding="utf-8")
+    assert "- Revision: 4" in content, (content, messages)
+    assert "- Correction source revision: 3" in content, (content, messages)
+    assert system.task_agents(messages) == []
 print("revision four E2E passed")

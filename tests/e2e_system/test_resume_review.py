@@ -17,12 +17,15 @@ with SystemWorkspace() as system:
     review.unlink()
     plan.write_text(plan.read_text(encoding="utf-8").replace("- Revision: 0", "- Revision: 1"), encoding="utf-8")
     stage = requested / "stages/01-value-contract.md"
-    stage.write_text(stage.read_text(encoding="utf-8") + "\n## Expected paths\n\n- `src/future_value.py` — planned new product file; currently absent.\n", encoding="utf-8")
+    assert "Имена test cases" in stage.read_text(encoding="utf-8")
     messages = system.run_transition("RESUME: 1_orchestrator/requested/plan.md")
     assert review.is_file(), (system.task_agents(messages), messages)
     review_content = review.read_text(encoding="utf-8")
     assert "stage: S01" in review_content
-    assert "status: BLOCKED" not in review_content
+    assert "status: PASS" in review_content
+    assert "## Findings\n- Нет." in review_content
+    for check in ("Результат и границы", "Архитектурный подход", "Образцы и доказательства", "Обязательные контракты", "Риски и ограничения", "Бизнес-сценарии и валидации", "Проверяемость результата", "Уровень детализации"):
+        assert f"- {check}: PASS" in review_content, review_content
     assert re.search(r"[А-Яа-яЁё]", review_content), review_content
     assert decoy.read_text(encoding="utf-8") == decoy_before
     assert not (system.workspace / "WORKFLOW_BASE").exists()

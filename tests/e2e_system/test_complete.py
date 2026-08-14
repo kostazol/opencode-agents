@@ -9,7 +9,7 @@ with SystemWorkspace() as system:
     write_passed_stage(system.workspace, 2, "Value consumer")
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     content = plan.read_text(encoding="utf-8")
-    assert "status: ready" in content
-    assert "current_stage: none" in content
+    assert "status: human-reviewing" in content, (content, messages)
+    assert "current_stage: S01" in content, (content, messages)
     assert system.task_agents(messages) == []
-print("complete workflow E2E passed")
+print("human review phase E2E passed")

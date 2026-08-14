@@ -10,8 +10,8 @@ with SystemWorkspace() as system:
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.write_text("---\nstage: S01\nstage_revision: 1\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add an exact validation command and expected result.\n", encoding="utf-8")
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
-    stage = next((system.workspace / "1_orchestrator/e2e/stages").glob("01-*.md"))
-    content = stage.read_text(encoding="utf-8")
-    assert "revision: 2" in content, (content, messages)
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"]
+    content = plan.read_text(encoding="utf-8")
+    assert "- Revision: 2" in content, (content, messages)
+    assert "- Correction source revision: 1" in content, (content, messages)
+    assert system.task_agents(messages) == []
 print("plan revision E2E passed")

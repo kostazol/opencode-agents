@@ -6,7 +6,7 @@
 
 - `orchestrator-analyst` — primary, вопросы, approval, routing и resume.
 - `orchestrator-discovery` — repository evidence, material questions и оглавление этапов.
-- `orchestrator-stage-planner` — подробный исполнимый план одного этапа.
+- `orchestrator-stage-planner` — компактный архитектурный план одного этапа с образцами, рисками и проверяемым результатом.
 - `orchestrator-stage-reviewer` — fresh review одного этапа.
 
 Все определения начинаются с `orchestrator-`. Workflow планирует работу и не реализует product changes.
@@ -24,14 +24,16 @@ discovery
   -> plan S02
   -> review S02
   -> ...
+  -> reviewed human-readable plans
+  -> APPROVE PLAN or feedback
   -> READY
 ```
 
 Одновременно активен один этап. Следующий этап начинается после `PASS` текущего.
 
-`PASS` подтверждает качество stage plan для будущей реализации. Planning agents исследуют текущее состояние repository, учитывают уже существующие partial outputs, но не считают отсутствие будущих planned files завершённостью или blocker само по себе.
+Технический `PASS` подтверждает качество stage plan для будущей реализации. После `PASS` всех этапов workflow создаёт рядом с каждым stage file упрощённый `.human-review.md` на русском языке и отдельно проверяет его соответствие техническому плану. Документ рассчитан на человека, который знает продукт и предметную область поверхностно: без глубокой архитектуры, но с ясным итогом этапа, обычным сценарием работы, границами и вопросами для подтверждения.
 
-Вопросы, варианты, рекомендации, stage map, подробные stage plans, reviews, assumptions, decisions и summaries пишутся по-русски. Protocol statuses, обязательные section headings, пути, команды и code identifiers сохраняются без перевода.
+Вопросы, варианты, рекомендации, stage map, stage plans, reviews, assumptions, decisions и summaries пишутся по-русски. Protocol statuses, обязательные section headings, пути, команды и code identifiers сохраняются без перевода.
 
 ## Артефакты
 
@@ -39,18 +41,21 @@ discovery
 1_orchestrator/<request>/
 ├── discovery.md
 ├── questions.md
+├── feedback.md
 ├── plan.md
 ├── stages/
 │   ├── 01-<slug>.md
+│   ├── 01-<slug>.human-review.md
 │   └── 02-<slug>.md
 └── reviews/
     ├── 01.md
+    ├── 01-human-review.md
     └── 02.md
 ```
 
-`plan.md` — оглавление и источник состояния. Он содержит outcome, решения, ordered stage map, dependencies, consumed/produced contracts, revisions, statuses и ссылки на stage/review files.
+`plan.md` — оглавление и источник состояния. Он содержит outcome, решения, ordered stage map, dependencies, affected system areas, primary risks, consumed/produced contracts, revisions, statuses и ссылки на stage/review files.
 
-`discovery.md` хранит evidence и assumptions. `questions.md` хранит текущий batch и ответы. Каждый stage file является самостоятельным планом для fresh implementation agent. Каждый review file фиксирует gate текущей revision.
+`discovery.md` хранит evidence и assumptions. `questions.md` хранит текущий batch и ответы. Каждый stage file задаёт outcome, основную архитектуру, ближайшие образцы, обязательные ограничения и существенные риски. Для каждого обязательного бизнес-кейса и валидации он фиксирует вход или предусловия, действие, ожидаемый observable output, error, state или side effect, а также значимые значения или equivalence classes. Acceptance signals и способ проверки остаются явными. Имена и расположение тестов, fixtures, mocks, структура test framework, детали assertions и дополнительные найденные при реализации тесты остаются implementation agent. Каждый review file фиксирует gate текущей revision.
 
 ## Запуск
 
@@ -60,7 +65,7 @@ discovery
 APPROVE
 ```
 
-После approval этапы планируются и проверяются последовательно.
+После первого approval этапы планируются и проверяются последовательно. Затем создаются понятные пользовательские версии всех этапов. Пользователь читает их и отправляет точное `APPROVE PLAN` либо замечания обычным текстом. Замечания сохраняются, исследуются и возвращают затронутые этапы в planning/review loop. `READY` появляется только после `APPROVE PLAN`.
 
 ## Resume
 
@@ -102,6 +107,7 @@ python3 tests/e2e_system/test_approval.py
 python3 tests/e2e_system/test_first_stage.py
 python3 tests/e2e_system/test_next_stage.py
 python3 tests/e2e_system/test_resume_review.py
+python3 tests/e2e_system/test_missing_scenario_expectation.py
 python3 tests/e2e_system/test_revise_stage.py
 python3 tests/e2e_system/test_plan_revision.py
 python3 tests/e2e_system/test_reconcile_stage.py
@@ -110,6 +116,15 @@ python3 tests/e2e_system/test_revision_resume.py
 python3 tests/e2e_system/test_revision_four.py
 python3 tests/e2e_system/test_run_revise_continues.py
 python3 tests/e2e_system/test_complete.py
+python3 tests/e2e_system/test_human_review_creation.py
+python3 tests/e2e_system/test_human_review_gate.py
+python3 tests/e2e_system/test_human_review_revise.py
+python3 tests/e2e_system/test_plan_approval.py
+python3 tests/e2e_system/test_plan_feedback.py
+python3 tests/e2e_system/test_plan_feedback_resume.py
+python3 tests/e2e_system/test_legacy_human_review_migration.py
+python3 tests/e2e_system/test_reset_stage_reserved_revision.py
+python3 tests/e2e_system/test_human_review_mismatch_resume.py
 ```
 
 Каждый micro-E2E использует test-only checkpoint из harness и проверяет один переход. Вместе snapshots покрывают продолжение из каждого durable состояния.

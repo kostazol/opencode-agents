@@ -13,5 +13,15 @@ with SystemWorkspace() as system:
     content = stages[0].read_text(encoding="utf-8")
     assert "stage: S01" in content
     assert re.search(r"[А-Яа-яЁё]", content), content
-    assert system.task_agents(messages) == ["orchestrator-stage-planner"]
+    for heading in ("## Architecture", "## Reference patterns", "## Required", "## Key contracts", "### Consumes", "### Produces", "## Risks", "## Implementation outline", "## Required test scenarios", "## Acceptance signals", "## Verification", "## Implementation discretion"):
+        assert heading in content, content
+    for heading in ("Architecture", "Reference patterns", "Required", "Key contracts", "Risks", "Implementation outline", "Required test scenarios", "Acceptance signals", "Verification", "Implementation discretion"):
+        match = re.search(rf"## {heading}\s*\n(.*?)(?=\n## |\Z)", content, re.DOTALL)
+        assert match and match.group(1).strip(), content
+    assert re.search(r"### Consumes\s*\n\S+", content), content
+    assert re.search(r"### Produces\s*\n\S+", content), content
+    assert "current_value()" in content and "int" in content, content
+    for field in ("Вход/предусловия", "Действие", "Ожидаемый результат"):
+        assert re.search(rf"`?{re.escape(field)}`?:", content), content
+    assert system.task_agents(messages)[:1] == ["orchestrator-stage-planner"], system.task_agents(messages)
 print("first stage E2E passed")

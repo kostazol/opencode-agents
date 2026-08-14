@@ -12,5 +12,5 @@ with SystemWorkspace() as system:
     content = plan.read_text(encoding="utf-8")
     assert "- Status: REVIEW" in content, (content, messages)
     assert "- Revision: 1" in content
-    assert system.task_agents(messages) == []
+    assert system.task_agents(messages) == [], system.task_agents(messages)
 print("stage reconciliation E2E passed")
