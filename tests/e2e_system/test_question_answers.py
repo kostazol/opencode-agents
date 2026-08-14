@@ -15,4 +15,7 @@ with SystemWorkspace() as system:
     assert "JSON" in questions
     assert "status: discovery" in plan
     assert system.task_agents(messages) == []
+timing = system.timing_result()
+assert "prompt_to_question" in timing["durations_seconds"] and "answer_to_idle" in timing["durations_seconds"] and "prompt_or_answer_to_idle" in timing["durations_seconds"], timing
+assert timing["sessions_created"] == 1 and timing["task_calls"] == 0 and timing["task_agent_names"] == [], timing
 print("question answers E2E passed")

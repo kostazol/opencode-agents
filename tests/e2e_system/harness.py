@@ -8,7 +8,9 @@ import socket
 import subprocess
 import tempfile
 import time
+from contextlib import contextmanager
 from typing import Any
+from typing import Iterator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -37,18 +39,53 @@ def free_port() -> int:
 
 
 class SystemWorkspace:
-    def __init__(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="orchestrator-system-e2e-")
-        self.root = Path(self.temporary.name)
-        self.workspace = self.root / "workspace"
-        self.workspace.mkdir()
-        self.log_path = self.root / "opencode.log"
+    def __init__(self, start_on_enter: bool = True):
+        self.timings: dict[str, list[float]] = {}
+        self._test_started_at = time.monotonic()
+        self._start_attempted = False
+        self._closed = False
+        self._cleanup_started_at: float | None = None
+        self._start_on_enter = start_on_enter
         self.process: subprocess.Popen[str] | None = None
         self.base_url = ""
+        self._environment: dict[str, str] | None = None
         self.session_ids: list[str] = []
-        self._write_fixture()
+        self.task_call_count = 0
+        self.task_agent_names: list[str] = []
+        with self._measure("fixture_setup"):
+            self.temporary = tempfile.TemporaryDirectory(prefix="orchestrator-system-e2e-")
+            self.root = Path(self.temporary.name)
+            self.workspace = self.root / "workspace"
+            self.workspace.mkdir()
+            self.log_path = self.root / "opencode.log"
+            self._write_fixture()
+
+    @contextmanager
+    def _measure(self, name: str) -> Iterator[None]:
+        started_at = time.monotonic()
+        try:
+            yield
+        finally:
+            self._record_timing(name, started_at)
+
+    def _record_timing(self, name: str, started_at: float) -> None:
+        self.timings.setdefault(name, []).append(time.monotonic() - started_at)
+
+    def timing_result(self) -> dict[str, Any]:
+        return {
+            "durations_seconds": {name: list(values) for name, values in self.timings.items()},
+            "sessions_created": len(self.session_ids),
+            "task_calls": self.task_call_count,
+            "task_agent_names": list(self.task_agent_names),
+        }
 
     def _isolated_environment(self) -> dict[str, str]:
+        if self._environment is None:
+            with self._measure("environment_setup"):
+                self._environment = self._build_isolated_environment()
+        return self._environment
+
+    def _build_isolated_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
         source_home = Path.home()
         source_config = Path(os.environ.get("OPENCODE_CONFIG_DIR", source_home / ".config/opencode")).expanduser().resolve()
@@ -101,38 +138,51 @@ class SystemWorkspace:
         return agents
 
     def start(self) -> None:
+        if self._start_attempted:
+            raise AssertionError("SystemWorkspace.start() may only be called once")
+        self._start_attempted = True
         executable = shutil.which("opencode")
         if executable is None:
             raise AssertionError("opencode executable not found")
         port = free_port()
         self.base_url = f"http://127.0.0.1:{port}"
         log = self.log_path.open("w", encoding="utf-8")
-        self.process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port), "--print-logs", "--log-level", "INFO"], cwd=self.workspace, env=self._isolated_environment(), stdout=log, stderr=subprocess.STDOUT, text=True)
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise AssertionError(self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:])
-            try:
-                health = request_json(self.base_url, "GET", "/global/health", timeout=2)
-                if isinstance(health, dict) and health.get("healthy") is True:
+        self._isolated_environment()
+        with self._measure("process_startup_to_health"):
+            self.process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port), "--print-logs", "--log-level", "INFO"], cwd=self.workspace, env=self._isolated_environment(), stdout=log, stderr=subprocess.STDOUT, text=True)
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                if self.process.poll() is not None:
+                    raise AssertionError(self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:])
+                try:
+                    health = request_json(self.base_url, "GET", "/global/health", timeout=2)
+                    if isinstance(health, dict) and health.get("healthy") is True:
+                        break
+                except (OSError, RuntimeError, URLError):
+                    time.sleep(1)
+            else:
+                if self.process.poll() is None:
+                    self.process.terminate()
+                    try:
+                        self.process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        self.process.kill()
+                        self.process.wait(timeout=10)
+                log.flush()
+                details = self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+                raise AssertionError(f"opencode serve did not become healthy:\n{details}")
+        with self._measure("agent_inventory_loading"):
+            while time.monotonic() < deadline:
+                try:
                     agents = request_json(self.base_url, "GET", "/agent")
                     names = {agent.get("name") for agent in agents if isinstance(agent, dict)} if isinstance(agents, list) else set()
                     expected = {"orchestrator-analyst", "orchestrator-discovery", "orchestrator-stage-planner", "orchestrator-stage-reviewer"}
                     if not expected.issubset(names):
                         raise AssertionError(f"missing project agents: {sorted(expected - names)}")
                     return
-            except (OSError, RuntimeError, URLError):
-                time.sleep(1)
-        if self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=10)
-        log.flush()
-        details = self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
-        raise AssertionError(f"opencode serve did not become healthy:\n{details}")
+                except (OSError, RuntimeError, URLError):
+                    time.sleep(1)
+        raise AssertionError("agent inventory did not load before startup deadline")
 
     def run_step(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
         session = request_json(self.base_url, "POST", "/session", {"title": "orchestrator micro E2E"})
@@ -140,9 +190,13 @@ class SystemWorkspace:
             raise AssertionError(f"unexpected session: {session}")
         session_id = session["id"]
         self.session_ids.append(session_id)
-        request_json(self.base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": prompt}]})
+        prompt_started_at = time.monotonic()
         if answer_labels is not None:
-            question = self._wait_for_question(session_id)
+            try:
+                request_json(self.base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": prompt}]})
+                question = self._wait_for_question(session_id)
+            finally:
+                self._record_timing("prompt_to_question", prompt_started_at)
             questions = question.get("questions")
             if not isinstance(questions, list) or len(questions) != len(answer_labels):
                 raise AssertionError(f"unexpected questions: {question}")
@@ -151,11 +205,26 @@ class SystemWorkspace:
             if not isinstance(request_id, str):
                 raise AssertionError(f"question lacks id: {question}")
             path = f"/question/{request_id}/reply" if question.get("_transport") == "legacy" else f"/api/session/{session_id}/question/{request_id}/reply"
-            request_json(self.base_url, "POST", path, {"answers": answers})
-        self._wait_for_idle(session_id)
+            idle_started_at = time.monotonic()
+            try:
+                request_json(self.base_url, "POST", path, {"answers": answers})
+                self._wait_for_idle(session_id)
+            finally:
+                self._record_timing("answer_to_idle", idle_started_at)
+                self._record_timing("prompt_or_answer_to_idle", idle_started_at)
+        else:
+            try:
+                request_json(self.base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": prompt}]})
+                self._wait_for_idle(session_id)
+            finally:
+                self._record_timing("prompt_to_idle", prompt_started_at)
+                self._record_timing("prompt_or_answer_to_idle", prompt_started_at)
         messages = request_json(self.base_url, "GET", f"/session/{session_id}/message")
         if not isinstance(messages, list):
             raise AssertionError(f"unexpected messages: {messages}")
+        task_agents = self.task_agents(messages)
+        self.task_call_count += sum(1 for message in messages for part in message.get("parts", []) if isinstance(part, dict) and part.get("type") == "tool" and part.get("tool") == "task")
+        self.task_agent_names.extend(task_agents)
         return messages
 
     def run_transition(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
@@ -211,6 +280,10 @@ class SystemWorkspace:
         return result
 
     def close(self) -> None:
+        if self._closed:
+            return
+        if self._cleanup_started_at is None:
+            self._cleanup_started_at = time.monotonic()
         if self.process is not None and self.process.poll() is None:
             for session_id in self.session_ids:
                 try:
@@ -224,13 +297,31 @@ class SystemWorkspace:
                 self.process.kill()
                 self.process.wait(timeout=10)
         self.temporary.cleanup()
+        self._record_timing("cleanup", self._cleanup_started_at)
+        self._record_timing("test_case_total", self._test_started_at)
+        self._closed = True
 
     def __enter__(self):
-        self.start()
+        if not self._start_on_enter:
+            return self
+        try:
+            self.start()
+        except BaseException:
+            try:
+                self.close()
+            except Exception:
+                pass
+            raise
         return self
 
     def __exit__(self, _type, _value, _traceback):
-        self.close()
+        if _type is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except BaseException:
+                pass
 
 
 def seed_plan(workspace: Path, stages: list[tuple[str, str]], current_stage: str, status: str = "planning") -> Path:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from harness import SystemWorkspace, seed_plan, write_passed_stage
+from fixture_validation import assert_fixture_state, replace_required
 
 
 PLANNER = """---
@@ -126,14 +127,15 @@ try:
     agent_dir = system.workspace / ".opencode/agents"
     (agent_dir / "orchestrator-stage-planner.md").write_text(PLANNER, encoding="utf-8")
     (agent_dir / "orchestrator-stage-reviewer.md").write_text(REVIEWER, encoding="utf-8")
-    system.start()
     plan = seed_plan(system.workspace, [("PLANNING", "Value contract")], "S01")
     write_passed_stage(system.workspace, 1, "Value contract")
     stage = system.workspace / "1_orchestrator/e2e/stages/01-value-contract.md"
-    stage.write_text(stage.read_text(encoding="utf-8").replace("revision: 1", "revision: 3"), encoding="utf-8")
-    plan.write_text(plan.read_text(encoding="utf-8").replace("- Revision: 0", "- Revision: 3"), encoding="utf-8")
+    replace_required(stage, "revision: 1", "revision: 3")
+    replace_required(plan, "- Revision: 1", "- Revision: 3")
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
     review.write_text("---\nstage: S01\nstage_revision: 3\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add deterministic detail.\n", encoding="utf-8")
+    assert_fixture_state(plan, "planning", "S01", "S01", {"Status": "PLANNING", "Revision": "3"}, stage, {"revision": "3"}, review, {"stage_revision": "3", "status": "REVISE"})
+    system.start()
     messages = system.run_step("RESUME: 1_orchestrator/e2e/plan.md")
     agents = system.task_agents(messages)
     assert agents.count("orchestrator-stage-planner") >= 1, agents

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from harness import SystemWorkspace, seed_plan, write_passed_human_review, write_passed_stage
+from fixture_validation import assert_fixture_state, replace_required
 
 
 DISCOVERY = """---
@@ -30,14 +31,19 @@ system = SystemWorkspace()
 try:
     agent = system.workspace / ".opencode/agents/orchestrator-discovery.md"
     agent.write_text(DISCOVERY, encoding="utf-8")
-    system.start()
     plan = seed_plan(system.workspace, [("PASS", "Value contract"), ("PASS", "Value consumer"), ("PASS", "Value docs")], "none", "waiting-plan-approval")
     for number, title in enumerate(("Value contract", "Value consumer", "Value docs"), start=1):
         write_passed_stage(system.workspace, number, title)
         write_passed_human_review(system.workspace, number, title)
-    plan.write_text(plan.read_text(encoding="utf-8").replace("- Human review revision: 0", "- Human review revision: 1").replace("- Human review status: PENDING", "- Human review status: PASS"), encoding="utf-8")
+    replace_required(plan, "- Human review revision: 0", "- Human review revision: 1", expected_count=3)
+    replace_required(plan, "- Human review status: PENDING", "- Human review status: PASS", expected_count=3)
     feedback = system.workspace / "1_orchestrator/e2e/feedback.md"
     feedback.write_text("---\nlatest_revision: 1\nmode: PLAN_FEEDBACK\n---\n\n## Feedback 1\nStatus: pending\nRemarks: Значение потребителя должно отображаться как 2.\nAffected stages: unknown\nQuestions: none\n", encoding="utf-8")
+    for number, title in enumerate(("value-contract", "value-consumer", "value-docs"), start=1):
+        human_review = system.workspace / f"1_orchestrator/e2e/stages/{number:02d}-{title}.human-review.md"
+        review = system.workspace / f"1_orchestrator/e2e/reviews/{number:02d}-human-review.md"
+        assert_fixture_state(plan, "waiting-plan-approval", "none", f"S{number:02d}", {"Status": "PASS", "Revision": "1", "Human review revision": "1", "Human review status": "PASS"}, human_review, {"revision": "1", "source_revision": "1"}, review, {"stage_revision": "1", "source_revision": "1", "status": "PASS"})
+    system.start()
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
     content = plan.read_text(encoding="utf-8")
     feedback_content = feedback.read_text(encoding="utf-8")
