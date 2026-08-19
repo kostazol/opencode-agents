@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from harness import SystemWorkspace, seed_plan, write_passed_human_review, write_passed_stage
-from fixture_validation import assert_fixture_state, replace_required
+from fixture_validation import FeedbackEntry, PlanFrontmatter, mutate_plan_frontmatter, mutate_stage_map_entry, parse_feedback_state, parse_plan_frontmatter, parse_stage_map_entry, validate_fixture_state, write_feedback_state
 
 
 DISCOVERY = """---
@@ -35,32 +35,30 @@ try:
     for number, title in enumerate(("Value contract", "Value consumer", "Value docs"), start=1):
         write_passed_stage(system.workspace, number, title)
         write_passed_human_review(system.workspace, number, title)
-    replace_required(plan, "- Human review revision: 0", "- Human review revision: 1", expected_count=3)
-    replace_required(plan, "- Human review status: PENDING", "- Human review status: PASS", expected_count=3)
+    for stage_id in ("S01", "S02", "S03"):
+        mutate_stage_map_entry(plan, stage_id, human_review_revision=1, human_review_status="PASS")
     feedback = system.workspace / "1_orchestrator/e2e/feedback.md"
-    feedback.write_text("---\nlatest_revision: 1\nmode: PLAN_FEEDBACK\n---\n\n## Feedback 1\nStatus: pending\nRemarks: Значение потребителя должно отображаться как 2.\nAffected stages: unknown\nQuestions: none\n", encoding="utf-8")
+    write_feedback_state(feedback, 1, "PLAN_FEEDBACK", (FeedbackEntry(1, "pending", "Значение потребителя должно отображаться как 2.", None, "none"),))
+    mutate_plan_frontmatter(plan, status="discovery")
     for number, title in enumerate(("value-contract", "value-consumer", "value-docs"), start=1):
-        human_review = system.workspace / f"1_orchestrator/e2e/stages/{number:02d}-{title}.human-review.md"
-        review = system.workspace / f"1_orchestrator/e2e/reviews/{number:02d}-human-review.md"
-        assert_fixture_state(plan, "waiting-plan-approval", "none", f"S{number:02d}", {"Status": "PASS", "Revision": "1", "Human review revision": "1", "Human review status": "PASS"}, human_review, {"revision": "1", "source_revision": "1"}, review, {"stage_revision": "1", "source_revision": "1", "status": "PASS"})
+        validate_fixture_state(plan, f"S{number:02d}", system.workspace / f"1_orchestrator/e2e/stages/{number:02d}-{title}.md", system.workspace / f"1_orchestrator/e2e/reviews/{number:02d}.md", expected_plan=PlanFrontmatter("discovery", "none"), expected_stage_status="PASS", expected_artifact_status="REVIEW", expected_review_status="PASS")
+        validate_fixture_state(plan, f"S{number:02d}", system.workspace / f"1_orchestrator/e2e/stages/{number:02d}-{title}.human-review.md", system.workspace / f"1_orchestrator/e2e/reviews/{number:02d}-human-review.md", human=True, expected_plan=PlanFrontmatter("discovery", "none"), expected_stage_status="PASS", expected_artifact_status="REVIEW", expected_review_status="PASS")
     system.start()
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
-    content = plan.read_text(encoding="utf-8")
-    feedback_content = feedback.read_text(encoding="utf-8")
-    assert "status: waiting-approval" in content, (content, messages)
-    assert "### S01" in content and "### S02" in content and "### S03" in content, content
-    s01, remainder = content.split("### S02", 1)
-    s02, s03 = remainder.split("### S03", 1)
-    assert "- Status: PASS" in s01 and "- Revision: 1" in s01 and "- Human review revision: 1" in s01 and "- Human review status: PASS" in s01, s01
-    for affected in (s02, s03):
-        assert "- Status: PROPOSED" in affected and "- Revision: 2" in affected, affected
-        assert "- Human review revision: 2" in affected and "- Human review status: PENDING" in affected, affected
-    assert "latest_revision: 1" in feedback_content and "mode: none" in feedback_content, feedback_content
-    assert "Status: applied" in feedback_content and "Affected stages: [S02, S03]" in feedback_content, feedback_content
+    assert parse_plan_frontmatter(plan) == PlanFrontmatter("waiting-approval", "none")
+    s01 = parse_stage_map_entry(plan, "S01")
+    assert (s01.status, s01.revision, s01.human_review_revision, s01.human_review_status) == ("PASS", 1, 1, "PASS"), s01
+    for stage_id in ("S02", "S03"):
+        affected = parse_stage_map_entry(plan, stage_id)
+        assert (affected.status, affected.revision, affected.human_review_revision, affected.human_review_status) == ("PROPOSED", 2, 2, "PENDING"), affected
+    feedback_state = parse_feedback_state(feedback)
+    assert (feedback_state.latest_revision, feedback_state.mode) == (1, "none"), feedback_state
+    assert (feedback_state.entries[0].status, feedback_state.entries[0].affected_stages) == ("applied", ("S02", "S03")), feedback_state
     system.assert_task_sequence(messages, ["orchestrator-discovery"])
+    validate_fixture_state(plan, "S02", expected_plan=PlanFrontmatter("waiting-approval", "none"), expected_stage_status="PROPOSED")
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md\nAPPROVE")
-    content = plan.read_text(encoding="utf-8")
-    assert "status: planning" in content and "current_stage: S02" in content, (content, messages)
+    state = parse_plan_frontmatter(plan)
+    assert state == PlanFrontmatter("planning", "S02"), (state, messages)
     system.assert_task_sequence(messages, [])
 finally:
     system.close()

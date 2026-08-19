@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import hashlib
+import itertools
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
+import stat
 import subprocess
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -20,6 +24,11 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT_SECONDS = int(os.environ.get("ORCHESTRATOR_E2E_TIMEOUT_SECONDS", "300"))
 TASK_AGENTS = frozenset({"orchestrator-discovery", "orchestrator-stage-planner", "orchestrator-stage-reviewer"})
+_TELEMETRY_CONTRIBUTIONS: dict[Path, dict[int, dict[str, Any]]] = {}
+_TELEMETRY_WORKSPACE_IDS = itertools.count()
+TELEMETRY_PATH_ENV = "ORCHESTRATOR_E2E_TELEMETRY_PATH"
+DURATION_METRICS = ("fixture_setup", "environment_setup", "process_startup_to_health", "agent_inventory_loading", "prompt_to_question", "answer_to_idle", "prompt_to_idle", "subagent", "polling", "cleanup", "total")
+COUNT_METRICS = ("serve_startups", "sessions", "primary_executions", "task_attempts", "task_successes", "task_failures", "task_incomplete")
 
 
 @dataclass(frozen=True)
@@ -29,27 +38,48 @@ class TaskCall:
     order: int
     input: dict[str, Any] | None
     status: str
-    output: str | None
-    error: str | None
+    execution_completed: bool
+    started_at_ms: int | None
+    ended_at_ms: int | None
+    raw_output: Any
+    execution_error: str | None
     compact_result: str | None
+    result_valid: bool
+    parse_diagnostic: str | None
 
     @property
     def successful(self) -> bool:
-        return self.agent_name in TASK_AGENTS and self.status == "completed" and self.error is None
+        return self.agent_name in TASK_AGENTS and self.execution_completed and self.execution_error is None and self.result_valid
 
     @property
     def failed(self) -> bool:
-        return self.status == "error" or self.error is not None
+        return self.status == "error" or self.execution_error is not None
 
     @property
     def incomplete(self) -> bool:
         return not self.successful and not self.failed
+
+    @property
+    def output(self) -> Any:
+        return self.raw_output
+
+    @property
+    def error(self) -> str | None:
+        return self.execution_error
+
+    @property
+    def duration_seconds(self) -> float | None:
+        if self.started_at_ms is None or self.ended_at_ms is None or self.ended_at_ms < self.started_at_ms:
+            return None
+        return (self.ended_at_ms - self.started_at_ms) / 1000
 
 
 @dataclass(frozen=True)
 class WorkspaceEntry:
     kind: str
     digest_or_target: str | None
+    mode: int
+    mtime_ns: int
 
 
 @dataclass(frozen=True)
@@ -58,6 +88,7 @@ class WorkspaceSnapshot:
     allowed_target: Path
     entries: dict[Path, WorkspaceEntry]
     workflow_targets: frozenset[Path]
+    runtime_roots: frozenset[Path]
     git_status: str
 
 
@@ -69,23 +100,35 @@ def capture_workspace_snapshot(root: Path, allowed_target: Path) -> WorkspaceSna
     if canonical_target.parts[:1] != ("1_orchestrator",) or len(canonical_target.parts) != 2 or canonical_target.parts[1] in ("", ".", ".."):
         raise AssertionError(f"allowed request target must be exact 1_orchestrator/<request>: {allowed_target}")
     entries = {}
-    for path in sorted(root.rglob("*")):
-        relative = path.relative_to(root)
-        if relative.parts[:2] == (".opencode", "node_modules"):
-            continue
-        if relative in (Path(".opencode/package.json"), Path(".opencode/package-lock.json")):
-            continue
-        if path.is_symlink():
-            entries[relative] = WorkspaceEntry("symlink", os.readlink(path))
-        elif path.is_dir():
-            entries[relative] = WorkspaceEntry("directory", None)
-        elif path.is_file():
-            entries[relative] = WorkspaceEntry("file", hashlib.sha256(path.read_bytes()).hexdigest())
-        else:
-            entries[relative] = WorkspaceEntry("other", None)
+    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+        directory_path = Path(directory)
+        directory_names[:] = sorted(name for name in directory_names if (directory_path / name).relative_to(root).parts[:2] != (".opencode", "node_modules"))
+        for name in sorted(directory_names + file_names):
+            path = directory_path / name
+            relative = path.relative_to(root)
+            if relative in (Path(".opencode/package.json"), Path(".opencode/package-lock.json")):
+                continue
+            metadata = path.lstat()
+            mode = stat.S_IMODE(metadata.st_mode)
+            if stat.S_ISLNK(metadata.st_mode):
+                if relative in canonical_target.parents:
+                    raise AssertionError(f"allowed request target has symlink ancestor: {relative} -> {os.readlink(path)}")
+                if relative == canonical_target or canonical_target in relative.parents:
+                    resolved = path.resolve(strict=False)
+                    resolved_target = root / canonical_target
+                    if resolved != resolved_target and resolved_target not in resolved.parents:
+                        raise AssertionError(f"allowed request target contains escaping symlink: {relative} -> {os.readlink(path)}")
+                entries[relative] = WorkspaceEntry("symlink", os.readlink(path), mode, metadata.st_mtime_ns)
+            elif stat.S_ISDIR(metadata.st_mode):
+                entries[relative] = WorkspaceEntry("directory", None, mode, metadata.st_mtime_ns)
+            elif stat.S_ISREG(metadata.st_mode):
+                entries[relative] = WorkspaceEntry("file", hashlib.sha256(path.read_bytes()).hexdigest(), mode, metadata.st_mtime_ns)
+            else:
+                entries[relative] = WorkspaceEntry("other", None, mode, metadata.st_mtime_ns)
     orchestrator = root / "1_orchestrator"
     workflow_targets = frozenset(path.relative_to(root) for path in orchestrator.iterdir() if path.is_dir()) if orchestrator.is_dir() else frozenset()
-    return WorkspaceSnapshot(root, canonical_target, entries, workflow_targets, _git_status(root, canonical_target))
+    runtime_roots = frozenset(path for path in (Path(".opencode/node_modules"), Path(".opencode/package.json"), Path(".opencode/package-lock.json")) if (root / path).exists() or (root / path).is_symlink())
+    return WorkspaceSnapshot(root, canonical_target, entries, workflow_targets, runtime_roots, _git_status(root, canonical_target))
 
 
 def assert_workspace_unchanged(before: WorkspaceSnapshot, after: WorkspaceSnapshot) -> None:
@@ -95,7 +138,7 @@ def assert_workspace_unchanged(before: WorkspaceSnapshot, after: WorkspaceSnapsh
     for path in sorted(before.entries.keys() | after.entries.keys()):
         if before.entries.get(path) == after.entries.get(path):
             continue
-        if _is_allowed_workspace_change(path, before.entries.get(path), after.entries.get(path), before.allowed_target):
+        if _is_allowed_workspace_change(path, before.entries.get(path), after.entries.get(path), before.allowed_target, before.entries, after.entries, before.runtime_roots != after.runtime_roots):
             continue
         changed.append(f"{path}: {before.entries.get(path)!r} -> {after.entries.get(path)!r}")
     unexpected_targets = sorted(target for target in after.workflow_targets - before.workflow_targets if target != before.allowed_target)
@@ -107,10 +150,14 @@ def assert_workspace_unchanged(before: WorkspaceSnapshot, after: WorkspaceSnapsh
         raise AssertionError("product workspace mutation detected:\n" + "\n".join(changed))
 
 
-def _is_allowed_workspace_change(path: Path, before: WorkspaceEntry | None, after: WorkspaceEntry | None, allowed_target: Path) -> bool:
+def _is_allowed_workspace_change(path: Path, before: WorkspaceEntry | None, after: WorkspaceEntry | None, allowed_target: Path, before_entries: dict[Path, WorkspaceEntry], after_entries: dict[Path, WorkspaceEntry], runtime_roots_changed: bool) -> bool:
     if path == allowed_target or allowed_target in path.parents:
         return True
-    if path in allowed_target.parents and before is None and after == WorkspaceEntry("directory", None):
+    if path in allowed_target.parents and before is None and after is not None and after.kind == "directory":
+        return True
+    if path in allowed_target.parents and allowed_target not in before_entries and allowed_target in after_entries and before is not None and after is not None and before.kind == after.kind == "directory" and before.mode == after.mode and before.digest_or_target == after.digest_or_target:
+        return True
+    if runtime_roots_changed and path == Path(".opencode") and before is not None and after is not None and before.kind == after.kind == "directory" and before.mode == after.mode and before.digest_or_target == after.digest_or_target:
         return True
     return False
 
@@ -125,6 +172,103 @@ def _git_status(root: Path, allowed_target: Path) -> str:
     return result.stdout
 
 
+_TASK_WRAPPER = re.compile(r'<task id="[^"\r\n]+" state="completed">\n<task_result>\n(?P<result>.*?)\n</task_result>\n</task>', re.DOTALL)
+def _compact_task_result(agent_name: str | None, output: Any) -> tuple[str | None, bool, str | None]:
+    if not isinstance(output, str):
+        return None, False, "task output is not a string"
+    wrapped = _TASK_WRAPPER.fullmatch(output)
+    if wrapped is None:
+        return None, False, "malformed task result wrapper"
+    compact_result = wrapped.group("result")
+    if agent_name == "orchestrator-discovery":
+        labels = ("DISCOVERY", "ARTIFACT", "QUESTIONS", "PLAN", "SUMMARY")
+        statuses = {"QUESTIONS", "READY_FOR_APPROVAL", "BLOCKED"}
+    elif agent_name == "orchestrator-stage-planner":
+        labels = ("STAGE_PLAN", "STAGE", "REVISION", "ARTIFACT", "SUMMARY")
+        statuses = {"REVIEW", "MAP_CHANGE_REQUIRED", "BLOCKED"}
+    elif agent_name == "orchestrator-stage-reviewer":
+        labels = ("STAGE_REVIEW", "STAGE", "REVISION", "REVIEW", "FINDINGS", "SUMMARY")
+        statuses = {"PASS", "REVISE", "MAP_CHANGE_REQUIRED", "BLOCKED"}
+    else:
+        return compact_result, False, f"unknown task agent: {agent_name!r}"
+    lines = compact_result.splitlines()
+    if len(lines) != len(labels):
+        return compact_result, False, f"expected {len(labels)} compact result lines, got {len(lines)}"
+    values = {}
+    for line, label in zip(lines, labels):
+        prefix = f"{label}: "
+        if not line.startswith(prefix):
+            return compact_result, False, f"expected label {label!r}"
+        values[label] = line[len(prefix):]
+    status = values[labels[0]]
+    if status not in statuses:
+        return compact_result, False, f"invalid {labels[0]} status: {status!r}"
+    summary = values["SUMMARY"]
+    if not summary or summary.strip() != summary:
+        return compact_result, False, "SUMMARY must be nonempty and trimmed"
+    if agent_name == "orchestrator-discovery":
+        for label in ("ARTIFACT", "QUESTIONS", "PLAN"):
+            if not values[label] or values[label].strip() != values[label]:
+                return compact_result, False, f"{label} must be nonempty and trimmed"
+        if not _workflow_artifact_path(values["ARTIFACT"], "discovery"):
+            return compact_result, False, f"invalid ARTIFACT path: {values['ARTIFACT']!r}"
+        if values["QUESTIONS"] != "none" and not _workflow_artifact_path(values["QUESTIONS"], "questions"):
+            return compact_result, False, f"invalid QUESTIONS path: {values['QUESTIONS']!r}"
+        if not _workflow_artifact_path(values["PLAN"], "plan"):
+            return compact_result, False, f"invalid PLAN path: {values['PLAN']!r}"
+        request_roots = {_workflow_request_root(values[label]) for label in ("ARTIFACT", "PLAN")}
+        if values["QUESTIONS"] != "none":
+            request_roots.add(_workflow_request_root(values["QUESTIONS"]))
+        if len(request_roots) != 1:
+            return compact_result, False, f"discovery paths use different request roots: {sorted(request_roots)!r}"
+        return compact_result, True, None
+    stage = values["STAGE"]
+    if re.fullmatch(r"S[0-9]{2}", stage) is None:
+        return compact_result, False, f"invalid STAGE: {stage!r}"
+    if re.fullmatch(r"[1-9][0-9]*", values["REVISION"]) is None:
+        return compact_result, False, f"invalid REVISION: {values['REVISION']!r}"
+    if agent_name == "orchestrator-stage-planner":
+        artifact = values["ARTIFACT"]
+        if not artifact or artifact.strip() != artifact:
+            return compact_result, False, "ARTIFACT must be nonempty and trimmed"
+        if artifact != "none" and not _workflow_artifact_path(artifact, "stage"):
+            return compact_result, False, f"invalid ARTIFACT path: {artifact!r}"
+        if artifact != "none" and re.fullmatch(rf"{re.escape(stage[1:])}-[^/\s]+\.md", Path(artifact).name) is None:
+            return compact_result, False, f"ARTIFACT path does not match STAGE: {artifact!r}"
+        return compact_result, True, None
+    review = values["REVIEW"]
+    if not review or review.strip() != review:
+        return compact_result, False, "REVIEW must be nonempty and trimmed"
+    if not _workflow_artifact_path(review, "review"):
+        return compact_result, False, f"invalid REVIEW path: {review!r}"
+    if re.fullmatch(rf"{re.escape(stage[1:])}(?:-human-review)?\.md", Path(review).name) is None:
+        return compact_result, False, f"REVIEW path does not match STAGE: {review!r}"
+    if re.fullmatch(r"0|[1-9][0-9]*", values["FINDINGS"]) is None:
+        return compact_result, False, f"invalid FINDINGS: {values['FINDINGS']!r}"
+    findings = int(values["FINDINGS"])
+    if status == "PASS" and findings != 0:
+        return compact_result, False, "PASS requires zero FINDINGS"
+    if status == "REVISE" and findings == 0:
+        return compact_result, False, "REVISE requires positive FINDINGS"
+    return compact_result, True, None
+
+
+def _workflow_artifact_path(value: str, kind: str) -> bool:
+    request_root = r"1_orchestrator/(?!\.{1,2}/)[^/\s]+"
+    patterns = {
+        "discovery": rf"{request_root}/discovery\.md",
+        "questions": rf"{request_root}/questions\.md",
+        "plan": rf"{request_root}/plan\.md",
+        "stage": rf"{request_root}/stages/[^/\s]+\.md",
+        "review": rf"{request_root}/reviews/[^/\s]+\.md",
+    }
+    return re.fullmatch(patterns[kind], value) is not None
+
+
+def _workflow_request_root(value: str) -> str:
+    return "/".join(value.split("/", 2)[:2])
+
+
 def task_trace(messages: list[dict[str, Any]]) -> list[TaskCall]:
     result = []
     for message in messages:
@@ -133,21 +277,34 @@ def task_trace(messages: list[dict[str, Any]]) -> list[TaskCall]:
                 continue
             state = part.get("state")
             task_input = state.get("input") if isinstance(state, dict) else None
-            output = state.get("output") if isinstance(state, dict) and isinstance(state.get("output"), str) else None
+            raw_output = state.get("output") if isinstance(state, dict) else None
             raw_error = state.get("error") if isinstance(state, dict) else None
             error = raw_error if isinstance(raw_error, str) else repr(raw_error) if raw_error is not None else None
             status = state.get("status") if isinstance(state, dict) else None
+            raw_task_time = state.get("time") if isinstance(state, dict) else None
+            task_time: dict[str, Any] = raw_task_time if isinstance(raw_task_time, dict) else {}
+            agent_name = task_input.get("subagent_type") if isinstance(task_input, dict) and isinstance(task_input.get("subagent_type"), str) else None
+            compact_result, result_valid, parse_diagnostic = _compact_task_result(agent_name, raw_output)
             result.append(TaskCall(
-                agent_name=task_input.get("subagent_type") if isinstance(task_input, dict) and isinstance(task_input.get("subagent_type"), str) else None,
+                agent_name=agent_name,
                 call_id=part.get("callID") if isinstance(part.get("callID"), str) else None,
                 order=len(result),
                 input=task_input if isinstance(task_input, dict) else None,
                 status=status if isinstance(status, str) else "unknown",
-                output=output,
-                error=error,
-                compact_result=output,
+                execution_completed=status == "completed",
+                started_at_ms=_integer_milliseconds(task_time.get("start")),
+                ended_at_ms=_integer_milliseconds(task_time.get("end")),
+                raw_output=raw_output,
+                execution_error=error,
+                compact_result=compact_result,
+                result_valid=result_valid,
+                parse_diagnostic=parse_diagnostic,
             ))
     return result
+
+
+def _integer_milliseconds(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 2**53 else None
 
 
 def successful_task_calls(messages: list[dict[str, Any]]) -> list[TaskCall]:
@@ -172,6 +329,170 @@ def assert_task_sequence(messages: list[dict[str, Any]], expected_agents: list[s
     return successful
 
 
+def _assistant_message_boundary(messages: list[dict[str, Any]]) -> dict[str, bool]:
+    return {message["info"]["id"]: isinstance(message["info"].get("time"), dict) and message["info"]["time"].get("completed") is not None for message in messages if isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and isinstance(message["info"].get("id"), str)}
+
+
+def _new_assistant_turn_state(messages: list[dict[str, Any]], baseline: dict[str, bool] | frozenset[str]) -> tuple[bool, str]:
+    assistants = [message for message in messages if isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant"]
+    baseline_states = {message_id: True for message_id in baseline} if isinstance(baseline, frozenset) else baseline
+    new_assistants = [message for message in assistants if isinstance(message["info"].get("id"), str) and (message["info"]["id"] not in baseline_states or not baseline_states[message["info"]["id"]])]
+    if not new_assistants:
+        ids = [message["info"].get("id") for message in assistants]
+        return False, f"no new assistant turn; assistant_ids={ids!r}"
+    turn = new_assistants[-1]
+    info = turn["info"]
+    completed = isinstance(info.get("time"), dict) and info["time"].get("completed") is not None
+    calls = task_trace([turn])
+    tasks_terminal = all(call.status in ("completed", "error") for call in calls)
+    diagnostic = f"assistant_id={info.get('id')!r}; completed={completed}; tasks={calls!r}"
+    return completed and tasks_terminal, diagnostic
+
+
+def _decode_sse_data(lines: list[str]) -> dict[str, Any] | None:
+    data = "\n".join(line[5:].lstrip(" ") for line in lines if line.startswith("data:"))
+    if not data:
+        return None
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _session_event_kind(payload: dict[str, Any], session_id: str) -> str | None:
+    event_type = payload.get("type")
+    if event_type == "server.connected":
+        return "connected"
+    properties = payload.get("properties")
+    if not isinstance(properties, dict) or properties.get("sessionID") != session_id:
+        return None
+    if event_type == "session.idle":
+        return "idle"
+    status = properties.get("status")
+    if event_type == "session.status" and isinstance(status, dict) and status.get("type") == "idle":
+        return "idle"
+    return None
+
+
+class SessionEventWatcher:
+    def __init__(self, base_url: str, session_id: str):
+        self.base_url = base_url
+        self.session_id = session_id
+        self._ready = threading.Event()
+        self._stopped = threading.Event()
+        self._condition = threading.Condition()
+        self._idle_count = 0
+        self._connected = False
+        self._error: BaseException | None = None
+        self._response: Any = None
+        self._thread = threading.Thread(target=self._run, name=f"opencode-events-{session_id}", daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        if not self._ready.wait(TIMEOUT_SECONDS):
+            failure = AssertionError("event stream did not emit server.connected before deadline")
+            self._close_preserving(failure)
+            raise failure
+        if not self._connected or self._error is not None:
+            error = self._error
+            failure = AssertionError(f"event stream failed before readiness: {error!r}")
+            self._close_preserving(failure)
+            raise failure from error
+        return self
+
+    def __exit__(self, exception_type, exception, _traceback):
+        try:
+            self.close()
+        except BaseException as cleanup_error:
+            if exception is None:
+                raise
+            exception.add_note(f"event watcher cleanup failed: {cleanup_error}")
+        return False
+
+    def boundary(self) -> int:
+        with self._condition:
+            return self._idle_count
+
+    def has_idle_after(self, boundary: int) -> bool:
+        with self._condition:
+            return self._idle_count > boundary
+
+    def wait_for_event(self, timeout: float) -> None:
+        with self._condition:
+            self._condition.wait(timeout)
+
+    def diagnostic(self, boundary: int) -> str:
+        with self._condition:
+            return f"event_idle_count={self._idle_count}; event_boundary={boundary}; event_error={self._error!r}"
+
+    def close(self) -> None:
+        self._stopped.set()
+        response = self._response
+        close_error = None
+        try:
+            if response is not None:
+                raw = getattr(getattr(response, "fp", None), "raw", None)
+                response_socket = getattr(raw, "_sock", None)
+                if response_socket is not None:
+                    try:
+                        response_socket.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                response.close()
+        except BaseException as error:
+            close_error = error
+        self._thread.join(timeout=10)
+        if self._thread.is_alive():
+            failure = AssertionError("event watcher did not stop")
+            if close_error is not None:
+                failure.add_note(f"event response cleanup failed: {close_error}")
+            raise failure
+        if close_error is not None:
+            raise close_error
+
+    def _close_preserving(self, failure: BaseException) -> None:
+        try:
+            self.close()
+        except BaseException as cleanup_error:
+            failure.add_note(f"event watcher cleanup failed: {cleanup_error}")
+
+    def _run(self) -> None:
+        event_lines = []
+        try:
+            request = Request(f"{self.base_url}/event", method="GET", headers={"Accept": "text/event-stream"})
+            self._response = urlopen(request, timeout=TIMEOUT_SECONDS)
+            for raw_line in self._response:
+                if self._stopped.is_set():
+                    break
+                line = raw_line.decode(errors="replace").rstrip("\r\n")
+                if line:
+                    event_lines.append(line)
+                    continue
+                self._consume_event(event_lines)
+                event_lines = []
+            if event_lines:
+                self._consume_event(event_lines)
+        except BaseException as error:
+            if not self._stopped.is_set():
+                self._error = error
+        finally:
+            self._ready.set()
+            with self._condition:
+                self._condition.notify_all()
+
+    def _consume_event(self, lines: list[str]) -> None:
+        payload = _decode_sse_data(lines)
+        kind = _session_event_kind(payload, self.session_id) if payload is not None else None
+        if kind == "connected":
+            self._connected = True
+            self._ready.set()
+        elif kind == "idle":
+            with self._condition:
+                self._idle_count += 1
+                self._condition.notify_all()
+
+
 def request_json(base_url: str, method: str, path: str, body: object | None = None, timeout: int = 30) -> Any:
     data = None if body is None else json.dumps(body).encode()
     request = Request(f"{base_url}{path}", data=data, method=method, headers={"Content-Type": "application/json"})
@@ -191,31 +512,94 @@ def free_port() -> int:
         return int(server.getsockname()[1])
 
 
+def _merge_telemetry_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    durations = {name: {"values": [], "unavailable": 0} for name in DURATION_METRICS}
+    counts = {name: 0 for name in COUNT_METRICS}
+    ordered_agents = []
+    for payload in payloads:
+        for name in DURATION_METRICS:
+            durations[name]["values"].extend(payload["durations_seconds"][name]["values"])
+            durations[name]["unavailable"] += payload["durations_seconds"][name]["unavailable"]
+        for name in COUNT_METRICS:
+            counts[name] += payload["counts"][name]
+        ordered_agents.extend(payload["ordered_agents"])
+    return {
+        "schema_version": 1,
+        "status": "complete" if payloads and all(_workspace_telemetry_complete(payload) for payload in payloads) else "partial",
+        "durations_seconds": durations,
+        "counts": counts,
+        "ordered_agents": ordered_agents,
+    }
+
+
+def _workspace_telemetry_complete(payload: dict[str, Any]) -> bool:
+    if payload["status"] != "complete":
+        return False
+    counts = payload["counts"]
+    durations = payload["durations_seconds"]
+    if counts["serve_startups"] != 1 or counts["sessions"] < 1 or counts["primary_executions"] < counts["sessions"]:
+        return False
+    for name in ("fixture_setup", "environment_setup", "process_startup_to_health", "agent_inventory_loading", "cleanup", "total"):
+        if len(durations[name]["values"]) != 1 or durations[name]["unavailable"] != 0:
+            return False
+    if len(durations["prompt_to_question"]["values"]) + len(durations["prompt_to_idle"]["values"]) != counts["sessions"]:
+        return False
+    if len(durations["answer_to_idle"]["values"]) != counts["primary_executions"] - counts["sessions"]:
+        return False
+    if len(durations["prompt_to_question"]["values"]) != len(durations["answer_to_idle"]["values"]):
+        return False
+    return len(durations["polling"]["values"]) == counts["primary_executions"] and all(durations[name]["unavailable"] == 0 for name in ("prompt_to_question", "answer_to_idle", "prompt_to_idle", "polling"))
+
+
 class SystemWorkspace:
     def __init__(self, start_on_enter: bool = True, expected_request: str = "e2e"):
         self.timings: dict[str, list[float]] = {}
+        self.duration_unavailable = {name: 0 for name in DURATION_METRICS}
         self._test_started_at = time.monotonic()
         self._start_attempted = False
         self._closed = False
         self._cleanup_started_at: float | None = None
         self._start_on_enter = start_on_enter
+        telemetry_path = os.environ.get(TELEMETRY_PATH_ENV)
+        self._telemetry_path = Path(telemetry_path).resolve() if telemetry_path else None
+        self._telemetry_workspace_id = next(_TELEMETRY_WORKSPACE_IDS)
+        self._telemetry_partial = False
         self.expected_request_target = Path("1_orchestrator") / expected_request
         self.process: subprocess.Popen[str] | None = None
         self.base_url = ""
         self._environment: dict[str, str] | None = None
         self.session_ids: list[str] = []
+        self.serve_startup_count = 0
+        self.primary_execution_count = 0
         self.task_call_count = 0
         self.successful_task_call_count = 0
         self.failed_task_call_count = 0
         self.incomplete_task_call_count = 0
         self.task_agent_names: list[str] = []
-        with self._measure("fixture_setup"):
-            self.temporary = tempfile.TemporaryDirectory(prefix="orchestrator-system-e2e-")
-            self.root = Path(self.temporary.name)
-            self.workspace = self.root / "workspace"
-            self.workspace.mkdir()
-            self.log_path = self.root / "opencode.log"
-            self._write_fixture()
+        try:
+            with self._measure("fixture_setup"):
+                self.temporary = tempfile.TemporaryDirectory(prefix="orchestrator-system-e2e-")
+                self.root = Path(self.temporary.name)
+                self.workspace = self.root / "workspace"
+                self.workspace.mkdir()
+                self.log_path = self.root / "opencode.log"
+                self._write_fixture()
+        except BaseException as error:
+            self._telemetry_partial = True
+            if hasattr(self, "temporary"):
+                cleanup_started_at = time.monotonic()
+                try:
+                    self.temporary.cleanup()
+                    self._record_timing("cleanup", cleanup_started_at)
+                except BaseException as cleanup_error:
+                    self.duration_unavailable["cleanup"] += 1
+                    error.add_note(f"fixture cleanup failed: {cleanup_error}")
+            self._record_timing("total", self._test_started_at)
+            try:
+                self._write_telemetry()
+            except BaseException as telemetry_error:
+                error.add_note(f"telemetry write failed: {telemetry_error}")
+            raise
 
     @contextmanager
     def _measure(self, name: str) -> Iterator[None]:
@@ -238,6 +622,50 @@ class SystemWorkspace:
             "incomplete_task_calls": self.incomplete_task_call_count,
             "task_agent_names": list(self.task_agent_names),
         }
+
+    def telemetry_result(self) -> dict[str, Any]:
+        durations = {}
+        for name in DURATION_METRICS:
+            durations[name] = {"values": list(self.timings.get(name, [])), "unavailable": self.duration_unavailable.get(name, 0)}
+        return {
+            "schema_version": 1,
+            "status": "partial" if getattr(self, "_telemetry_partial", False) else "complete",
+            "durations_seconds": durations,
+            "counts": {
+                "serve_startups": getattr(self, "serve_startup_count", 0),
+                "sessions": len(self.session_ids),
+                "primary_executions": getattr(self, "primary_execution_count", 0),
+                "task_attempts": self.task_call_count,
+                "task_successes": self.successful_task_call_count,
+                "task_failures": self.failed_task_call_count,
+                "task_incomplete": self.incomplete_task_call_count,
+            },
+            "ordered_agents": list(self.task_agent_names),
+        }
+
+    def _write_telemetry(self) -> None:
+        telemetry_path = getattr(self, "_telemetry_path", None)
+        if telemetry_path is None:
+            return
+        contributions = _TELEMETRY_CONTRIBUTIONS.setdefault(telemetry_path, {})
+        workspace_id = getattr(self, "_telemetry_workspace_id", None)
+        if workspace_id is None:
+            workspace_id = next(_TELEMETRY_WORKSPACE_IDS)
+            self._telemetry_workspace_id = workspace_id
+        contributions[workspace_id] = self.telemetry_result()
+        telemetry = _merge_telemetry_payloads(list(contributions.values()))
+        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = telemetry_path.with_name(f".{telemetry_path.name}.{os.getpid()}.tmp")
+        try:
+            with temporary_path.open("w", encoding="utf-8") as output:
+                json.dump(telemetry, output, ensure_ascii=False, sort_keys=True)
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary_path, telemetry_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
 
     def _isolated_environment(self) -> dict[str, str]:
         if self._environment is None:
@@ -310,6 +738,7 @@ class SystemWorkspace:
         log = self.log_path.open("w", encoding="utf-8")
         self._isolated_environment()
         with self._measure("process_startup_to_health"):
+            self.serve_startup_count += 1
             self.process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port), "--print-logs", "--log-level", "INFO"], cwd=self.workspace, env=self._isolated_environment(), stdout=log, stderr=subprocess.STDOUT, text=True)
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
@@ -333,6 +762,7 @@ class SystemWorkspace:
                 details = self.log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
                 raise AssertionError(f"opencode serve did not become healthy:\n{details}")
         with self._measure("agent_inventory_loading"):
+            deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 try:
                     agents = request_json(self.base_url, "GET", "/agent")
@@ -364,11 +794,19 @@ class SystemWorkspace:
             raise AssertionError(f"unexpected session: {session}")
         session_id = session["id"]
         self.session_ids.append(session_id)
+        with SessionEventWatcher(self.base_url, session_id) as event_watcher:
+            return self._run_active_step(session_id, prompt, answer_labels, event_watcher)
+
+    def _run_active_step(self, session_id: str, prompt: str, answer_labels: list[str] | None, event_watcher: SessionEventWatcher) -> list[dict[str, Any]]:
         prompt_started_at = time.monotonic()
+        prompt_boundary = self._capture_assistant_boundary(session_id)
+        prompt_idle_boundary = event_watcher.boundary()
         if answer_labels is not None:
             try:
+                self.primary_execution_count += 1
                 request_json(self.base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": prompt}]})
-                question = self._wait_for_question(session_id)
+                with self._measure("polling"):
+                    question = self._wait_for_question(session_id)
             finally:
                 self._record_timing("prompt_to_question", prompt_started_at)
             questions = question.get("questions")
@@ -379,17 +817,23 @@ class SystemWorkspace:
             if not isinstance(request_id, str):
                 raise AssertionError(f"question lacks id: {question}")
             path = f"/question/{request_id}/reply" if question.get("_transport") == "legacy" else f"/api/session/{session_id}/question/{request_id}/reply"
+            reply_boundary = self._capture_assistant_boundary(session_id)
+            reply_idle_boundary = event_watcher.boundary()
             idle_started_at = time.monotonic()
             try:
+                self.primary_execution_count += 1
                 request_json(self.base_url, "POST", path, {"answers": answers})
-                self._wait_for_idle(session_id)
+                with self._measure("polling"):
+                    self._wait_for_idle(session_id, reply_boundary, event_watcher, reply_idle_boundary)
             finally:
                 self._record_timing("answer_to_idle", idle_started_at)
                 self._record_timing("prompt_or_answer_to_idle", idle_started_at)
         else:
             try:
+                self.primary_execution_count += 1
                 request_json(self.base_url, "POST", f"/session/{session_id}/prompt_async", {"agent": "orchestrator-analyst", "parts": [{"type": "text", "text": prompt}]})
-                self._wait_for_idle(session_id)
+                with self._measure("polling"):
+                    self._wait_for_idle(session_id, prompt_boundary, event_watcher, prompt_idle_boundary)
             finally:
                 self._record_timing("prompt_to_idle", prompt_started_at)
                 self._record_timing("prompt_or_answer_to_idle", prompt_started_at)
@@ -403,6 +847,11 @@ class SystemWorkspace:
         self.failed_task_call_count += len(failed_task_calls(messages))
         self.incomplete_task_call_count += len(incomplete_task_calls(messages))
         self.task_agent_names.extend(call.agent_name for call in completed if call.agent_name is not None)
+        for call in attempts:
+            if call.duration_seconds is None:
+                self.duration_unavailable["subagent"] += 1
+            else:
+                self.timings.setdefault("subagent", []).append(call.duration_seconds)
         return messages
 
     def run_transition(self, prompt: str, answer_labels: list[str] | None = None) -> list[dict[str, Any]]:
@@ -423,15 +872,24 @@ class SystemWorkspace:
             time.sleep(1)
         raise AssertionError("native question did not appear")
 
-    def _wait_for_idle(self, session_id: str) -> None:
+    def _capture_assistant_boundary(self, session_id: str) -> dict[str, bool]:
+        messages = request_json(self.base_url, "GET", f"/session/{session_id}/message")
+        if not isinstance(messages, list):
+            raise AssertionError(f"cannot capture assistant turn boundary: {messages!r}")
+        return _assistant_message_boundary(messages)
+
+    def _wait_for_idle(self, session_id: str, baseline: dict[str, bool] | frozenset[str], event_watcher: SessionEventWatcher, idle_boundary: int) -> None:
         deadline = time.monotonic() + TIMEOUT_SECONDS
         use_wait = True
+        wait_signaled = False
+        last_diagnostic = "no status observed"
         while time.monotonic() < deadline:
             if use_wait:
                 try:
                     request_json(self.base_url, "POST", f"/api/session/{session_id}/wait", timeout=10)
+                    wait_signaled = True
                 except TimeoutError:
-                    continue
+                    pass
                 except RuntimeError as error:
                     if "HTTP 503" not in str(error) or "Session wait is not available yet" not in str(error):
                         raise
@@ -439,12 +897,19 @@ class SystemWorkspace:
             statuses = request_json(self.base_url, "GET", "/session/status")
             status = statuses.get(session_id) if isinstance(statuses, dict) else None
             messages = request_json(self.base_url, "GET", f"/session/{session_id}/message")
-            has_completed_assistant = isinstance(messages, list) and any(isinstance(message, dict) and isinstance(message.get("info"), dict) and message["info"].get("role") == "assistant" and isinstance(message["info"].get("time"), dict) and message["info"]["time"].get("completed") is not None for message in messages)
-            tasks_terminal = isinstance(messages, list) and all(call.status in ("completed", "error") for call in task_trace(messages))
-            if has_completed_assistant and tasks_terminal and (not isinstance(status, dict) or status.get("type") == "idle"):
+            if not isinstance(messages, list):
+                last_diagnostic = f"status={status!r}; messages={messages!r}"
+                time.sleep(1)
+                continue
+            turn_terminal, turn_diagnostic = _new_assistant_turn_state(messages, baseline)
+            explicitly_idle = isinstance(status, dict) and status.get("type") == "idle"
+            event_idle = event_watcher.has_idle_after(idle_boundary)
+            explicitly_active = isinstance(status, dict) and status.get("type") in ("busy", "retry")
+            last_diagnostic = f"status={status!r}; wait_signaled={wait_signaled}; event_idle={event_idle}; {event_watcher.diagnostic(idle_boundary)}; {turn_diagnostic}"
+            if turn_terminal and not explicitly_active and (wait_signaled or explicitly_idle or event_idle):
                 return
-            time.sleep(1)
-        raise AssertionError("session did not become idle")
+            event_watcher.wait_for_event(1)
+        raise AssertionError(f"session {session_id} did not become idle: {last_diagnostic}")
 
     def task_agents(self, messages: list[dict[str, Any]]) -> list[str]:
         return [call.agent_name for call in successful_task_calls(messages) if call.agent_name is not None]
@@ -469,9 +934,22 @@ class SystemWorkspace:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=10)
-        self.temporary.cleanup()
+        try:
+            self.temporary.cleanup()
+        except BaseException as cleanup_error:
+            self._telemetry_partial = True
+            if hasattr(self, "duration_unavailable"):
+                self.duration_unavailable["cleanup"] += 1
+                self.duration_unavailable["total"] += 1
+            try:
+                self._write_telemetry()
+            except BaseException as telemetry_error:
+                cleanup_error.add_note(f"telemetry write failed: {telemetry_error}")
+            raise
         self._record_timing("cleanup", self._cleanup_started_at)
         self._record_timing("test_case_total", self._test_started_at)
+        self.timings["total"] = list(self.timings["test_case_total"])
+        self._write_telemetry()
         self._closed = True
 
     def __enter__(self):
@@ -479,11 +957,12 @@ class SystemWorkspace:
             return self
         try:
             self.start()
-        except BaseException:
+        except BaseException as error:
+            self._telemetry_partial = True
             try:
                 self.close()
-            except Exception:
-                pass
+            except Exception as cleanup_error:
+                error.add_note(f"workspace cleanup failed: {cleanup_error}")
             raise
         return self
 
@@ -491,10 +970,11 @@ class SystemWorkspace:
         if _type is None:
             self.close()
         else:
+            self._telemetry_partial = True
             try:
                 self.close()
-            except BaseException:
-                pass
+            except BaseException as cleanup_error:
+                _value.add_note(f"workspace cleanup failed: {cleanup_error}")
 
 
 def seed_plan(workspace: Path, stages: list[tuple[str, str]], current_stage: str, status: str = "planning") -> Path:

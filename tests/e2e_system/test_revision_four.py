@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 
 from harness import SystemWorkspace, seed_plan, write_passed_stage
-from fixture_validation import assert_fixture_state, replace_required
+from fixture_validation import PlanFrontmatter, mutate_artifact_frontmatter, mutate_stage_map_entry, parse_stage_map_entry, validate_fixture_state, write_technical_review
 
 
 with SystemWorkspace(start_on_enter=False) as system:
     plan = seed_plan(system.workspace, [("PLANNING", "Value contract")], "S01")
     write_passed_stage(system.workspace, 1, "Value contract")
     stage = next((system.workspace / "1_orchestrator/e2e/stages").glob("01-*.md"))
-    replace_required(stage, "revision: 1", "revision: 3")
-    replace_required(plan, "- Revision: 1", "- Revision: 3")
+    mutate_artifact_frontmatter(stage, revision=3)
+    mutate_stage_map_entry(plan, "S01", revision=3)
     review = system.workspace / "1_orchestrator/e2e/reviews/01.md"
-    review.write_text("---\nstage: S01\nstage_revision: 3\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Add one missing deterministic validation detail.\n", encoding="utf-8")
-    assert_fixture_state(plan, "planning", "S01", "S01", {"Status": "PLANNING", "Revision": "3"}, stage, {"revision": "3"}, review, {"stage_revision": "3", "status": "REVISE"})
+    write_technical_review(review, "S01", 3, "REVISE", "Add one missing deterministic validation detail.")
+    validate_fixture_state(plan, "S01", stage, review, expected_plan=PlanFrontmatter("planning", "S01"), expected_stage_status="PLANNING", expected_artifact_status="REVIEW", expected_review_status="REVISE")
     system.start()
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
-    content = plan.read_text(encoding="utf-8")
-    assert "- Revision: 4" in content, (content, messages)
-    assert "- Correction source revision: 3" in content, (content, messages)
+    state = parse_stage_map_entry(plan, "S01")
+    assert (state.revision, state.correction_source_revision) == (4, 3), (state, messages)
     system.assert_task_sequence(messages, [])
 print("revision four E2E passed")

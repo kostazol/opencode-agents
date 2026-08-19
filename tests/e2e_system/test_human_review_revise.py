@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from harness import SystemWorkspace, seed_plan, write_passed_stage, write_passed_human_review
-from fixture_validation import assert_fixture_state, replace_required
+from fixture_validation import PlanFrontmatter, mutate_stage_map_entry, parse_human_review, parse_stage_map_entry, validate_fixture_state, write_human_review_review
 
 
 with SystemWorkspace(start_on_enter=False) as system:
@@ -9,16 +9,16 @@ with SystemWorkspace(start_on_enter=False) as system:
     write_passed_stage(system.workspace, 1, "Value contract")
     write_passed_human_review(system.workspace, 1, "Value contract")
     human_review = system.workspace / "1_orchestrator/e2e/stages/01-value-contract.human-review.md"
-    replace_required(plan, "- Human review revision: 0", "- Human review revision: 1")
-    replace_required(plan, "- Human review status: PENDING", "- Human review status: REVIEW")
+    mutate_stage_map_entry(plan, "S01", human_review_revision=1, human_review_status="REVIEW")
     review = system.workspace / "1_orchestrator/e2e/reviews/01-human-review.md"
-    review.write_text("---\nstage: S01\nstage_revision: 1\nsource_revision: 1\nstatus: REVISE\n---\n\n# Review S01\n\n## Findings\n- Явно укажите отсутствие изменения состояния.\n", encoding="utf-8")
-    assert_fixture_state(plan, "human-reviewing", "S01", "S01", {"Status": "PASS", "Revision": "1", "Human review revision": "1", "Human review status": "REVIEW"}, human_review, {"revision": "1", "source_revision": "1"}, review, {"stage_revision": "1", "source_revision": "1", "status": "REVISE"})
+    review_state = write_human_review_review(review, "S01", 1, 1, "REVISE", "Явно укажите отсутствие изменения состояния.")
+    validate_fixture_state(plan, "S01", system.workspace / "1_orchestrator/e2e/stages/01-value-contract.md", system.workspace / "1_orchestrator/e2e/reviews/01.md", expected_plan=PlanFrontmatter("human-reviewing", "S01"), expected_stage_status="PASS", expected_artifact_status="REVIEW", expected_review_status="PASS")
+    validate_fixture_state(plan, "S01", human_review, review, human=True, expected_plan=PlanFrontmatter("human-reviewing", "S01"), expected_stage_status="PASS", expected_artifact_status="REVIEW", expected_review_status="REVISE")
+    assert review_state.status == "REVISE"
     system.start()
     messages = system.run_transition("RESUME: 1_orchestrator/e2e/plan.md")
-    content = plan.read_text(encoding="utf-8")
-    assert "- Human review revision: 2" in content, (content, messages)
-    assert "- Human review correction source revision: 1" in content, (content, messages)
-    assert "revision: 1" in human_review.read_text(encoding="utf-8")
+    stage = parse_stage_map_entry(plan, "S01")
+    assert (stage.human_review_revision, stage.human_review_correction_source_revision) == (2, 1), (stage, messages)
+    assert parse_human_review(human_review).revision == 1
     system.assert_task_sequence(messages, [])
 print("human review revise E2E passed")

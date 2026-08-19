@@ -3,6 +3,7 @@
 import re
 
 from harness import SystemWorkspace
+from fixture_validation import parse_question_state
 
 
 with SystemWorkspace(expected_request="configurable-output-format") as system:
@@ -10,7 +11,8 @@ with SystemWorkspace(expected_request="configurable-output-format") as system:
     targets = list((system.workspace / "1_orchestrator").glob("*/questions.md"))
     assert len(targets) == 1, (targets, messages)
     content = targets[0].read_text(encoding="utf-8")
-    assert "status: pending" in content
+    questions = parse_question_state(targets[0])
+    assert questions.status == "pending" and questions.revision >= 1, questions
     assert "recommend" in content.casefold() or "рекоменд" in content.casefold(), content
     assert re.search(r"[А-Яа-яЁё]", content), content
     for english_label in ("Question", "Options", "Recommendation"):

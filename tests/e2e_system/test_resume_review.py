@@ -3,7 +3,7 @@
 import re
 
 from harness import SystemWorkspace, seed_plan, write_passed_stage
-from fixture_validation import assert_fixture_state
+from fixture_validation import PlanFrontmatter, parse_technical_review, parse_technical_stage, validate_fixture_state
 
 
 with SystemWorkspace(start_on_enter=False, expected_request="requested") as system:
@@ -18,14 +18,15 @@ with SystemWorkspace(start_on_enter=False, expected_request="requested") as syst
     review.unlink()
     stage = requested / "stages/01-value-contract.md"
     assert "Имена test cases" in stage.read_text(encoding="utf-8")
-    assert_fixture_state(plan, "planning", "S01", "S01", {"Status": "REVIEW", "Revision": "1"}, stage, {"revision": "1"})
+    validate_fixture_state(plan, "S01", stage, expected_plan=PlanFrontmatter("planning", "S01"), expected_stage_status="REVIEW", expected_artifact_status="REVIEW")
+    validate_fixture_state(decoy, "S01", expected_plan=PlanFrontmatter("planning", "S01"), expected_stage_status="PROPOSED")
     assert not review.exists(), review
     system.start()
     messages = system.run_transition("RESUME: 1_orchestrator/requested/plan.md")
     assert review.is_file(), (system.task_agents(messages), messages)
     review_content = review.read_text(encoding="utf-8")
-    assert "stage: S01" in review_content
-    assert "status: PASS" in review_content
+    review_state = parse_technical_review(review)
+    assert (review_state.stage_id, review_state.stage_revision, review_state.status) == ("S01", 1, "PASS"), review_state
     assert "## Findings\n- Нет." in review_content
     for check in ("Результат и границы", "Архитектурный подход", "Образцы и доказательства", "Обязательные контракты", "Риски и ограничения", "Бизнес-сценарии и валидации", "Проверяемость результата", "Уровень детализации"):
         assert f"- {check}: PASS" in review_content, review_content

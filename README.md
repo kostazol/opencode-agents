@@ -98,15 +98,22 @@ python3 -m py_compile opencode-agents.py tests/e2e_system/harness.py
 git diff --check
 ```
 
-System E2E читают реальную пользовательскую OpenCode-конфигурацию, но используют временные HOME, session DB, state, cache и product workspace. Micro-E2E отключают external plugins, чтобы plugin installation/cache не меняли рабочую среду:
+Live OpenCode workflow transition tests читают реальную пользовательскую OpenCode-конфигурацию, но используют временные HOME, session DB, state, cache и product workspace. Они отключают external plugins, чтобы plugin installation/cache не меняли рабочую среду:
 
 ```bash
 python3 tests/e2e_system/run_e2e.py
 python3 tests/e2e_system/run_e2e.py --filter test_resume_review.py
 python3 tests/e2e_system/run_e2e.py --continue-on-failure
+python3 tests/e2e_system/run_e2e.py --json-report /tmp/orchestrator-e2e-report.json
 ```
 
-Runner последовательно запускает каждый live E2E в отдельном process и показывает duration, aggregate status и путь к полному failure log. Отдельные scripts также можно запускать напрямую:
+Runner последовательно, без retries, запускает каждый live E2E в отдельном process и показывает duration, aggregate status и путь к полному failure log. Опциональный `--json-report PATH` атомарно записывает machine-readable JSON вне repository. Для каждого subprocess runner назначает уникальный внешний telemetry path и валидирует fixture без импорта live harness. Отсутствующая или malformed telemetry у passed test становится runner error; исходная ошибка failed test сохраняется, а telemetry error добавляется к ней. Runner error завершается с exit code `2`.
+
+Telemetry содержит `fixture_setup`, `environment_setup`, `process_startup_to_health`, `agent_inventory_loading`, `prompt_to_question`, `answer_to_idle`, `prompt_to_idle`, `subagent`, `polling`, `cleanup` и `total`; counts для `serve_startups`, sessions, primary executions и task attempts/successes/failures/incomplete; ordered successful agents. Primary execution — каждое продолжение `orchestrator-analyst`, инициированное initial prompt или native question reply: обычный prompt даёт `1`, question/answer step даёт `2`. `polling` измеряется внутри соответствующего prompt/answer wall time и не складывается с ним как отдельное общее время. Subagent duration берётся только из наблюдаемых целочисленных `ToolPart.state.time.start/end` в миллисекундах; missing, invalid или end-before-start отмечаются как unavailable без синтетического значения.
+
+JSON aggregate содержит total wall time, test status counts, суммы counters, ordered agents и для каждой duration число доступных и unavailable наблюдений, sum, median и p95. Median — стандартная медиана: среднее двух центральных значений для чётного количества. p95 — nearest-rank: значение с отсортированным индексом `ceil(0.95 * n)`, начиная с `1`; для пустого набора median и p95 равны `null`.
+
+Отдельные scripts также можно запускать напрямую:
 
 ```bash
 python3 tests/e2e_system/test_discovery_questions.py
@@ -135,7 +142,7 @@ python3 tests/e2e_system/test_reset_stage_reserved_revision.py
 python3 tests/e2e_system/test_human_review_mismatch_resume.py
 ```
 
-Каждый micro-E2E использует test-only checkpoint из harness и проверяет один переход. Вместе snapshots покрывают продолжение из каждого durable состояния.
+Каждый transition test использует test-only checkpoint из harness и проверяет один переход в изолированном subprocess со своим `SystemWorkspace`, OpenCode server, HOME, state, data, cache и product workspace. Вместе seeded snapshots покрывают продолжение из каждого durable состояния, но не доказывают uninterrupted production journey. Полный live suite предназначен для nightly/release и существенных prompt changes, а не как основной PR layer.
 
 ## Источники подхода
 
