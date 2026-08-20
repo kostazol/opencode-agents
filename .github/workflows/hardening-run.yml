@@ -1,0 +1,276 @@
+name: independent-6.0.1-hardening-run
+
+on:
+  push:
+    branches:
+      - agent/6.0.1-workbench-export
+    paths:
+      - "automation/**"
+      - ".github/workflows/hardening-run.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: opencode-agents-6.0.1-independent-hardening
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  prepare:
+    name: Create and push commits 2-7
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      sha7: ${{ steps.prepare.outputs.sha7 }}
+    steps:
+      - name: Checkout immutable automation source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: automation-source
+      - name: Checkout target branch at commit 1
+        uses: actions/checkout@v4
+        with:
+          ref: agent/6.0.1-independent-hardening
+          fetch-depth: 0
+          path: work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute red-to-green stages and push each commit
+        id: prepare
+        run: python automation-source/automation/run_prepare.py automation-source work "$RUNNER_TEMP/hardening-prepare"
+      - name: Upload preparation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-prepare
+          path: ${{ runner.temp }}/hardening-prepare
+          if-no-files-found: warn
+          retention-days: 30
+
+  matrix_code:
+    name: Code tree / ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha7 }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install exact dependency graph
+        run: npm ci
+      - name: Verify committed generated runtime
+        run: npm run check:generated
+      - name: Typecheck, build, and execute complete baseline
+        run: npm test
+      - name: Verify generated tree remains deterministic
+        run: npm run check:generated
+      - name: Reject runtime or lockfile drift
+        run: git diff --exit-code -- runtime package.json package-lock.json
+
+  docs:
+    name: Create and push commit 8
+    needs: [prepare, matrix_code]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      sha8: ${{ steps.docs.outputs.sha8 }}
+    steps:
+      - name: Checkout immutable automation source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: automation-source
+      - name: Checkout exact code tree
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha7 }}
+          fetch-depth: 0
+          path: work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: work/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: hardening-prepare
+          path: input
+      - name: Execute documentation red-to-green gate and push commit
+        id: docs
+        run: python automation-source/automation/run_docs.py automation-source work input/prepare.json "$RUNNER_TEMP/hardening-docs"
+      - name: Upload documentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-docs
+          path: ${{ runner.temp }}/hardening-docs
+          if-no-files-found: warn
+          retention-days: 30
+
+  matrix_candidate:
+    name: Release candidate / ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: docs
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.docs.outputs.sha8 }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - run: npm run check:generated
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run check:generated
+      - run: git diff --exit-code -- runtime package.json package-lock.json
+
+  release:
+    name: Create and push commit 9
+    needs: [prepare, docs, matrix_candidate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      sha9: ${{ steps.release.outputs.sha9 }}
+    steps:
+      - name: Checkout immutable automation source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: automation-source
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.docs.outputs.sha8 }}
+          fetch-depth: 0
+          path: work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: work/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: hardening-docs
+          path: input
+      - name: Execute final local gates and push release commit
+        id: release
+        run: python automation-source/automation/run_release.py automation-source work input/docs.json "$RUNNER_TEMP/hardening-release"
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-release
+          path: ${{ runner.temp }}/hardening-release
+          if-no-files-found: warn
+          retention-days: 30
+
+  matrix_final:
+    name: Final tree / ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha9 }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - run: npm run check:generated
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run check:generated
+      - run: git diff --exit-code -- runtime package.json package-lock.json
+
+  publish:
+    name: Verify ZIP, publish artifact branch, and create draft PR
+    needs: [prepare, docs, release, matrix_final]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout immutable automation source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: automation-source
+      - name: Checkout exact final release tree
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha9 }}
+          fetch-depth: 0
+          path: work
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: hardening-release
+          path: input
+      - name: Create exact-tree ZIP, artifact commit, and draft PR
+        run: python automation-source/automation/run_publish.py automation-source work input/release.json "$RUNNER_TEMP/hardening-publication"
+      - name: Upload downloadable exact-tree package and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-agents-6.0.1-release
+          path: ${{ runner.temp }}/hardening-publication
+          if-no-files-found: warn
+          retention-days: 90
