@@ -22,26 +22,19 @@ Primary дополнительно доверяет native `question`, три co
 
 ## Что эта модель защищает
 
-- Не требуется хрупкий список разрешённых .NET, Python, Node, Git или Docker commands.
-- Локальный build/test/script evidence доступен агенту без постоянных approval prompts.
+- Локальный build/test/script evidence доступен без хрупкого command allowlist.
 - Неизвестная отдельная capability не получает silent access.
-- Machine state меняет только Python controller; prompts не записывают `state.json`, journal и transaction вручную.
+- Machine state меняет только TypeScript controller; prompts не записывают state/journal/transaction вручную.
 - Request ID и canonical paths не позволяют выбрать соседний workflow target.
 - Optimistic revision, lock, atomic transaction и idempotency уменьшают риск concurrent/double advance.
-- Reviewer не передаёт доверенный hash: runtime читает реальные repository-relative evidence paths и вычисляет digest самостоятельно.
+- Reviewer не передаёт доверенный hash: controller читает реальные repository-relative evidence files.
+- Custom tool не запускает Python или shell subprocess.
 
 ## Что эта модель не защищает
 
 `bash: allow` и `edit: allow` доверены целиком. Fallback `* → ask` не анализирует семантику команды внутри shell и не является sandbox.
 
-Перед действием, способным:
-
-- изменить состояние за пределами disposable checkout;
-- затронуть remote/shared infrastructure;
-- опубликовать или удалить данные;
-- передать наружу private source, logs, customer data, secrets или credentials;
-
-агент обязан получить явное согласие пользователя. Реальная enforcement boundary для untrusted/confidential code должна находиться в окружении.
+Перед действием, способным изменить remote/shared state, выйти за disposable checkout, опубликовать/удалить данные или передать private source/logs/customer data/secrets, требуется явное согласие пользователя. Для untrusted/confidential code реальная enforcement boundary должна находиться в окружении.
 
 ## Рекомендуемое окружение
 
@@ -49,7 +42,7 @@ Primary дополнительно доверяет native `question`, три co
 
 - чистый disposable clone/worktree;
 - отсутствие production credentials;
-- ограниченный набор подключённых mutating integrations;
+- ограниченный набор mutating integrations;
 - финальная проверка `git status`/diff;
 - удаление checkout после результата.
 
@@ -60,28 +53,16 @@ Primary дополнительно доверяет native `question`, три co
 - ограниченный network egress;
 - минимальные scoped credentials;
 - CPU/memory/process/time limits;
-- отдельная policy для mutating MCP и cloud/database tools.
+- отдельная policy для mutating MCP/cloud/database tools.
 
-OpenCode `--auto` может автоматически подтверждать `ask`; его следует использовать только когда внешние ограничения уже обеспечены окружением.
+OpenCode `--auto` допустим только когда внешние ограничения уже обеспечены окружением.
 
 ## Durable workflow data
 
-Workflow хранит данные только в `1_orchestrator/<request>/`. `.orchestrator/state.json` и journal могут содержать названия внутренних contracts и путей, поэтому не следует автоматически публиковать target artifacts из private repositories.
+Workflow хранит данные в `1_orchestrator/<request>/`. State, journal и semantic artifacts могут содержать внутренние identifiers и paths, поэтому их не следует автоматически публиковать из private repositories.
 
-`context7_*` используется только для публичных package identifiers, версий и API-вопросов. Private symbols, source fragments, credentials, environment values и proprietary logs туда не передаются.
+`context7_*` используется только для публичных package identifiers, версий и API-вопросов. Private symbols, source fragments, credentials и proprietary logs туда не передаются.
 
 ## Проверки
 
-Static и deterministic tests проверяют:
-
-- capability-first frontmatter;
-- unknown-tool fallback;
-- controller ownership machine state;
-- canonical paths и request containment;
-- strict JSON parsing;
-- state revisions, locking, idempotency и recovery;
-- фактическое hashing evidence;
-- bounded no-progress handling;
-- controlled reopening.
-
-Live permission, provider и full-journey assertions требуют конкретного установленного OpenCode и не считаются доказанными только static tests.
+Deterministic tests покрывают protocol/traceability, routing, revisions, idempotency, evidence hashing, convergence, reopening, locking, store persistence и recovery. Live provider и permission behavior требуют конкретного OpenCode runtime и не считаются доказанными только static tests.

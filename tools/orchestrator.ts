@@ -1,52 +1,39 @@
-import { spawn } from "node:child_process"
-import { fileURLToPath } from "node:url"
 import { tool, type ToolContext } from "@opencode-ai/plugin"
+import { ProtocolError, WorkflowStore, parseJsonStrict, type EventInput } from "../runtime/orchestrator.js"
 
 const requestSchema = tool.schema.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9-]{0,79}$/)
 const revisionSchema = tool.schema.number().int().nonnegative().optional()
-const runtime = fileURLToPath(new URL("../runtime/orchestrator.py", import.meta.url))
 
-function pythonCommand(): string {
-  return process.env.OPENCODE_AGENTS_PYTHON ?? (process.platform === "win32" ? "python" : "python3")
+function response(value: unknown): string {
+  return JSON.stringify(value, null, 2)
 }
 
-async function invoke(
-  operation: "next" | "apply" | "validate",
-  request: string,
-  input: Record<string, unknown>,
-  context: ToolContext,
-): Promise<string> {
-  return await new Promise((resolve) => {
-    const child = spawn(
-      pythonCommand(),
-      [runtime, operation, "--directory", context.directory, "--request", request],
-      { cwd: context.directory, shell: false, stdio: ["pipe", "pipe", "pipe"] },
-    )
-    const output: Buffer[] = []
-    const errors: Buffer[] = []
-    child.stdout.on("data", (chunk) => output.push(Buffer.from(chunk)))
-    child.stderr.on("data", (chunk) => errors.push(Buffer.from(chunk)))
-    const abort = () => child.kill()
-    context.abort.addEventListener("abort", abort, { once: true })
-    child.on("error", (error) => resolve(JSON.stringify({ ok: false, error: { type: "runtime", message: error.message } }, null, 2)))
-    child.on("close", () => {
-      context.abort.removeEventListener("abort", abort)
-      const text = Buffer.concat(output).toString("utf8").trim()
-      if (text) return resolve(text)
-      resolve(JSON.stringify({ ok: false, error: { type: "runtime", message: Buffer.concat(errors).toString("utf8").trim() || "Python controller produced no output" } }, null, 2))
-    })
-    child.stdin.end(JSON.stringify(input))
-  })
+function failure(error: unknown): string {
+  if (error instanceof ProtocolError) {
+    return response({ ok: false, error: { type: "protocol", field: error.field, message: error.message, value: error.value } })
+  }
+  return response({ ok: false, error: { type: "runtime", message: error instanceof Error ? error.message : String(error) } })
+}
+
+async function withStore<T>(request: string, context: ToolContext, operation: (store: WorkflowStore) => Promise<T>): Promise<string> {
+  try {
+    return response({ ok: true, ...(await operation(new WorkflowStore(context.directory, request)) as object) })
+  } catch (error) {
+    return failure(error)
+  }
 }
 
 export const next = tool({
-  description: "Reserve and return the single deterministic next planning action.",
+  description: "Reserve and return the single deterministic next technical-analysis action.",
   args: { request: requestSchema, expected_state_revision: revisionSchema },
-  execute: (args, context) => invoke("next", args.request, { expected_state_revision: args.expected_state_revision }, context),
+  execute: (args: { request: string; expected_state_revision?: number }, context: ToolContext) => withStore(args.request, context, async (store) => {
+    const { state, action } = await store.reserve(args.expected_state_revision)
+    return { state_revision: state.state_revision, status: state.status, action }
+  }),
 })
 
 export const apply = tool({
-  description: "Apply one typed result or user decision to the pending planning transition.",
+  description: "Apply one typed agent result or user decision to the pending technical-analysis transition.",
   args: {
     request: requestSchema,
     transition_id: tool.schema.string().min(1),
@@ -54,24 +41,22 @@ export const apply = tool({
     payload_json: tool.schema.string().min(2),
     expected_state_revision: revisionSchema,
   },
-  execute(args, context) {
+  execute: (args: { request: string; transition_id: string; event_type: string; payload_json: string; expected_state_revision?: number }, context: ToolContext) => withStore(args.request, context, async (store) => {
     let payload: unknown
     try {
-      payload = JSON.parse(args.payload_json)
+      payload = parseJsonStrict(args.payload_json)
     } catch (error) {
-      return Promise.resolve(JSON.stringify({ ok: false, error: { type: "protocol", field: "payload_json", message: error instanceof Error ? error.message : String(error) } }, null, 2))
+      throw new ProtocolError("payload_json", "invalid JSON", error instanceof Error ? error.message : String(error))
     }
-    return invoke("apply", args.request, {
-      transition_id: args.transition_id,
-      event_type: args.event_type,
-      payload,
-      expected_state_revision: args.expected_state_revision,
-    }, context)
-  },
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new ProtocolError("payload_json", "root must be an object")
+    const event: EventInput = { transition_id: args.transition_id, type: args.event_type, payload: payload as Record<string, unknown> }
+    const { state, result } = await store.apply(event, args.expected_state_revision)
+    return { state_revision: state.state_revision, status: state.status, result }
+  }),
 })
 
 export const validate = tool({
-  description: "Validate durable planning state and artifacts without advancing the workflow.",
+  description: "Validate technical-analysis state and artifacts without advancing the workflow.",
   args: { request: requestSchema },
-  execute: (args, context) => invoke("validate", args.request, {}, context),
+  execute: (args: { request: string }, context: ToolContext) => withStore(args.request, context, async (store) => ({ validation: await store.validate() })),
 })

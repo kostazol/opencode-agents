@@ -26,3 +26,7 @@ tool-output/
 sessions/
 __pycache__/
 *.pyc
+node_modules/
+*.tsbuildinfo
+runtime/*.map
+coverage/

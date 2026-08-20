@@ -1,19 +1,21 @@
-# OpenCode Agents
+# OpenCode Agents 6.0
 
-Набор из четырёх OpenCode-агентов для технического анализа сложных изменений. Цель — не заменить разработчика и не генерировать объёмный документ ради документа, а раскопать фактические зависимости репозитория, проверить скрытые contracts и NFR, затем выдать реализационный план, по которому senior-разработчику не придётся повторять всё исследование.
+Набор из четырёх planning-only агентов и нативного TypeScript controller для OpenCode. Он предназначен для сложных изменений в незнакомом репозитории: исследует фактические связи, находит скрытые contracts и NFR, задаёт только material questions и выпускает проверенный реализационный план.
+
+Это не исполнитель продукта и не генератор большого документа ради документа. Результат workflow — план, достаточный для реализации без повторного исследования senior-разработчиком.
 
 ## Состав
 
-- `orchestrator-analyst` — единственный primary; общается с пользователем и исполняет action детерминированного controller.
+- `orchestrator-analyst` — единственный primary; общается с пользователем и исполняет controller-selected actions.
 - `orchestrator-discovery` — исследует код, Git history, tests, configuration, schemas, integrations и operations.
 - `orchestrator-stage-planner` — детализирует один технический этап или его понятную пользователю версию.
 - `orchestrator-stage-reviewer` — независимо проверяет discovery, технический этап и human-review artifact.
+- `tools/orchestrator.ts` — нативно экспортирует `orchestrator_next`, `orchestrator_apply` и `orchestrator_validate`.
+- `src/*.ts` — единственный production source of truth для workflow-механики; `runtime/orchestrator.js` — generated public entrypoint.
 
-Product implementation не является результатом workflow. Агенты могут временно менять код для проверки гипотезы в disposable checkout, запускать build/tests/scripts и изучать локальные logs.
+Python используется только одноразовым installer и внешним E2E harness; controller не запускает Python subprocess.
 
-## Архитектура 6.0
-
-Механика workflow вынесена из prompt в один Python runtime с тонким native TypeScript adapter:
+## Архитектура
 
 ```text
 OpenCode
@@ -21,26 +23,45 @@ OpenCode
        ├─ orchestrator_next
        ├─ orchestrator_apply
        └─ orchestrator_validate
-            ├─ tools/orchestrator.ts
-            └─ runtime/orchestrator.py + runtime/orchestrator_core/
+            └─ runtime/orchestrator.js + compiled modules
+                 ├─ protocol + traceability
+                 ├─ deterministic next/apply reducer
+                 ├─ revisions + idempotency
+                 ├─ convergence + reopening
+                 └─ atomic store + journal + recovery
 ```
 
-Python является единственным production controller; TypeScript-файл в `tools/` только передаёт typed вызов без shell interpolation. Python также используется installer и black-box E2E harness.
+LLM выполняет смысловую работу. Controller выполняет только механику, которую модель не должна вспоминать заново в каждом turn.
 
-Controller отвечает за:
+Primary loop:
 
-- versioned `analysis.json` и state;
-- traceability `REQ/NFR → stage → SCN → AC`;
-- producer/consumer contracts;
-- выбор одного следующего action;
-- monotonic revisions и optimistic concurrency;
-- idempotent event replay;
-- atomic state/plan transaction, request lock и crash recovery;
-- bounded convergence по реальному содержимому evidence-файлов;
-- controlled reopening минимального affected subgraph;
-- generated `plan.md` и append-only journal.
+```text
+orchestrator_validate
+  → orchestrator_next
+  → semantic subagent или user decision
+  → orchestrator_apply
+  → repeat
+```
 
-Агенты отвечают только за смысловую работу: исследование, проектирование, вопросы и независимый review.
+## Что проверяет discovery
+
+`analysis.json` использует стабильные IDs:
+
+- `REQ-NNN` — функциональное требование;
+- `NFR-NNN` — quality constraint;
+- `DEC-NNN` — решение;
+- `CON-NNN` — material producer/consumer contract;
+- `AC-NNN` — observable acceptance;
+- `SCN-NNN` — обязательный сценарий;
+- `SNN` — coherent implementation stage.
+
+Validator требует полный путь:
+
+```text
+REQ/NFR → owning stage → reciprocal scenario → acceptance
+```
+
+Для contracts проверяются producer, consumers, reciprocal stage declarations и dependency order. Change surfaces требуют явной проверки применимых NFR; важную категорию нельзя молча пропустить.
 
 ## Workflow
 
@@ -56,17 +77,7 @@ discovery
   → READY
 ```
 
-Один pending transition существует одновременно. Primary использует только цикл:
-
-```text
-orchestrator_validate
-  → orchestrator_next
-  → semantic agent или user decision
-  → orchestrator_apply
-  → repeat
-```
-
-`PASS` означает достаточность плана, а не наличие реализованного продукта.
+`PASS` означает достаточность плана будущей реализации, а не наличие реализованного продукта.
 
 ## Durable artifacts
 
@@ -90,25 +101,28 @@ orchestrator_validate
     └── transaction.json
 ```
 
-`plan.md` — generated читаемый индекс. Источником истины для routing является `.orchestrator/state.json`; semantic evidence хранится в остальных artifacts.
+`plan.md` генерируется controller и служит читаемым индексом. Authoritative routing state находится в `.orchestrator/state.json`.
 
-## Полнота анализа
+## Устойчивость
 
-`analysis.json` использует стабильные IDs:
+Controller обеспечивает:
 
-- `REQ-NNN` — functional/business requirement;
-- `NFR-NNN` — quality constraint;
-- `DEC-NNN` — принятое решение;
-- `CON-NNN` — material contract;
-- `AC-NNN` — observable acceptance;
-- `SCN-NNN` — обязательный сценарий;
-- `SNN` — coherent implementation stage.
-
-Validator отклоняет orphan requirements, неверных owners, односторонние scenario links, contract без producer/consumer, consumer без dependency на producer и пропущенную NFR applicability, вытекающую из change surfaces.
+- schema-versioned analysis и state;
+- strict artifact identity и canonical paths;
+- один pending transition;
+- monotonic state/stage/human-review revisions;
+- optimistic concurrency;
+- idempotent replay и conflicting-replay rejection;
+- request lock;
+- atomic state/plan transaction;
+- crash recovery и append-only journal;
+- bounded `REVISE` convergence по реальному содержимому evidence-файлов;
+- controlled reopening минимального dependency/contract subgraph;
+- strict legacy `plan.md` migration.
 
 ## Permissions
 
-Default profile предназначен для доверенного repository в чистом disposable checkout:
+Default profile предназначен для доверенного репозитория в чистом disposable checkout:
 
 ```yaml
 permission:
@@ -124,18 +138,11 @@ permission:
   "context7_*": allow
 ```
 
-Поиск, build, tests, Git diagnostics, .NET/Python/Node scripts и другие локальные доказательства не требуют command-by-command allowlist. Всё неизвестное наследует `ask`. `bash: allow` не является sandbox: remote/shared mutation, выход за checkout и раскрытие непубличных данных требуют отдельного согласия и безопасного окружения. Подробнее: [SECURITY.md](SECURITY.md).
+Агент может запускать пропорциональные build/tests/scripts и временно менять checkout для проверки гипотезы. Неизвестные отдельные capabilities наследуют `ask`. `bash: allow` не является sandbox; подробности — в [SECURITY.md](SECURITY.md).
 
 ## Установка
 
-Из опубликованного release/ref:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py \
-  | python3 - install --repository kostazol/opencode-agents --ref <release-tag-or-commit>
-```
-
-Локальная установка из checkout:
+Локально из checkout:
 
 ```bash
 python3 opencode-agents.py install --source .
@@ -143,38 +150,33 @@ python3 opencode-agents.py status --source .
 python3 opencode-agents.py update --source .
 ```
 
+Из конкретного опубликованного commit/tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py \
+  | python3 - install --repository kostazol/opencode-agents --ref <commit-or-tag>
+```
+
 Installer копирует:
 
 ```text
 agents/*.md
-runtime/orchestrator.py
-runtime/orchestrator_core/*.py
 tools/*.ts
+runtime/**/*.js
 ```
 
 После install/update полностью перезапустите OpenCode.
 
-## Разработка и проверки
+## Разработка
 
-Production runtime написан на Python 3.11+; OpenCode вызывает его через один тонкий TypeScript custom tool по JSON stdin/stdout protocol без shell interpolation.
+Production controller написан на Node-compatible TypeScript и не использует Bun-only APIs.
 
 ```bash
-npm install
-npm run build
-npm run test:ts
-python3 tests/test-cli.py
-python3 tests/test-routing.py
-python3 tests/test-security.py
-python3 tests/run_fast.py
+npm test
+python3 -m py_compile opencode-agents.py
+python3 tests/test_cli.py
+python3 tests/test_routing.py
 bash tests/test-cli.sh
 ```
 
-`npm run test:ts` проверяет protocol, traceability, routing, idempotency, revisions, convergence, reopening, store/recovery и реальный импорт/вызов custom-tool module через stub контракта `@opencode-ai/plugin`.
-
-Live OpenCode scenarios запускаются отдельно, потому что требуют установленный `opencode`, пользовательскую авторизацию и provider access:
-
-```bash
-python3 tests/e2e_system/run_e2e.py
-```
-
-Отсутствие runtime/provider должно отмечаться как environment-blocked, а не подменяться утверждением об успешном live journey.
+`npm test` выполняет TypeScript build, typecheck custom tool и deterministic runtime tests. Live provider journey запускается отдельно через E2E harness, потому что требует установленный OpenCode, пользовательскую авторизацию и provider quota.

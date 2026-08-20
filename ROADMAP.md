@@ -1,41 +1,62 @@
-# Roadmap 6.0 — stable Python planning orchestrator
+# Roadmap 6.0 — stable TypeScript planning orchestrator
 
 ## Статус
 
-**DONE.** Этот commit фиксирует завершённую Python-реализацию перед переходом production runtime на TypeScript.
+**DONE.** Все запланированные production-фазы реализованы. Предыдущий Python controller сохранён отдельным родительским commit как проверяемый промежуточный снимок; текущий commit заменяет его одним Node-compatible TypeScript runtime, разделённым на небольшие source modules без дублирования state machine.
 
-## Реализовано
+## Цель
 
-- versioned `analysis.json` protocol с `REQ/NFR/DEC/CON/AC/SCN`;
-- reciprocal traceability и producer/consumer dependency validation;
-- pure next/apply controller, monotonic revisions и one-pending-action invariant;
-- expected revision checks и idempotent transition replay;
-- atomic state/plan transaction, request lock, journal и crash recovery;
-- bounded convergence по structured findings;
-- controlled reopening минимального dependency/contract subgraph;
-- strict legacy `plan.md` migration;
-- `orchestrator_next`, `orchestrator_apply`, `orchestrator_validate`;
-- controller-driven prompts и capability-first permissions.
+Дать OpenCode практическую замену техническому аналитику для сложных изменений: глубоко исследовать репозиторий, обнаруживать скрытые зависимости и NFR, задавать только material questions и выпускать план, пригодный для реализации без повторного исследования.
 
-## Архитектура
+## Архитектурный итог
 
 ```text
-OpenCode custom tool (TypeScript adapter)
-  -> JSON stdin/stdout, argv without shell interpolation
-Python 3.11+ controller
-  -> state.json / journal.jsonl / generated plan.md
+OpenCode native custom tools
+  → TypeScript controller
+  → state.json / journal.jsonl / generated plan.md
 ```
 
-TypeScript adapter не вычисляет routing, revisions, convergence или reopening. Единственный production source of workflow mechanics находится в Python package.
+Модель отвечает за semantic reasoning. Controller отвечает за deterministic mechanics. Параллельной Python state machine нет.
 
-## Release gates
+## Реализованные этапы
 
-- protocol, routing, convergence, reopening and store tests;
-- installer install/update/status tests;
-- adapter contract and safe process invocation;
-- prompt contract checks;
-- clean install containing agents, tools and Python runtime.
+### 0. Regression baseline — DONE
 
-## Следующий changeset
+Сохранены installer contracts, prompt/static checks и изолированный OpenCode E2E harness.
 
-Перенести единственный production controller в Node-compatible TypeScript без изменения durable protocol и semantic agent contracts. После parity удалить Python production package, сохранив Python только для installer и black-box E2E harness.
+### 1. Capability-first execution — DONE
+
+Доверены универсальные local capabilities; всё неизвестное наследует `ask`. Planning выполняется в disposable checkout и может использовать build/tests/scripts без command-by-command каталога.
+
+### 2. Versioned protocol и traceability — DONE
+
+Реализован strict `analysis.json` с `REQ/NFR/DEC/CON/AC/SCN`, reciprocal links, stage ownership, producer/consumer validation и change-surface-driven NFR applicability.
+
+### 3. Transition core и durable store — DONE
+
+Реализованы pure next/apply reducer, one-pending-action invariant, monotonic revisions, optimistic concurrency, idempotency, lock, atomic transaction, journal и crash recovery.
+
+### 4. Convergence и controlled reopening — DONE
+
+Повторяющиеся unchanged findings ограничены; evidence digest считается controller по реальным файлам. Upstream defect переоткрывает только минимальный dependency/contract subgraph.
+
+### 5. Native OpenCode adapter — DONE
+
+Один `tools/orchestrator.ts` экспортирует `next`, `apply`, `validate` и напрямую вызывает TypeScript runtime без subprocess или shell interpolation.
+
+### 6. Prompt integration — DONE
+
+Primary сведён к controller loop. Discovery формирует machine-readable analysis; planner работает с одним stage; reviewer независимо проверяет discovery, technical и human-review modes.
+
+### 7. Release verification — DONE
+
+Есть TypeScript build/typecheck, deterministic runtime tests, installer install/status/update checks, prompt contracts и downloadable source archive. Provider-dependent E2E остаётся отдельным environment-dependent release check.
+
+## Definition of Done
+
+- TypeScript — единственный production workflow runtime.
+- Legacy state либо мигрируется строго, либо отклоняется с actionable diagnostic.
+- Primary не вычисляет routing и revisions вручную.
+- Нет silent stale acceptance, double advance, unbounded `REVISE` или полного reset при локальном upstream defect.
+- `VERSION`, package, installer, prompts, docs и generated runtime согласованы.
+- Финальный ZIP строится из того же дерева, которое опубликовано в GitHub.

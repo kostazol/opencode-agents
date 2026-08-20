@@ -2,27 +2,30 @@
 
 ## Product contract
 
-Репозиторий поставляет четыре planning-only OpenCode agents и один Python controller с thin TypeScript adapter:
+Репозиторий поставляет четыре planning-only OpenCode agents и один нативный TypeScript controller:
 
 - `orchestrator-analyst` — sole primary и клиент controller loop;
 - `orchestrator-discovery` — repository evidence, traceability, material questions и stage map;
 - `orchestrator-stage-planner` — один technical/human-review stage;
 - `orchestrator-stage-reviewer` — independent discovery/stage/human-review gate;
-- `runtime/orchestrator_core/` — единственный production source of workflow mechanics; `tools/orchestrator.ts` только adapter.
+- `src/*.ts` — единственный production source of workflow mechanics;
+- `runtime/*.js` — compiled installable modules;
+- `tools/orchestrator.ts` — thin native OpenCode adapter.
 
-Python является production controller; TypeScript adapter не содержит второй state machine.
+Python не является production controller. Он остаётся только у installer и black-box E2E harness.
 
 ## Architecture rules
 
 1. Prompts не вычисляют routing, revisions, convergence или reopening closure.
-2. Custom tools остаются тонкими wrappers над одним runtime; не добавляйте вторую state machine в `tools/`.
+2. `tools/orchestrator.ts` остаётся тонким adapter; не добавляйте вторую state machine.
 3. `plan.md` генерируется controller и не является authoritative machine state.
 4. Semantic agents пишут только controller-selected output и возвращают typed payload.
 5. Каждый material REQ/NFR связан с owning stage, reciprocal scenario и acceptance.
 6. Каждый internal contract имеет producer; каждый non-terminal contract имеет consumer и dependency path.
 7. Convergence использует содержимое существующих evidence paths, а не hash от модели.
-8. Reopening затрагивает минимальный transitive dependency/contract subgraph и требует user approval для уже принятого upstream defect.
-9. Не добавляйте artifact/status/tool, если существующий typed contract выражает тот же инвариант.
+8. Reopening затрагивает минимальный transitive dependency/contract subgraph.
+9. Не добавляйте artifact/status/tool, когда существующий typed contract выражает тот же инвариант.
+10. Используйте Node-compatible standard APIs; Bun-only APIs в controller не допускаются.
 
 ## Durable artifacts
 
@@ -42,7 +45,7 @@ Python является production controller; TypeScript adapter не соде�
 
 ## Permission profile
 
-Сохраняйте компактную capability-first policy:
+Сохраняйте compact capability-first policy:
 
 ```yaml
 "*": ask
@@ -57,44 +60,42 @@ todowrite: allow
 "context7_*": allow
 ```
 
-Не возвращайте command/path catalogs в frontmatter. `bash` — доверенная whole-tool capability и не sandbox; remote/shared effects контролируются user approval и окружением.
+Не возвращайте command/path catalogs. `bash` — доверенная whole-tool capability, а не sandbox; remote/shared effects контролируются user approval и окружением.
 
 ## Source and release layout
 
-- `orchestrator_core/` — authoritative Python source for repository tests.
-- `runtime/orchestrator_core/` — installable copy of the same package.
-- `runtime/orchestrator.py` — JSON CLI entrypoint used by the adapter.
-- `tools/orchestrator.ts` — exports `next`, `apply`, `validate`; OpenCode exposes them as `orchestrator_next`, `orchestrator_apply`, `orchestrator_validate`.
-- `opencode-agents.py` installs `agents/*.md`, `tools/*.ts`, `runtime/**/*.py` plus managed AGENTS guidance.
+- `src/*.ts` — authoritative TypeScript source modules; `src/orchestrator.ts` is the public barrel.
+- `runtime/*.js` и `.d.ts` — generated release modules; `runtime/orchestrator.js` is the public entrypoint.
+- `tools/orchestrator.ts` — exports `next`, `apply`, `validate`; OpenCode exposes them как `orchestrator_next`, `orchestrator_apply`, `orchestrator_validate`.
+- `opencode-agents.py` installs agents, tools и runtime.
+- `tests-ts/` — deterministic controller tests.
+- `tests/e2e_system/` — black-box OpenCode harness.
 
-Generated runtime must be rebuilt before commit and match source exactly.
+Generated runtime должен быть rebuilt перед commit и совпадать с source.
 
 ## Change process
 
-1. Read README, SECURITY, ROADMAP and all affected producers/consumers.
-2. Change pure runtime before tools/prompts when semantics change.
-3. Add deterministic tests for every new legal/illegal transition and migration.
-4. Keep `agents/orchestrator-*.md` and `docs/orchestrator-*.md` byte-identical.
-5. Preserve unknown/customized installed files during update.
-6. For a release update `VERSION`, installer version, every agent marker, package version and CHANGELOG together.
-7. Do not announce release completion before fresh install/status and archive verification.
+1. Прочитайте README, SECURITY, ROADMAP и всех affected producers/consumers.
+2. Меняйте pure controller до tools/prompts, когда изменяется семантика.
+3. Добавляйте deterministic tests для каждого legal/illegal transition и migration.
+4. Держите `agents/orchestrator-*.md` и `docs/orchestrator-*.md` byte-identical.
+5. Сохраняйте unknown/customized installed files при update.
+6. Для release обновляйте `VERSION`, package version, installer version, agent markers и CHANGELOG вместе.
+7. Не объявляйте release завершённым до fresh install/status и archive verification.
 
 ## Required checks
 
 ```bash
-npm install
-npm run test:ts
-python3 tests/test-cli.py
-python3 tests/test-routing.py
-python3 tests/test-security.py
-python3 tests/run_fast.py
+npm test
+python3 -m py_compile opencode-agents.py
+python3 tests/test_cli.py
+python3 tests/test_routing.py
 bash tests/test-cli.sh
-python3 -m py_compile opencode-agents.py tests/e2e_system/harness.py tests/e2e_system/run_e2e.py
 git diff --check
 ```
 
-Run `opencode debug config` and live E2E when binary/auth/provider are available. Otherwise record the exact environment blocker; do not claim a live provider journey.
+Run `opencode debug config` и live E2E, когда binary/auth/provider доступны. Иначе укажите точный environment blocker; не выдавайте static tests за live provider journey.
 
 ## Repository exclusions
 
-Do not commit credentials, provider auth, session databases, MCP tokens, `.env`, user source, generated target-repository `1_orchestrator/`, `.tmp`, `node_modules`, logs or test workspaces.
+Не коммитьте credentials, provider auth, session databases, MCP tokens, `.env`, пользовательский source, generated target-repository `1_orchestrator/`, `.tmp`, `node_modules`, logs или test workspaces.

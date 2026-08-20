@@ -132,5 +132,5 @@ revision: <action revision>
 или
 
 ```json
-{"revision":1,"status":"BLOCKED","detail":"точная причина и требзуемое действие","retryable":true}
+{"revision":1,"status":"BLOCKED","detail":"точная причина и требуемое действие","retryable":true}
 ```
