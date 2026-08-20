@@ -1,154 +1,180 @@
 # OpenCode Agents
 
-Минимальный planning workflow для OpenCode. Один primary управляет тремя fresh subagents, а состояние хранится в читаемых Markdown-артефактах.
+Набор из четырёх OpenCode-агентов для технического анализа сложных изменений. Цель — не заменить разработчика и не генерировать объёмный документ ради документа, а раскопать фактические зависимости репозитория, проверить скрытые contracts и NFR, затем выдать реализационный план, по которому senior-разработчику не придётся повторять всё исследование.
 
-## Агенты
+## Состав
 
-- `orchestrator-analyst` — primary, вопросы, approval, routing и resume.
-- `orchestrator-discovery` — repository evidence, material questions и оглавление этапов.
-- `orchestrator-stage-planner` — компактный архитектурный план одного этапа с образцами, рисками и проверяемым результатом.
-- `orchestrator-stage-reviewer` — fresh review одного этапа.
+- `orchestrator-analyst` — единственный primary; общается с пользователем и исполняет action детерминированного controller.
+- `orchestrator-discovery` — исследует код, Git history, tests, configuration, schemas, integrations и operations.
+- `orchestrator-stage-planner` — детализирует один технический этап или его понятную пользователю версию.
+- `orchestrator-stage-reviewer` — независимо проверяет discovery, технический этап и human-review artifact.
 
-Все определения начинаются с `orchestrator-`. Workflow планирует работу и не реализует product changes.
+Product implementation не является результатом workflow. Агенты могут временно менять код для проверки гипотезы в disposable checkout, запускать build/tests/scripts и изучать локальные logs.
 
-## Поток
+## Архитектура 6.0
+
+Механика workflow вынесена из prompt в один Python runtime с тонким native TypeScript adapter:
+
+```text
+OpenCode
+  └─ tools/orchestrator.ts
+       ├─ orchestrator_next
+       ├─ orchestrator_apply
+       └─ orchestrator_validate
+            ├─ tools/orchestrator.ts
+            └─ runtime/orchestrator.py + runtime/orchestrator_core/
+```
+
+Python является единственным production controller; TypeScript-файл в `tools/` только передаёт typed вызов без shell interpolation. Python также используется installer и black-box E2E harness.
+
+Controller отвечает за:
+
+- versioned `analysis.json` и state;
+- traceability `REQ/NFR → stage → SCN → AC`;
+- producer/consumer contracts;
+- выбор одного следующего action;
+- monotonic revisions и optimistic concurrency;
+- idempotent event replay;
+- atomic state/plan transaction, request lock и crash recovery;
+- bounded convergence по реальному содержимому evidence-файлов;
+- controlled reopening минимального affected subgraph;
+- generated `plan.md` и append-only journal.
+
+Агенты отвечают только за смысловую работу: исследование, проектирование, вопросы и независимый review.
+
+## Workflow
 
 ```text
 discovery
-  -> questions when needed
-  -> approval of stage map
-  -> plan S01
-  -> review S01
-     -> revise S01 when needed
-     -> PASS
-  -> plan S02
-  -> review S02
-  -> ...
-  -> reviewed human-readable plans
-  -> APPROVE PLAN or feedback
-  -> READY
+  → independent discovery review
+  → user approval of reviewed stage map
+  → plan/review S01 until PASS
+  → plan/review S02 until PASS
+  → ...
+  → human-review plan/review for every stage
+  → APPROVE PLAN or feedback
+  → READY
 ```
 
-Одновременно активен один этап. Следующий этап начинается после `PASS` текущего.
+Один pending transition существует одновременно. Primary использует только цикл:
 
-Технический `PASS` подтверждает качество stage plan для будущей реализации. После `PASS` всех этапов workflow создаёт рядом с каждым stage file упрощённый `.human-review.md` на русском языке и отдельно проверяет его соответствие техническому плану. Документ рассчитан на человека, который знает продукт и предметную область поверхностно: без глубокой архитектуры, но с ясным итогом этапа, обычным сценарием работы, границами и вопросами для подтверждения.
+```text
+orchestrator_validate
+  → orchestrator_next
+  → semantic agent или user decision
+  → orchestrator_apply
+  → repeat
+```
 
-Вопросы, варианты, рекомендации, stage map, stage plans, reviews, assumptions, decisions и summaries пишутся по-русски. Protocol statuses, обязательные section headings, пути, команды и code identifiers сохраняются без перевода.
+`PASS` означает достаточность плана, а не наличие реализованного продукта.
 
-## Артефакты
+## Durable artifacts
 
 ```text
 1_orchestrator/<request>/
+├── plan.md
 ├── discovery.md
+├── analysis.json
 ├── questions.md
 ├── feedback.md
-├── plan.md
 ├── stages/
-│   ├── 01-<slug>.md
-│   ├── 01-<slug>.human-review.md
-│   └── 02-<slug>.md
-└── reviews/
-    ├── 01.md
-    ├── 01-human-review.md
-    └── 02.md
+│   ├── <NN>-<slug>.md
+│   └── <NN>-<slug>.human-review.md
+├── reviews/
+│   ├── discovery.md
+│   ├── <NN>.md
+│   └── <NN>-human-review.md
+└── .orchestrator/
+    ├── state.json
+    ├── journal.jsonl
+    └── transaction.json
 ```
 
-`plan.md` — оглавление и источник состояния. Он содержит outcome, решения, ordered stage map, dependencies, affected system areas, primary risks, consumed/produced contracts, revisions, statuses и ссылки на stage/review files.
+`plan.md` — generated читаемый индекс. Источником истины для routing является `.orchestrator/state.json`; semantic evidence хранится в остальных artifacts.
 
-`discovery.md` хранит evidence и assumptions. `questions.md` хранит текущий batch и ответы. Каждый stage file задаёт outcome, основную архитектуру, ближайшие образцы, обязательные ограничения и существенные риски. Для каждого обязательного бизнес-кейса и валидации он фиксирует вход или предусловия, действие, ожидаемый observable output, error, state или side effect, а также значимые значения или equivalence classes. Acceptance signals и способ проверки остаются явными. Имена и расположение тестов, fixtures, mocks, структура test framework, детали assertions и дополнительные найденные при реализации тесты остаются implementation agent. Каждый review file фиксирует gate текущей revision.
+## Полнота анализа
 
-## Запуск
+`analysis.json` использует стабильные IDs:
 
-Выберите `orchestrator-analyst` и отправьте запрос. Агент исследует repository, задаст только material вопросы и покажет оглавление. Для подтверждения отправьте:
+- `REQ-NNN` — functional/business requirement;
+- `NFR-NNN` — quality constraint;
+- `DEC-NNN` — принятое решение;
+- `CON-NNN` — material contract;
+- `AC-NNN` — observable acceptance;
+- `SCN-NNN` — обязательный сценарий;
+- `SNN` — coherent implementation stage.
 
-```text
-APPROVE
+Validator отклоняет orphan requirements, неверных owners, односторонние scenario links, contract без producer/consumer, consumer без dependency на producer и пропущенную NFR applicability, вытекающую из change surfaces.
+
+## Permissions
+
+Default profile предназначен для доверенного repository в чистом disposable checkout:
+
+```yaml
+permission:
+  "*": ask
+  read: allow
+  edit: allow
+  glob: allow
+  grep: allow
+  list: allow
+  lsp: allow
+  bash: allow
+  todowrite: allow
+  "context7_*": allow
 ```
 
-После первого approval этапы планируются и проверяются последовательно. Затем создаются понятные пользовательские версии всех этапов. Пользователь читает их и отправляет точное `APPROVE PLAN` либо замечания обычным текстом. Замечания сохраняются, исследуются и возвращают затронутые этапы в planning/review loop. `READY` появляется только после `APPROVE PLAN`.
-
-## Resume
-
-Workflow продолжает работу автоматически:
-
-```text
-RESUME: 1_orchestrator/<request>/plan.md
-```
-
-Любая новая session восстанавливает следующий шаг из exact `RESUME` artifact, а не из истории чата. `WORKFLOW_BASE` означает текущую рабочую директорию и не добавляется в путь буквальным сегментом. Однопереходные checkpoints существуют только внутри E2E harness и не входят в production prompt.
+Поиск, build, tests, Git diagnostics, .NET/Python/Node scripts и другие локальные доказательства не требуют command-by-command allowlist. Всё неизвестное наследует `ask`. `bash: allow` не является sandbox: remote/shared mutation, выход за checkout и раскрытие непубличных данных требуют отдельного согласия и безопасного окружения. Подробнее: [SECURITY.md](SECURITY.md).
 
 ## Установка
 
+Из опубликованного release/ref:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - install
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - update
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py | python3 - status
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py \
+  | python3 - install --repository kostazol/opencode-agents --ref <release-tag-or-commit>
 ```
 
-Update создаёт backup, удаляет известные неизменённые retired agents и сохраняет пользовательские изменения. После install/update полностью перезапустите OpenCode.
-
-## Проверки
-
-Быстрые проверки:
+Локальная установка из checkout:
 
 ```bash
+python3 opencode-agents.py install --source .
+python3 opencode-agents.py status --source .
+python3 opencode-agents.py update --source .
+```
+
+Installer копирует:
+
+```text
+agents/*.md
+runtime/orchestrator.py
+runtime/orchestrator_core/*.py
+tools/*.ts
+```
+
+После install/update полностью перезапустите OpenCode.
+
+## Разработка и проверки
+
+Production runtime написан на Python 3.11+; OpenCode вызывает его через один тонкий TypeScript custom tool по JSON stdin/stdout protocol без shell interpolation.
+
+```bash
+npm install
+npm run build
+npm run test:ts
 python3 tests/test-cli.py
 python3 tests/test-routing.py
-python3 -m py_compile opencode-agents.py tests/e2e_system/harness.py
-git diff --check
+python3 tests/test-security.py
+python3 tests/run_fast.py
+bash tests/test-cli.sh
 ```
 
-Live OpenCode workflow transition tests читают реальную пользовательскую OpenCode-конфигурацию, но используют временные HOME, session DB, state, cache и product workspace. Они отключают external plugins, чтобы plugin installation/cache не меняли рабочую среду:
+`npm run test:ts` проверяет protocol, traceability, routing, idempotency, revisions, convergence, reopening, store/recovery и реальный импорт/вызов custom-tool module через stub контракта `@opencode-ai/plugin`.
+
+Live OpenCode scenarios запускаются отдельно, потому что требуют установленный `opencode`, пользовательскую авторизацию и provider access:
 
 ```bash
 python3 tests/e2e_system/run_e2e.py
-python3 tests/e2e_system/run_e2e.py --filter test_resume_review.py
-python3 tests/e2e_system/run_e2e.py --continue-on-failure
-python3 tests/e2e_system/run_e2e.py --json-report /tmp/orchestrator-e2e-report.json
 ```
 
-Runner последовательно, без retries, запускает каждый live E2E в отдельном process и показывает duration, aggregate status и путь к полному failure log. Опциональный `--json-report PATH` атомарно записывает machine-readable JSON вне repository. Для каждого subprocess runner назначает уникальный внешний telemetry path и валидирует fixture без импорта live harness. Отсутствующая или malformed telemetry у passed test становится runner error; исходная ошибка failed test сохраняется, а telemetry error добавляется к ней. Runner error завершается с exit code `2`.
-
-Telemetry содержит `fixture_setup`, `environment_setup`, `process_startup_to_health`, `agent_inventory_loading`, `prompt_to_question`, `answer_to_idle`, `prompt_to_idle`, `subagent`, `polling`, `cleanup` и `total`; counts для `serve_startups`, sessions, primary executions и task attempts/successes/failures/incomplete; ordered successful agents. Primary execution — каждое продолжение `orchestrator-analyst`, инициированное initial prompt или native question reply: обычный prompt даёт `1`, question/answer step даёт `2`. `polling` измеряется внутри соответствующего prompt/answer wall time и не складывается с ним как отдельное общее время. Subagent duration берётся только из наблюдаемых целочисленных `ToolPart.state.time.start/end` в миллисекундах; missing, invalid или end-before-start отмечаются как unavailable без синтетического значения.
-
-JSON aggregate содержит total wall time, test status counts, суммы counters, ordered agents и для каждой duration число доступных и unavailable наблюдений, sum, median и p95. Median — стандартная медиана: среднее двух центральных значений для чётного количества. p95 — nearest-rank: значение с отсортированным индексом `ceil(0.95 * n)`, начиная с `1`; для пустого набора median и p95 равны `null`.
-
-Отдельные scripts также можно запускать напрямую:
-
-```bash
-python3 tests/e2e_system/test_discovery_questions.py
-python3 tests/e2e_system/test_question_answers.py
-python3 tests/e2e_system/test_approval.py
-python3 tests/e2e_system/test_first_stage.py
-python3 tests/e2e_system/test_next_stage.py
-python3 tests/e2e_system/test_resume_review.py
-python3 tests/e2e_system/test_missing_scenario_expectation.py
-python3 tests/e2e_system/test_revise_stage.py
-python3 tests/e2e_system/test_plan_revision.py
-python3 tests/e2e_system/test_reconcile_stage.py
-python3 tests/e2e_system/test_map_change_approval.py
-python3 tests/e2e_system/test_revision_resume.py
-python3 tests/e2e_system/test_revision_four.py
-python3 tests/e2e_system/test_run_revise_continues.py
-python3 tests/e2e_system/test_complete.py
-python3 tests/e2e_system/test_human_review_creation.py
-python3 tests/e2e_system/test_human_review_gate.py
-python3 tests/e2e_system/test_human_review_revise.py
-python3 tests/e2e_system/test_plan_approval.py
-python3 tests/e2e_system/test_plan_feedback.py
-python3 tests/e2e_system/test_plan_feedback_resume.py
-python3 tests/e2e_system/test_legacy_human_review_migration.py
-python3 tests/e2e_system/test_reset_stage_reserved_revision.py
-python3 tests/e2e_system/test_human_review_mismatch_resume.py
-```
-
-Каждый transition test использует test-only checkpoint из harness и проверяет один переход в изолированном subprocess со своим `SystemWorkspace`, OpenCode server, HOME, state, data, cache и product workspace. Вместе seeded snapshots покрывают продолжение из каждого durable состояния, но не доказывают uninterrupted production journey. Полный live suite предназначен для nightly/release и существенных prompt changes, а не как основной PR layer.
-
-## Источники подхода
-
-- [OpenCode agents](https://opencode.ai/docs/agents/)
-- [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)
-- [bmad-loop](https://github.com/bmad-code-org/bmad-loop)
-- [OpenAgents Control](https://github.com/darrenhinde/OpenAgentsControl)
-- [GitHub Spec Kit](https://github.com/github/spec-kit)
-- [GSD](https://github.com/open-gsd/gsd-core)
+Отсутствие runtime/provider должно отмечаться как environment-blocked, а не подменяться утверждением об успешном live journey.
