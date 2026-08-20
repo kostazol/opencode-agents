@@ -1,0 +1,30 @@
+name: Export workbench source
+
+on:
+  push:
+    branches:
+      - agent/6.0.1-workbench-export
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create exact worktree archive
+        shell: bash
+        run: |
+          git archive --format=zip --output=opencode-agents-workbench.zip HEAD
+          sha256sum opencode-agents-workbench.zip > opencode-agents-workbench.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-agents-workbench
+          path: |
+            opencode-agents-workbench.zip
+            opencode-agents-workbench.zip.sha256
+          if-no-files-found: error
+          retention-days: 1
