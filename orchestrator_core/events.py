@@ -48,7 +48,7 @@ def apply_event(
         if event["type"] != expected:
             raise ProtocolError("event.type", f"expected {expected}", event["type"])
         if pending["action"] in STAGE_ACTIONS:
-            result = apply_stage_action(next_state, pending, payload)
+            result = apply_stage_action(next_state, pending, payload, analysis)
         else:
             result = apply_non_stage(next_state, pending, payload, analysis)
 

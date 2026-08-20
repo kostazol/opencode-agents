@@ -5,7 +5,7 @@ from typing import Any, Mapping
 
 from .protocol import STATE_SCHEMA_VERSION, canonical_relative_path, validate_analysis
 from .state_types import (
-    ACTIONS, ANALYSIS_STATUSES, HUMAN_STATUSES, PENDING_FIELDS, REQUEST_ID,
+    ACTIONS, ANALYSIS_STATUSES, HUMAN_STATUSES, PENDING_FIELDS, REOPEN_FIELDS, REQUEST_ID,
     STAGE_FIELDS, STAGE_STATUSES, STATE_FIELDS, WORKFLOW_STATUSES,
     require_integer, state_error,
 )
@@ -13,6 +13,9 @@ from .state_types import (
 
 def validate_state(value: Mapping[str, Any], analysis: Mapping[str, Any] | None = None) -> dict[str, Any]:
     state = deepcopy(dict(value))
+    if state.get("schema_version") == 1 and "convergence" not in state:
+        state["schema_version"] = STATE_SCHEMA_VERSION
+        state["convergence"] = {}
     if set(state) != STATE_FIELDS:
         raise state_error("state", "field mismatch", {
             "missing": sorted(STATE_FIELDS - set(state)),
@@ -66,8 +69,7 @@ def validate_state(value: Mapping[str, Any], analysis: Mapping[str, Any] | None 
         _validate_pending(pending, state, seen)
     _validate_applied_and_blocker(state)
 
-    if state["reopen"] is not None and not isinstance(state["reopen"], dict):
-        raise state_error("reopen", "must be an object or null")
+    _validate_reopen_and_convergence(state, seen)
     if not isinstance(state["legacy_migrated"], bool):
         raise state_error("legacy_migrated", "must be boolean")
 
@@ -115,3 +117,38 @@ def _validate_applied_and_blocker(state: Mapping[str, Any]) -> None:
         valid_resume = WORKFLOW_STATUSES - {"blocked", "ready"}
         if not isinstance(blocker, dict) or set(blocker) != expected or blocker["resume_status"] not in valid_resume:
             raise state_error("blocker", "invalid blocker")
+
+
+def _validate_reopen_and_convergence(state: Mapping[str, Any], seen: set[str]) -> None:
+    reopen = state["reopen"]
+    if (state["status"] == "waiting_reopen_approval") != (reopen is not None):
+        raise state_error("reopen", "must exist exactly while reopening waits for approval")
+    if reopen is not None:
+        if not isinstance(reopen, dict) or set(reopen) != REOPEN_FIELDS:
+            raise state_error("reopen", "invalid reopening proposal")
+        if reopen["requested_by"] not in {"reviewer", "user"}:
+            raise state_error("reopen.requested_by", "unsupported requester")
+        if not isinstance(reopen["reason"], str) or not reopen["reason"].strip():
+            raise state_error("reopen.reason", "must be non-empty")
+        for field in ("seeds", "affected"):
+            values = reopen[field]
+            if not isinstance(values, list) or not values or len(values) != len(set(values)) or any(item not in seen for item in values):
+                raise state_error(f"reopen.{field}", "must contain unique known stages", values)
+        if not set(reopen["seeds"]).issubset(reopen["affected"]):
+            raise state_error("reopen", "affected stages must include all seeds")
+        if reopen["resume_status"] not in WORKFLOW_STATUSES - {"blocked", "ready", "waiting_reopen_approval"}:
+            raise state_error("reopen.resume_status", "unsupported resume status")
+        if reopen["resume_stage"] is not None and reopen["resume_stage"] not in seen:
+            raise state_error("reopen.resume_stage", "unknown stage")
+    convergence = state["convergence"]
+    if not isinstance(convergence, dict):
+        raise state_error("convergence", "must be an object")
+    for key, record in convergence.items():
+        if not isinstance(key, str) or not key or not isinstance(record, dict) or set(record) != {"fingerprint", "evidence_digest", "repeats", "last_revision"}:
+            raise state_error("convergence", "invalid review record", key)
+        for field in ("fingerprint", "evidence_digest"):
+            value = record[field]
+            if not isinstance(value, str) or len(value) != 64:
+                raise state_error(f"convergence.{key}.{field}", "must be a SHA-256 digest")
+        require_integer(record["repeats"], f"convergence.{key}.repeats", 1)
+        require_integer(record["last_revision"], f"convergence.{key}.last_revision", 1)

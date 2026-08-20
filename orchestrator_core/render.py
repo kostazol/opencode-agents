@@ -15,7 +15,7 @@ def render_plan(state_value: Mapping[str, Any], analysis_value: Mapping[str, Any
     state = validate_state(state_value, cross_check)
     analysis = validate_execution_graph(analysis_value) if analysis_value is not None else None
     lines = [
-        "---", "schema_version: 1", f"state_revision: {state['state_revision']}",
+        "---", "schema_version: 1", f"state_schema_version: {state['schema_version']}", f"state_revision: {state['state_revision']}",
         f"status: {state['status']}", f"current_stage: {state['current_stage'] or 'none'}",
         f"analysis_revision: {state['analysis_revision']}", "---", "# План реализации", "",
         "> Индекс генерируется controller; смысловые детали находятся в discovery, stage и review artifacts.", "",
@@ -31,6 +31,14 @@ def render_plan(state_value: Mapping[str, Any], analysis_value: Mapping[str, Any
         ]
     if state["blocker"]:
         lines += ["", "## Blocker", "", f"- Reason: {state['blocker']['reason']}", f"- Detail: {state['blocker']['detail']}"]
+    if state["reopen"]:
+        lines += [
+            "", "## Reopening proposal", "",
+            f"- Requested by: {state['reopen']['requested_by']}",
+            f"- Seeds: {_items(state['reopen']['seeds'])}",
+            f"- Affected: {_items(state['reopen']['affected'])}",
+            f"- Reason: {state['reopen']['reason']}",
+        ]
     lines += ["", "## Stage map", ""]
     sources = {item["id"]: item for item in analysis["stages"]} if analysis else {}
     for stage in state["stages"]:

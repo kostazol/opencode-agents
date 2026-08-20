@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .convergence import clear_review, record_revise
 from .event_support import block, choice, revision
 from .model import stage_index, stages_from_analysis
 from .protocol import ProtocolError
+from .reopening import apply_reopen, reopen_directly
 from .traceability import validate_execution_graph
 
 
@@ -12,7 +14,7 @@ def remarks(payload: Mapping[str, Any]) -> str:
     value = payload.get("remarks")
     if not isinstance(value, str) or not value.strip():
         raise ProtocolError("event.payload.remarks", "feedback requires remarks")
-    return value.strip()
+    return " ".join(value.split())
 
 
 def merge_legacy(state: dict[str, Any], stages: list[dict[str, Any]]) -> None:
@@ -52,12 +54,16 @@ def apply_non_stage(
         revision(payload, pending["revision"])
         status = choice(payload, "status", {"PASS", "REVISE", "BLOCKED"})
         if status == "PASS":
+            clear_review(state, "DISCOVERY")
             state["analysis_status"] = "reviewed"
             state["status"] = "waiting_map_approval"
             return {"status": "waiting_map_approval"}
         if status == "REVISE":
+            stalled, summary = record_revise(state, "DISCOVERY", pending["revision"], payload)
             state["analysis_status"] = "draft"
             state["status"] = "discovery"
+            if stalled:
+                return block(state, pending, "no_semantic_progress", f"Repeated unchanged findings: {summary}", True)
             return {"status": "discovery", "reason": "discovery-review-revise"}
         return block(state, pending, "discovery_review_blocked", str(payload.get("detail", "Discovery review blocked")), bool(payload.get("retryable", True)))
 
@@ -75,6 +81,7 @@ def apply_non_stage(
             state["feedback_revision"] += 1
             state["analysis_status"] = "draft"
             state["status"] = "discovery"
+            state["convergence"] = {}
             return {"status": "discovery", "feedback_revision": state["feedback_revision"]}
         if analysis is None:
             raise ProtocolError("analysis", "map approval requires analysis.json")
@@ -93,10 +100,18 @@ def apply_non_stage(
             state["current_stage"] = None
             return {"status": "ready"}
         remarks(payload)
+        scope_payload = dict(payload)
+        scope_payload.setdefault("scope", "DISCOVERY")
+        scope = choice(scope_payload, "scope", {"STAGES", "DISCOVERY"})
+        if scope == "STAGES":
+            if analysis is None:
+                raise ProtocolError("analysis", "stage feedback requires analysis.json")
+            return reopen_directly(state, analysis, payload)
         state["feedback_revision"] += 1
         state["analysis_status"] = "draft"
         state["status"] = "discovery"
         state["current_stage"] = None
+        state["convergence"] = {}
         for stage in state["stages"]:
             stage["status"] = "proposed"
             stage["human_status"] = "pending"
@@ -110,6 +125,10 @@ def apply_non_stage(
         if decision == "RETRY":
             if not blocker_value["retryable"]:
                 raise ProtocolError("event.payload.decision", "blocker is not retryable")
+            if blocker_value["reason"] == "no_semantic_progress":
+                remarks(payload)
+                state["feedback_revision"] += 1
+                state["convergence"] = {}
             state["status"] = blocker_value["resume_status"]
             state["blocker"] = None
             return {"status": state["status"], "retried": True}
@@ -117,5 +136,7 @@ def apply_non_stage(
         return {"status": "blocked", "aborted": True}
 
     if action == "APPROVE_REOPEN":
-        raise ProtocolError("event", "controlled reopening is not active yet")
+        if analysis is None:
+            raise ProtocolError("analysis", "reopening requires analysis.json")
+        return apply_reopen(state, analysis, payload)
     raise ProtocolError("pending.action", "unsupported action", action)

@@ -55,3 +55,37 @@ def advance_to_stage_planning() -> tuple[dict, dict]:
     state, action = reserve_next(state, analysis)
     state, _ = apply_event(state, event(action, "map_decision", decision="APPROVE"), analysis)
     return state, analysis
+
+
+def finding(evidence: str = "stage.md:1") -> list[dict]:
+    return [{"code": "MISSING-CASE", "scope": "S01", "message": "Handle the missing case", "evidence": evidence}]
+
+
+def three_stage_analysis() -> dict:
+    value = analysis_fixture()
+    value["contracts"][1].update(consumers=["S02"], terminal=False)
+    value["contracts"] += [
+        {"id": "CON-003", "text": "Second output", "producer": "S02", "consumers": ["S03"], "external": False, "terminal": False},
+        {"id": "CON-004", "text": "Final output", "producer": "S03", "consumers": [], "external": False, "terminal": True},
+    ]
+    for number in (2, 3):
+        stage_id = f"S{number:02d}"
+        req_id = f"REQ-{number:03d}"
+        ac_id = f"AC-{number + 1:03d}"
+        scn_id = f"SCN-{number + 1:03d}"
+        value["requirements"].append({"id": req_id, "text": f"Implement stage {number}", "stage": stage_id, "acceptance": [ac_id], "scenarios": [scn_id]})
+        value["acceptance"].append({"id": ac_id, "text": f"Stage {number} works", "stage": stage_id, "verification": "unit test"})
+        value["scenarios"].append({"id": scn_id, "text": f"Stage {number} path", "stage": stage_id, "requirements": [req_id], "expected": "Result"})
+    value["stages"] += [
+        {
+            "id": "S02", "title": "Second stage", "slug": "second-stage", "depends_on": ["S01"],
+            "requirements": ["REQ-002"], "nfrs": [], "contracts_consumed": ["CON-002"],
+            "contracts_produced": ["CON-003"], "affected_area": "Library", "risks": [],
+        },
+        {
+            "id": "S03", "title": "Third stage", "slug": "third-stage", "depends_on": ["S02"],
+            "requirements": ["REQ-003"], "nfrs": [], "contracts_consumed": ["CON-003"],
+            "contracts_produced": ["CON-004"], "affected_area": "Library", "risks": [],
+        },
+    ]
+    return value

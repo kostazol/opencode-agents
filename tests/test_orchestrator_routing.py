@@ -4,7 +4,7 @@ import unittest
 from orchestrator_core.controller import apply_event, create_state, reserve_next
 from orchestrator_core.protocol import ProtocolError
 from orchestrator_core.render import render_plan
-from tests.orchestrator_fixture import analysis_fixture, advance_to_stage_planning, event
+from tests.orchestrator_fixture import analysis_fixture, advance_to_stage_planning, event, finding
 
 
 class ControllerTests(unittest.TestCase):
@@ -59,7 +59,7 @@ class ControllerTests(unittest.TestCase):
         state, action = reserve_next(state, analysis)
         state, _ = apply_event(state, event(action, "stage_plan_result", status="REVIEW", revision=1), analysis)
         state, action = reserve_next(state, analysis)
-        state, _ = apply_event(state, event(action, "stage_review_result", status="REVISE", revision=1), analysis)
+        state, _ = apply_event(state, event(action, "stage_review_result", status="REVISE", revision=1, findings=finding()), analysis)
         state, action = reserve_next(state, analysis)
         self.assertEqual((action["action"], action["revision"]), ("PLAN_STAGE", 2))
 

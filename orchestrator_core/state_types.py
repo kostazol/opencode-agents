@@ -24,13 +24,14 @@ STATE_FIELDS = {
     "schema_version", "request_id", "state_revision", "sequence", "status",
     "current_stage", "analysis_revision", "analysis_status", "question_revision",
     "feedback_revision", "stages", "pending", "applied", "blocker", "reopen",
-    "legacy_migrated",
+    "convergence", "legacy_migrated",
 }
 STAGE_FIELDS = {
     "id", "title", "slug", "depends_on", "status", "revision",
     "human_status", "human_revision", "details", "review", "human_review",
     "human_review_review",
 }
+REOPEN_FIELDS = {"requested_by", "reason", "seeds", "affected", "resume_status", "resume_stage"}
 PENDING_FIELDS = {
     "transition_id", "action", "actor", "mode", "stage", "revision",
     "source_revision", "inputs", "output", "reason", "issued_state_revision",
@@ -65,6 +66,7 @@ def new_state(request_id: str) -> dict[str, Any]:
         "applied": {},
         "blocker": None,
         "reopen": None,
+        "convergence": {},
         "legacy_migrated": False,
     }
 
