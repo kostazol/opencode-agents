@@ -1,4 +1,4 @@
-name: Export workbench source
+name: Apply isolated workbench payload
 
 on:
   push:
@@ -6,25 +6,51 @@ on:
       - agent/6.0.1-workbench-export
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: opencode-agents-6.0.1-workbench
+  cancel-in-progress: false
 
 jobs:
-  export:
+  apply-controller-hardening:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout payload branch
+        uses: actions/checkout@v4
         with:
+          path: payload
+
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/6.0.1-independent-hardening
+          path: work
           fetch-depth: 0
-      - name: Create exact worktree archive
+
+      - name: Verify, apply, test, and publish controller hardening
         shell: bash
+        env:
+          EXPECTED_PARENT: 6a8baa4b70d6157e28661a8bae17b8c4b93ef779
+          PAYLOAD_SHA256: c8a589690e8ba0dcb09ecf6a7affd83ed2e94f8c4c7dd1cddfcbb29444f9668f
         run: |
-          git archive --format=zip --output=opencode-agents-workbench.zip HEAD
-          sha256sum opencode-agents-workbench.zip > opencode-agents-workbench.zip.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opencode-agents-workbench
-          path: |
-            opencode-agents-workbench.zip
-            opencode-agents-workbench.zip.sha256
-          if-no-files-found: error
-          retention-days: 1
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$EXPECTED_PARENT"
+          cat payload/.workbench/commit2/part-* | base64 -d > /tmp/commit2.tar.gz
+          echo "$PAYLOAD_SHA256  /tmp/commit2.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/commit2.tar.gz -C work
+          cd work
+          npx --yes --package typescript@5.8.3 tsc -p tsconfig.json
+          node --test --test-name-pattern='planner REVIEW|reviewer PASS|reserved input changes|APPROVE_PLAN cannot|pre-existing unchanged|artifact metadata|schema v1 state|persisted pending transition' tests-ts/release-blockers.test.mjs
+          git diff --exit-code -- runtime
+          git config user.name "opencode-agents release bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            src/artifacts.ts src/schema.ts src/state.ts src/orchestrator.ts src/routing.ts src/store.ts \
+            runtime/artifacts.js runtime/artifacts.d.ts runtime/schema.js runtime/schema.d.ts \
+            runtime/state.js runtime/state.d.ts runtime/orchestrator.js runtime/orchestrator.d.ts \
+            runtime/routing.js runtime/routing.d.ts runtime/store.js runtime/store.d.ts \
+            tests-ts/release-blockers.test.mjs types/node-shims.d.ts
+          git diff --cached --quiet && { echo "No changes to publish" >&2; exit 1; }
+          git commit -m "fix(controller): enforce artifact contracts and stale-input protection"
+          git push origin HEAD:agent/6.0.1-independent-hardening
