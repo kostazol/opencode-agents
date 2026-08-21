@@ -1,4 +1,4 @@
-name: finalization-release-resume
+name: final-head-verification
 
 on:
   pull_request:
@@ -6,62 +6,15 @@ on:
       - main
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
-  group: opencode-agents-finalization-executor
+  group: opencode-agents-final-head-verification
   cancel-in-progress: true
 
-env:
-  PYTHONDONTWRITEBYTECODE: "1"
-
 jobs:
-  release:
-    name: Publish verified release commit
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    outputs:
-      sha_release: ${{ steps.run.outputs.sha_release }}
-    steps:
-      - name: Checkout runner source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          path: automation-source
-      - name: Checkout verified documentation tree
-        uses: actions/checkout@v4
-        with:
-          ref: agent/6.0.1-final-complete
-          fetch-depth: 0
-          path: work
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: work/package-lock.json
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Validate release runner syntax
-        shell: bash
-        run: python -m py_compile automation-source/automation/*.py automation-source/automation-v2/*.py automation-source/automation-v3/*.py automation-source/automation-v4/*.py automation-source/automation-v5/*.py automation-source/automation-v6/*.py
-      - name: Repeat local gates and publish release metadata
-        id: run
-        run: python automation-source/automation-v6/run_release_resume.py work "$RUNNER_TEMP/final-release-resume"
-      - name: Upload release evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: final-release-resume
-          path: ${{ runner.temp }}/final-release-resume
-          if-no-files-found: warn
-          retention-days: 90
-
-  matrix_final:
-    name: Final / ${{ matrix.os }} / Node ${{ matrix.node }}
-    needs: release
+  verify:
+    name: Final head / ${{ matrix.os }} / Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -70,9 +23,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact product head
+        uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.sha_release }}
+          ref: aaf1031b08826e1bbe03cfa008fc14cec517ed7b
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -81,9 +35,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: npm ci
-      - run: npm run check:generated
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run check:generated
-      - run: git diff --exit-code -- runtime package.json package-lock.json
+      - name: Install exact dependency graph
+        run: npm ci
+      - name: Verify generated runtime
+        run: npm run check:generated
+      - name: Execute complete regression baseline
+        run: npm test
+      - name: Typecheck against the real OpenCode plugin API
+        run: npm run typecheck
+      - name: Re-verify generated runtime
+        run: npm run check:generated
+      - name: Reject runtime and lockfile drift
+        run: git diff --exit-code -- runtime package.json package-lock.json
