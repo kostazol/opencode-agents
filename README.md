@@ -153,7 +153,7 @@ python3 opencode-agents.py update --source .
 Из конкретного опубликованного commit/tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py \
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/v6.0.1/opencode-agents.py \
   | python3 - install --repository kostazol/opencode-agents --ref <commit-or-tag>
 ```
 
@@ -180,3 +180,12 @@ bash tests/test-cli.sh
 ```
 
 `npm test` выполняет TypeScript build, typecheck custom tool и deterministic runtime tests. Live provider journey запускается отдельно через E2E harness, потому что требует установленный OpenCode, пользовательскую авторизацию и provider quota.
+
+
+## Immutable remote install
+
+Remote installation resolves one `--ref` to a commit SHA and fetches the package tree and every blob from that same SHA. Pin the raw installer and pass the same immutable ref; do not use moving `main`.
+
+```bash
+python opencode-agents.py install --repo kostazol/opencode-agents --ref v6.0.1 --target ~/.config/opencode
+```
