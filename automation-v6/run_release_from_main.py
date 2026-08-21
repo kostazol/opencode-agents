@@ -6,6 +6,7 @@ import sys
 import tempfile
 
 from final_common import MESSAGES, assert_expected_head, clean, commit_stage, common, configure, history, matrix_evidence, write_json, write_output
+import staging_scope_patch  # noqa: F401
 import step9_release
 
 
