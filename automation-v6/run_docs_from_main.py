@@ -13,6 +13,7 @@ step8_docs_v2.GATES_DOC = (
     .replace("Node 20 and 22", "Node 22 and 24")
     .replace("Node 20, 22", "Node 22, 24")
 )
+step8_docs_v2.DOC_TEST = step8_docs_v2.DOC_TEST.replace('"NFR adversarial"', '"nfr adversarial"')
 
 
 def main() -> int:
