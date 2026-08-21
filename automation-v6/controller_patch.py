@@ -26,3 +26,4 @@ prepare.step2_controller.compile_runtime = compile_runtime_without_duplicate_exp
 
 import protocol_patch  # noqa: E402,F401
 import legacy_patch  # noqa: E402,F401
+import installer_test_patch  # noqa: E402,F401
