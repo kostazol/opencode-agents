@@ -1,4 +1,4 @@
-name: finalization-diagnostic
+name: finalization-executor
 
 on:
   pull_request:
@@ -6,10 +6,56 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
+
+concurrency:
+  group: opencode-agents-finalization-executor
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
-  diagnostic:
+  finalize:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
-      - run: echo "GitHub Actions is available for the finalization runner"
+      - name: Checkout runner source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: automation-source
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/6.0.1-final-complete
+          fetch-depth: 0
+          path: work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        shell: bash
+        run: python -m py_compile automation-source/automation/*.py automation-source/automation-v2/*.py automation-source/automation-v3/*.py automation-source/automation-v4/*.py automation-source/automation-v5/*.py automation-source/automation-v6/*.py
+      - name: Publish implementation commits
+        run: python automation-source/automation-v6/run_prepare_from_main.py work "$RUNNER_TEMP/final-prepare"
+      - name: Publish documentation commit
+        run: python automation-source/automation-v6/run_docs_from_main.py work "$RUNNER_TEMP/final-prepare/prepare.json" "$RUNNER_TEMP/final-docs"
+      - name: Publish release commit
+        run: python automation-source/automation-v6/run_release_from_main.py work "$RUNNER_TEMP/final-docs/docs.json" "$RUNNER_TEMP/final-release"
+      - name: Upload full evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalization-executor-evidence
+          path: |
+            ${{ runner.temp }}/final-prepare
+            ${{ runner.temp }}/final-docs
+            ${{ runner.temp }}/final-release
+          if-no-files-found: warn
+          retention-days: 30
