@@ -1,0 +1,15 @@
+name: finalization-diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "GitHub Actions is available for the finalization runner"
