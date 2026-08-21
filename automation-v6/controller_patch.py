@@ -23,3 +23,5 @@ def compile_runtime_without_duplicate_export(root: Path, *, log: Path) -> None:
 
 
 prepare.step2_controller.compile_runtime = compile_runtime_without_duplicate_export
+
+import protocol_patch  # noqa: E402,F401
