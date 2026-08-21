@@ -345,7 +345,7 @@ export function validateState(input, analysisInput) {
             if (!affected.includes(seed))
                 throw new ProtocolError("state.reopen", "affected stages must include seeds", seed);
         const resume = text(reopen.resume_status, "state.reopen.resume_status");
-        if (!WORKFLOW_STATUSES.has(resume) || new Set(["blocked", "ready", "waiting_reopen_approval"]).has(resume))
+        if (!WORKFLOW_STATUSES.has(resume) || new Set(["blocked", "waiting_reopen_approval"]).has(resume))
             throw new ProtocolError("state.reopen.resume_status", "unsupported resume status", resume);
         if (reopen.resume_stage !== null) {
             const resumeStage = stageId(reopen.resume_stage, "state.reopen.resume_stage");

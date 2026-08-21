@@ -1,57 +1,42 @@
-import assert from "node:assert/strict"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import os from "node:os"
+
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-
-import {
-  ProtocolError,
-  WorkflowStore,
-  affectedStageClosure,
-  applyEvent,
-  newState,
-  parseJsonStrict,
-  reserveNext,
-  validateAnalysis,
-} from "../runtime/orchestrator.js"
-
 
 export function analysisFixture() {
   return {
     schema_version: 1,
-    request: { summary: "Добавить обработку событий", outcomes: ["События принимаются и обрабатываются"] },
+    request: { summary: "Ship a deterministic two-stage controller change", outcomes: ["Executable stage graph", "Verified release"] },
     change_surfaces: ["library"],
     requirements: [
-      { id: "REQ-001", text: "Принять событие", stage: "S01", acceptance: ["AC-001"], scenarios: ["SCN-001"] },
-      { id: "REQ-002", text: "Обработать событие", stage: "S02", acceptance: ["AC-002"], scenarios: ["SCN-002"] },
+      { id: "REQ-001", text: "Implement the controller contract", stage: "S01", acceptance: ["AC-001"], scenarios: ["SCN-001"] },
+      { id: "REQ-002", text: "Integrate and release the contract", stage: "S02", acceptance: ["AC-003"], scenarios: ["SCN-002"] },
     ],
     nfrs: [
-      { id: "NFR-001", text: "Сохранить совместимость", category: "compatibility-migration", stage: "S02", acceptance: ["AC-003"], scenarios: ["SCN-003"] },
+      { id: "NFR-001", text: "Preserve compatibility through explicit versioned contracts", category: "compatibility-migration", stage: "S01", acceptance: ["AC-002"], scenarios: ["SCN-001"] },
     ],
-    decisions: [{ id: "DEC-001", text: "Использовать идемпотентность" }],
+    decisions: [{ id: "DEC-001", text: "Use one TypeScript controller and immutable artifacts" }],
     contracts: [
-      { id: "CON-001", text: "Вход", producer: null, consumers: ["S01"], external: true, terminal: false },
-      { id: "CON-002", text: "Нормализованное событие", producer: "S01", consumers: ["S02"], external: false, terminal: false },
-      { id: "CON-003", text: "Результат", producer: "S02", consumers: [], external: false, terminal: true },
+      { id: "CTR-001", text: "S01 produces the controller contract consumed by S02", producer: "S01", consumers: ["S02"], external: false, terminal: false },
+      { id: "CTR-002", text: "S02 produces the terminal release package", producer: "S02", consumers: [], external: false, terminal: true },
     ],
     acceptance: [
-      { id: "AC-001", text: "Приём работает", stage: "S01", verification: "unit" },
-      { id: "AC-002", text: "Обработка работает", stage: "S02", verification: "integration" },
-      { id: "AC-003", text: "Старый вызов работает", stage: "S02", verification: "compatibility" },
+      { id: "AC-001", text: "Controller contract tests pass", stage: "S01", verification: "node test" },
+      { id: "AC-002", text: "Compatibility migration test passes", stage: "S01", verification: "migration test" },
+      { id: "AC-003", text: "Release journey reaches COMPLETE", stage: "S02", verification: "journey test" },
     ],
     scenarios: [
-      { id: "SCN-001", text: "Приём", stage: "S01", requirements: ["REQ-001"], expected: "Сохранено" },
-      { id: "SCN-002", text: "Обработка", stage: "S02", requirements: ["REQ-002"], expected: "Обработано" },
-      { id: "SCN-003", text: "Совместимость", stage: "S02", requirements: ["NFR-001"], expected: "Без регрессии" },
+      { id: "SCN-001", text: "Validate and migrate controller state", stage: "S01", requirements: ["REQ-001"], expected: "State is valid and resumable" },
+      { id: "SCN-002", text: "Execute a complete store journey", stage: "S02", requirements: ["REQ-002"], expected: "All artifacts pass and COMPLETE is returned" },
     ],
     nfr_applicability: [
-      { category: "compatibility-migration", status: "required", evidence: "Library surface", owner: "S02", acceptance: ["AC-003"] },
+      { category: "compatibility-migration", status: "required", evidence: "The state and runtime are versioned", owner: "S01", acceptance: ["AC-002"] },
     ],
     stages: [
-      { id: "S01", title: "Приём", slug: "accept-event", depends_on: [], requirements: ["REQ-001"], nfrs: [], contracts_consumed: ["CON-001"], contracts_produced: ["CON-002"], affected_area: "API", risks: ["validation"] },
-      { id: "S02", title: "Обработка", slug: "process-event", depends_on: ["S01"], requirements: ["REQ-002"], nfrs: ["NFR-001"], contracts_consumed: ["CON-002"], contracts_produced: ["CON-003"], affected_area: "Worker", risks: ["duplicates"] },
+      { id: "S01", title: "Controller contracts", slug: "controller-contracts", depends_on: [], requirements: ["REQ-001"], nfrs: ["NFR-001"], contracts_consumed: [], contracts_produced: ["CTR-001"], affected_area: "src and runtime", risks: ["stale artifact acceptance"] },
+      { id: "S02", title: "Release integration", slug: "release-integration", depends_on: ["S01"], requirements: ["REQ-002"], nfrs: [], contracts_consumed: ["CTR-001"], contracts_produced: ["CTR-002"], affected_area: "tests installer CI", risks: ["cross-platform drift"] },
     ],
-    assumptions: [],
-    non_goals: [],
+    assumptions: ["OpenCode invokes native tools from one repository root"],
+    non_goals: ["Generic workflow framework"],
   }
 }
 
@@ -59,15 +44,19 @@ export function event(action, type, payload) {
   return { transition_id: action.transition_id, type, payload }
 }
 
-export async function advanceToPlanning(base) {
-  const analysis = analysisFixture()
-  let state = newState("sample")
-  let reserved = reserveNext(state)
-  state = (await applyEvent(base, reserved.state, event(reserved.action, "discovery_result", { revision: 1, status: "READY_FOR_REVIEW" }), analysis)).state
-  reserved = reserveNext(state, analysis)
-  state = (await applyEvent(base, reserved.state, event(reserved.action, "discovery_review_result", { revision: 1, status: "PASS" }), analysis)).state
-  reserved = reserveNext(state, analysis)
-  state = (await applyEvent(base, reserved.state, event(reserved.action, "map_decision", { decision: "APPROVE" }), analysis)).state
-  return { state, analysis }
+export async function writeArtifact(root, relative, metadata, body = "# Verified artifact\n") {
+  const destination = path.join(root, ...relative.split("/"))
+  await mkdir(path.dirname(destination), { recursive: true })
+  await writeFile(destination, [
+    "---",
+    "schema_version: 1",
+    `artifact: ${metadata.artifact}`,
+    `stage: ${metadata.stage ?? "none"}`,
+    `revision: ${metadata.revision}`,
+    `source_revision: ${metadata.source_revision}`,
+    `status: ${metadata.status}`,
+    "---",
+    body.trimEnd(),
+    "",
+  ].join("\n"), "utf8")
 }
-

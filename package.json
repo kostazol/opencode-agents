@@ -1,15 +1,24 @@
 {
   "name": "opencode-agents",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && npm run check:tools && node --test tests-ts/*.test.mjs",
-    "check:tools": "tsc -p tsconfig.tools.json",
-    "test:all": "npm test && python3 -m unittest discover -s tests -p 'test*.py' && bash tests/test-cli.sh"
-  },
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <23"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && node scripts/copy-tool-runtime.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "test:node": "node scripts/run-node-tests.mjs",
+    "test:python": "node scripts/run-python-tests.mjs",
+    "test": "npm run build && npm run typecheck && npm run test:node && npm run test:python",
+    "check:generated": "node scripts/check-generated.mjs",
+    "test:release": "npm ci && npm run check:generated && npm test && npm run check:generated"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.19",
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
   }
 }

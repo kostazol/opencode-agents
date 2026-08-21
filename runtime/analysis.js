@@ -1,252 +1,146 @@
 import { createHash } from "node:crypto";
-import { ANALYSIS_SCHEMA_VERSION, CHANGE_SURFACES, NFR_CATEGORIES, SURFACE_NFR, ProtocolError, array, boolean, clone, exactFields, identifier, record, stageId, strings, text } from "./schema.js";
-function mapById(items, field) {
-    const result = new Map();
-    for (const item of items) {
-        if (result.has(item.id))
-            throw new ProtocolError(field, "duplicate identifier", item.id);
-        result.set(item.id, item);
-    }
-    return result;
-}
-function ensureContiguous(items, family, field) {
+import { ANALYSIS_SCHEMA_VERSION, CHANGE_SURFACES, NFR_CATEGORIES, ProtocolError, SURFACE_NFR, array, boolean, clone, exactFields, identifier, record, stageId, strings, text } from "./schema.js";
+function sequential(items, prefix, field) {
     items.forEach((item, index) => {
-        const expected = `${family}-${String(index + 1).padStart(3, "0")}`;
+        const expected = `${prefix}-${String(index + 1).padStart(3, "0")}`;
         if (item.id !== expected)
-            throw new ProtocolError(`${field}[${index}].id`, `${family} identifiers must be contiguous and ordered`, item.id);
+            throw new ProtocolError(`${field}[${index}].id`, "identifiers must be contiguous and ordered", { expected, actual: item.id });
     });
 }
-export function requiredNfrCategories(surfaces) {
-    const result = new Set();
-    for (const surface of surfaces)
-        for (const category of SURFACE_NFR[surface] ?? [])
-            result.add(category);
+function sameMembers(actual, expected, field) {
+    const left = [...actual].sort();
+    const right = [...expected].sort();
+    if (JSON.stringify(left) !== JSON.stringify(right))
+        throw new ProtocolError(field, "traceability list mismatch", { expected: right, actual: left });
+}
+function dependencyClosure(stages) {
+    const result = new Map();
+    for (const stage of stages) {
+        const closure = new Set();
+        for (const dependency of stage.depends_on) {
+            closure.add(dependency);
+            for (const transitive of result.get(dependency) ?? [])
+                closure.add(transitive);
+        }
+        result.set(stage.id, closure);
+    }
     return result;
 }
-export function hasDependency(stages, consumer, producer) {
-    const seen = new Set();
-    const queue = [...(stages.get(consumer)?.depends_on ?? [])];
-    while (queue.length) {
-        const current = queue.shift();
-        if (current === producer)
-            return true;
-        if (seen.has(current))
-            continue;
-        seen.add(current);
-        queue.push(...(stages.get(current)?.depends_on ?? []));
-    }
-    return false;
-}
-function validateAnalysisBase(input) {
-    const root = clone(record(input, "analysis"));
-    exactFields(root, [
+export function validateAnalysis(input) {
+    const source = clone(record(input, "analysis"));
+    exactFields(source, [
         "schema_version", "request", "change_surfaces", "requirements", "nfrs", "decisions", "contracts",
         "acceptance", "scenarios", "nfr_applicability", "stages", "assumptions", "non_goals",
     ], "analysis");
-    if (root.schema_version !== ANALYSIS_SCHEMA_VERSION)
-        throw new ProtocolError("schema_version", `must be ${ANALYSIS_SCHEMA_VERSION}`, root.schema_version);
-    const request = record(root.request, "request");
-    exactFields(request, ["summary", "outcomes"], "request");
-    const normalizedRequest = { summary: text(request.summary, "request.summary"), outcomes: strings(request.outcomes, "request.outcomes", false) };
-    const surfaces = strings(root.change_surfaces, "change_surfaces");
-    for (const surface of surfaces)
+    if (source.schema_version !== ANALYSIS_SCHEMA_VERSION)
+        throw new ProtocolError("analysis.schema_version", `must be ${ANALYSIS_SCHEMA_VERSION}`, source.schema_version);
+    const request = record(source.request, "analysis.request");
+    exactFields(request, ["summary", "outcomes"], "analysis.request");
+    const requestValue = { summary: text(request.summary, "analysis.request.summary"), outcomes: strings(request.outcomes, "analysis.request.outcomes", false) };
+    const changeSurfaces = strings(source.change_surfaces, "analysis.change_surfaces", false);
+    for (const surface of changeSurfaces)
         if (!CHANGE_SURFACES.has(surface))
-            throw new ProtocolError("change_surfaces", "unsupported value", surface);
-    const acceptance = array(root.acceptance, "acceptance").map((raw, index) => {
-        const item = record(raw, `acceptance[${index}]`);
-        exactFields(item, ["id", "text", "stage", "verification"], `acceptance[${index}]`);
-        return { id: identifier(item.id, "AC", `acceptance[${index}].id`), text: text(item.text, `acceptance[${index}].text`), stage: stageId(item.stage, `acceptance[${index}].stage`), verification: text(item.verification, `acceptance[${index}].verification`) };
+            throw new ProtocolError("analysis.change_surfaces", "unsupported change surface", surface);
+    const requirements = array(source.requirements, "analysis.requirements").map((raw, index) => {
+        const field = `analysis.requirements[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text", "stage", "acceptance", "scenarios"], field);
+        return { id: identifier(item.id, "REQ", `${field}.id`), text: text(item.text, `${field}.text`), stage: stageId(item.stage, `${field}.stage`), acceptance: strings(item.acceptance, `${field}.acceptance`, false), scenarios: strings(item.scenarios, `${field}.scenarios`, false) };
     });
-    const scenarios = array(root.scenarios, "scenarios").map((raw, index) => {
-        const item = record(raw, `scenarios[${index}]`);
-        exactFields(item, ["id", "text", "stage", "requirements", "expected"], `scenarios[${index}]`);
-        return { id: identifier(item.id, "SCN", `scenarios[${index}].id`), text: text(item.text, `scenarios[${index}].text`), stage: stageId(item.stage, `scenarios[${index}].stage`), requirements: strings(item.requirements, `scenarios[${index}].requirements`, false), expected: text(item.expected, `scenarios[${index}].expected`) };
+    sequential(requirements, "REQ", "analysis.requirements");
+    const nfrs = array(source.nfrs, "analysis.nfrs").map((raw, index) => {
+        const field = `analysis.nfrs[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text", "category", "stage", "acceptance", "scenarios"], field);
+        const category = text(item.category, `${field}.category`);
+        if (!NFR_CATEGORIES.has(category))
+            throw new ProtocolError(`${field}.category`, "unsupported NFR category", category);
+        return { id: identifier(item.id, "NFR", `${field}.id`), text: text(item.text, `${field}.text`), category, stage: stageId(item.stage, `${field}.stage`), acceptance: strings(item.acceptance, `${field}.acceptance`, false), scenarios: strings(item.scenarios, `${field}.scenarios`, false) };
     });
-    const contracts = array(root.contracts, "contracts").map((raw, index) => {
-        const item = record(raw, `contracts[${index}]`);
-        exactFields(item, ["id", "text", "producer", "consumers", "external", "terminal"], `contracts[${index}]`);
+    sequential(nfrs, "NFR", "analysis.nfrs");
+    const decisions = array(source.decisions, "analysis.decisions").map((raw, index) => {
+        const field = `analysis.decisions[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text"], field);
+        return { id: identifier(item.id, "DEC", `${field}.id`), text: text(item.text, `${field}.text`) };
+    });
+    sequential(decisions, "DEC", "analysis.decisions");
+    const contracts = array(source.contracts, "analysis.contracts").map((raw, index) => {
+        const field = `analysis.contracts[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text", "producer", "consumers", "external", "terminal"], field);
         return {
-            id: identifier(item.id, "CON", `contracts[${index}].id`),
-            text: text(item.text, `contracts[${index}].text`),
-            producer: item.producer === null ? null : stageId(item.producer, `contracts[${index}].producer`),
-            consumers: strings(item.consumers, `contracts[${index}].consumers`),
-            external: boolean(item.external, `contracts[${index}].external`),
-            terminal: boolean(item.terminal, `contracts[${index}].terminal`),
+            id: identifier(item.id, "CTR", `${field}.id`),
+            text: text(item.text, `${field}.text`),
+            producer: item.producer === null ? null : stageId(item.producer, `${field}.producer`),
+            consumers: strings(item.consumers, `${field}.consumers`).map((value) => stageId(value, `${field}.consumers`)),
+            external: boolean(item.external, `${field}.external`),
+            terminal: boolean(item.terminal, `${field}.terminal`),
         };
     });
-    const stages = array(root.stages, "stages").map((raw, index) => {
-        const item = record(raw, `stages[${index}]`);
-        exactFields(item, ["id", "title", "slug", "depends_on", "requirements", "nfrs", "contracts_consumed", "contracts_produced", "affected_area", "risks"], `stages[${index}]`);
-        const id = stageId(item.id, `stages[${index}].id`);
-        if (id !== `S${String(index + 1).padStart(2, "0")}`)
-            throw new ProtocolError(`stages[${index}].id`, "stages must be contiguous and ordered", id);
-        const slug = text(item.slug, `stages[${index}].slug`);
+    sequential(contracts, "CTR", "analysis.contracts");
+    const acceptance = array(source.acceptance, "analysis.acceptance").map((raw, index) => {
+        const field = `analysis.acceptance[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text", "stage", "verification"], field);
+        return { id: identifier(item.id, "AC", `${field}.id`), text: text(item.text, `${field}.text`), stage: stageId(item.stage, `${field}.stage`), verification: text(item.verification, `${field}.verification`) };
+    });
+    sequential(acceptance, "AC", "analysis.acceptance");
+    const scenarios = array(source.scenarios, "analysis.scenarios").map((raw, index) => {
+        const field = `analysis.scenarios[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "text", "stage", "requirements", "expected"], field);
+        return { id: identifier(item.id, "SCN", `${field}.id`), text: text(item.text, `${field}.text`), stage: stageId(item.stage, `${field}.stage`), requirements: strings(item.requirements, `${field}.requirements`, false), expected: text(item.expected, `${field}.expected`) };
+    });
+    sequential(scenarios, "SCN", "analysis.scenarios");
+    const applicability = array(source.nfr_applicability, "analysis.nfr_applicability").map((raw, index) => {
+        const field = `analysis.nfr_applicability[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["category", "status", "evidence", "owner", "acceptance"], field);
+        const category = text(item.category, `${field}.category`);
+        if (!NFR_CATEGORIES.has(category))
+            throw new ProtocolError(`${field}.category`, "unsupported NFR category", category);
+        const status = text(item.status, `${field}.status`);
+        if (!new Set(["required", "not_applicable", "deferred"]).has(status))
+            throw new ProtocolError(`${field}.status`, "unsupported applicability status", status);
+        return { category, status: status, evidence: text(item.evidence, `${field}.evidence`), owner: item.owner === null ? null : stageId(item.owner, `${field}.owner`), acceptance: strings(item.acceptance, `${field}.acceptance`) };
+    });
+    const stages = array(source.stages, "analysis.stages").map((raw, index) => {
+        const field = `analysis.stages[${index}]`;
+        const item = record(raw, field);
+        exactFields(item, ["id", "title", "slug", "depends_on", "requirements", "nfrs", "contracts_consumed", "contracts_produced", "affected_area", "risks"], field);
+        const id = stageId(item.id, `${field}.id`);
+        const expected = `S${String(index + 1).padStart(2, "0")}`;
+        if (id !== expected)
+            throw new ProtocolError(`${field}.id`, "stages must be contiguous and ordered", { expected, actual: id });
+        const slug = text(item.slug, `${field}.slug`);
         if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
-            throw new ProtocolError(`stages[${index}].slug`, "must be lower kebab-case", slug);
-        const depends = strings(item.depends_on, `stages[${index}].depends_on`);
-        const earlier = new Set(Array.from({ length: index }, (_, itemIndex) => `S${String(itemIndex + 1).padStart(2, "0")}`));
-        for (const dependency of depends)
-            if (!earlier.has(dependency))
-                throw new ProtocolError(`stages[${index}].depends_on`, "must reference earlier stages", dependency);
+            throw new ProtocolError(`${field}.slug`, "must be lower kebab-case", slug);
+        const dependsOn = strings(item.depends_on, `${field}.depends_on`);
+        for (const dependency of dependsOn) {
+            const ordinal = Number(dependency.slice(1));
+            if (!/^S\d{2}$/.test(dependency) || ordinal >= index + 1)
+                throw new ProtocolError(`${field}.depends_on`, "must reference an earlier stage", dependency);
+        }
         return {
             id,
-            title: text(item.title, `stages[${index}].title`),
+            title: text(item.title, `${field}.title`),
             slug,
-            depends_on: depends,
-            requirements: strings(item.requirements, `stages[${index}].requirements`),
-            nfrs: strings(item.nfrs, `stages[${index}].nfrs`),
-            contracts_consumed: strings(item.contracts_consumed, `stages[${index}].contracts_consumed`),
-            contracts_produced: strings(item.contracts_produced, `stages[${index}].contracts_produced`),
-            affected_area: text(item.affected_area, `stages[${index}].affected_area`),
-            risks: strings(item.risks, `stages[${index}].risks`),
+            depends_on: dependsOn,
+            requirements: strings(item.requirements, `${field}.requirements`),
+            nfrs: strings(item.nfrs, `${field}.nfrs`),
+            contracts_consumed: strings(item.contracts_consumed, `${field}.contracts_consumed`),
+            contracts_produced: strings(item.contracts_produced, `${field}.contracts_produced`),
+            affected_area: text(item.affected_area, `${field}.affected_area`),
+            risks: strings(item.risks, `${field}.risks`, false),
         };
     });
-    if (!stages.length)
-        throw new ProtocolError("stages", "must not be empty");
-    const stageMap = mapById(stages, "stages");
-    const requirements = array(root.requirements, "requirements").map((raw, index) => {
-        const item = record(raw, `requirements[${index}]`);
-        exactFields(item, ["id", "text", "stage", "acceptance", "scenarios"], `requirements[${index}]`);
-        return { id: identifier(item.id, "REQ", `requirements[${index}].id`), text: text(item.text, `requirements[${index}].text`), stage: stageId(item.stage, `requirements[${index}].stage`), acceptance: strings(item.acceptance, `requirements[${index}].acceptance`, false), scenarios: strings(item.scenarios, `requirements[${index}].scenarios`, false) };
-    });
-    const nfrs = array(root.nfrs, "nfrs").map((raw, index) => {
-        const item = record(raw, `nfrs[${index}]`);
-        exactFields(item, ["id", "text", "category", "stage", "acceptance", "scenarios"], `nfrs[${index}]`);
-        const category = text(item.category, `nfrs[${index}].category`);
-        if (!NFR_CATEGORIES.has(category))
-            throw new ProtocolError(`nfrs[${index}].category`, "unsupported category", category);
-        return { id: identifier(item.id, "NFR", `nfrs[${index}].id`), text: text(item.text, `nfrs[${index}].text`), category, stage: stageId(item.stage, `nfrs[${index}].stage`), acceptance: strings(item.acceptance, `nfrs[${index}].acceptance`, false), scenarios: strings(item.scenarios, `nfrs[${index}].scenarios`, false) };
-    });
-    const decisions = array(root.decisions, "decisions").map((raw, index) => {
-        const item = record(raw, `decisions[${index}]`);
-        exactFields(item, ["id", "text"], `decisions[${index}]`);
-        return { id: identifier(item.id, "DEC", `decisions[${index}].id`), text: text(item.text, `decisions[${index}].text`) };
-    });
-    const acMap = mapById(acceptance, "acceptance");
-    const scenarioMap = mapById(scenarios, "scenarios");
-    const requirementMap = mapById(requirements, "requirements");
-    const nfrMap = mapById(nfrs, "nfrs");
-    const contractMap = mapById(contracts, "contracts");
-    mapById(decisions, "decisions");
-    ensureContiguous(requirements, "REQ", "requirements");
-    ensureContiguous(nfrs, "NFR", "nfrs");
-    ensureContiguous(decisions, "DEC", "decisions");
-    ensureContiguous(contracts, "CON", "contracts");
-    ensureContiguous(acceptance, "AC", "acceptance");
-    ensureContiguous(scenarios, "SCN", "scenarios");
-    for (const item of [...requirements, ...nfrs]) {
-        const owner = stageMap.get(item.stage);
-        if (!owner)
-            throw new ProtocolError(`${item.id}.stage`, "unknown stage", item.stage);
-        const ownerList = item.id.startsWith("REQ-") ? owner.requirements : owner.nfrs;
-        if (!ownerList.includes(item.id))
-            throw new ProtocolError(item.id, "owning stage does not list item", item.stage);
-        for (const ac of item.acceptance) {
-            const target = acMap.get(ac);
-            if (!target || target.stage !== item.stage)
-                throw new ProtocolError(`${item.id}.acceptance`, "acceptance must exist in owning stage", ac);
-        }
-        for (const scenario of item.scenarios) {
-            const target = scenarioMap.get(scenario);
-            if (!target || target.stage !== item.stage || !target.requirements.includes(item.id))
-                throw new ProtocolError(`${item.id}.scenarios`, "scenario link must be reciprocal in owning stage", scenario);
-        }
-    }
-    const referencedAcceptance = new Set();
-    for (const item of [...requirements, ...nfrs])
-        for (const id of item.acceptance)
-            referencedAcceptance.add(id);
-    for (const criterion of acceptance) {
-        if (!stageMap.has(criterion.stage))
-            throw new ProtocolError(`${criterion.id}.stage`, "unknown stage", criterion.stage);
-        if (!referencedAcceptance.has(criterion.id))
-            throw new ProtocolError(criterion.id, "acceptance criterion is not linked from any requirement");
-    }
-    for (const scenario of scenarios) {
-        if (!stageMap.has(scenario.stage))
-            throw new ProtocolError(`${scenario.id}.stage`, "unknown stage", scenario.stage);
-        for (const linked of scenario.requirements) {
-            const requirement = requirementMap.get(linked) ?? nfrMap.get(linked);
-            if (!requirement)
-                throw new ProtocolError(`${scenario.id}.requirements`, "unknown requirement", linked);
-            if (requirement.stage !== scenario.stage || !requirement.scenarios.includes(scenario.id)) {
-                throw new ProtocolError(`${scenario.id}.requirements`, "scenario link must be reciprocal in owning stage", linked);
-            }
-        }
-    }
-    for (const contract of contracts) {
-        if (contract.external && contract.producer !== null)
-            throw new ProtocolError(contract.id, "external contract cannot have an internal producer");
-        if (!contract.external && contract.producer === null)
-            throw new ProtocolError(contract.id, "internal contract requires a producer");
-        if (!contract.consumers.length && !contract.terminal)
-            throw new ProtocolError(contract.id, "contract without consumers must be terminal");
-        if (contract.producer) {
-            const producer = stageMap.get(contract.producer);
-            if (!producer?.contracts_produced.includes(contract.id))
-                throw new ProtocolError(contract.id, "producer stage does not list contract");
-        }
-        for (const consumerId of contract.consumers) {
-            const consumer = stageMap.get(consumerId);
-            if (!consumer?.contracts_consumed.includes(contract.id))
-                throw new ProtocolError(contract.id, "consumer stage does not list contract", consumerId);
-            if (contract.producer && !hasDependency(stageMap, consumerId, contract.producer))
-                throw new ProtocolError(contract.id, "consumer dependency graph omits producer", { producer: contract.producer, consumer: consumerId });
-        }
-    }
-    for (const stage of stages) {
-        for (const id of stage.requirements) {
-            const item = requirementMap.get(id);
-            if (!item)
-                throw new ProtocolError(stage.id, "unknown requirement", id);
-            if (item.stage !== stage.id)
-                throw new ProtocolError(stage.id, "stage lists a requirement owned by another stage", id);
-        }
-        for (const id of stage.nfrs) {
-            const item = nfrMap.get(id);
-            if (!item)
-                throw new ProtocolError(stage.id, "unknown NFR", id);
-            if (item.stage !== stage.id)
-                throw new ProtocolError(stage.id, "stage lists an NFR owned by another stage", id);
-        }
-        for (const id of [...stage.contracts_consumed, ...stage.contracts_produced])
-            if (!contractMap.has(id))
-                throw new ProtocolError(stage.id, "unknown contract", id);
-    }
-    const applicability = array(root.nfr_applicability, "nfr_applicability").map((raw, index) => {
-        const item = record(raw, `nfr_applicability[${index}]`);
-        exactFields(item, ["category", "status", "evidence", "owner", "acceptance"], `nfr_applicability[${index}]`);
-        const category = text(item.category, `nfr_applicability[${index}].category`);
-        if (!NFR_CATEGORIES.has(category))
-            throw new ProtocolError(`nfr_applicability[${index}].category`, "unsupported category", category);
-        const status = text(item.status, `nfr_applicability[${index}].status`);
-        if (!new Set(["required", "not_applicable", "deferred"]).has(status))
-            throw new ProtocolError(`nfr_applicability[${index}].status`, "unsupported status", status);
-        const owner = item.owner === null ? null : stageId(item.owner, `nfr_applicability[${index}].owner`);
-        const acceptanceIds = strings(item.acceptance, `nfr_applicability[${index}].acceptance`);
-        if (status === "required" && (!owner || !acceptanceIds.length))
-            throw new ProtocolError(`nfr_applicability[${index}]`, "required category needs owner and acceptance");
-        if (status !== "required" && acceptanceIds.length)
-            throw new ProtocolError(`nfr_applicability[${index}]`, "non-required category cannot claim acceptance");
-        if (owner && !stageMap.has(owner))
-            throw new ProtocolError(`nfr_applicability[${index}].owner`, "unknown stage", owner);
-        for (const id of acceptanceIds) {
-            const criterion = acMap.get(id);
-            if (!criterion)
-                throw new ProtocolError(`nfr_applicability[${index}].acceptance`, "unknown acceptance", id);
-            if (owner && criterion.stage !== owner)
-                throw new ProtocolError(`nfr_applicability[${index}].acceptance`, "acceptance must belong to owner stage", id);
-        }
-        return { category, status: status, evidence: text(item.evidence, `nfr_applicability[${index}].evidence`), owner, acceptance: acceptanceIds };
-    });
-    const categories = new Set(applicability.map((item) => item.category));
-    for (const required of requiredNfrCategories(surfaces))
-        if (!categories.has(required))
-            throw new ProtocolError("nfr_applicability", "missing category implied by change surfaces", required);
-    return {
+    const assumptions = strings(source.assumptions, "analysis.assumptions");
+    const nonGoals = strings(source.non_goals, "analysis.non_goals");
+    const analysis = {
         schema_version: ANALYSIS_SCHEMA_VERSION,
-        request: normalizedRequest,
-        change_surfaces: surfaces,
+        request: requestValue,
+        change_surfaces: changeSurfaces,
         requirements,
         nfrs,
         decisions,
@@ -255,130 +149,152 @@ function validateAnalysisBase(input) {
         scenarios,
         nfr_applicability: applicability,
         stages,
-        assumptions: strings(root.assumptions, "assumptions"),
-        non_goals: strings(root.non_goals, "non_goals"),
+        assumptions,
+        non_goals: nonGoals,
     };
-}
-export function affectedStageClosure(analysisInput, seedsInput) {
-    const analysis = validateAnalysis(analysisInput);
-    const stages = new Map(analysis.stages.map((item) => [item.id, item]));
-    const seeds = new Set(seedsInput);
-    for (const seed of seeds)
-        if (!stages.has(seed))
-            throw new ProtocolError("affected_stages", "unknown seed", seed);
-    const contracts = new Map(analysis.contracts.map((item) => [item.id, item]));
-    const affected = new Set(seeds);
-    let changed = true;
-    while (changed) {
-        changed = false;
-        const produced = new Set(Array.from(affected).flatMap((stage) => stages.get(stage).contracts_produced));
-        const consumers = new Set(Array.from(produced).flatMap((contract) => contracts.get(contract)?.consumers ?? []));
-        for (const stage of analysis.stages) {
-            if (affected.has(stage.id))
-                continue;
-            if (stage.depends_on.some((dependency) => affected.has(dependency)) || consumers.has(stage.id)) {
-                affected.add(stage.id);
-                changed = true;
+    const stageById = new Map(stages.map((stage) => [stage.id, stage]));
+    const requirementById = new Map(requirements.map((item) => [item.id, item]));
+    const nfrById = new Map(nfrs.map((item) => [item.id, item]));
+    const acceptanceById = new Map(acceptance.map((item) => [item.id, item]));
+    const scenarioById = new Map(scenarios.map((item) => [item.id, item]));
+    const contractById = new Map(contracts.map((item) => [item.id, item]));
+    for (const item of requirements) {
+        if (!stageById.has(item.stage))
+            throw new ProtocolError(`analysis.requirements.${item.id}.stage`, "unknown stage", item.stage);
+        for (const id of item.acceptance) {
+            const linked = acceptanceById.get(id);
+            if (!linked || linked.stage !== item.stage)
+                throw new ProtocolError(`analysis.requirements.${item.id}.acceptance`, "acceptance must exist in the same stage", id);
+        }
+        for (const id of item.scenarios) {
+            const linked = scenarioById.get(id);
+            if (!linked || linked.stage !== item.stage || !linked.requirements.includes(item.id))
+                throw new ProtocolError(`analysis.requirements.${item.id}.scenarios`, "scenario must trace back to the requirement in the same stage", id);
+        }
+    }
+    for (const item of nfrs) {
+        if (!stageById.has(item.stage))
+            throw new ProtocolError(`analysis.nfrs.${item.id}.stage`, "unknown stage", item.stage);
+        for (const id of item.acceptance) {
+            const linked = acceptanceById.get(id);
+            if (!linked || linked.stage !== item.stage)
+                throw new ProtocolError(`analysis.nfrs.${item.id}.acceptance`, "acceptance must exist in the same stage", id);
+        }
+        for (const id of item.scenarios)
+            if (!scenarioById.has(id) || scenarioById.get(id).stage !== item.stage)
+                throw new ProtocolError(`analysis.nfrs.${item.id}.scenarios`, "scenario must exist in the same stage", id);
+    }
+    for (const item of acceptance)
+        if (!stageById.has(item.stage))
+            throw new ProtocolError(`analysis.acceptance.${item.id}.stage`, "unknown stage", item.stage);
+    for (const item of scenarios) {
+        if (!stageById.has(item.stage))
+            throw new ProtocolError(`analysis.scenarios.${item.id}.stage`, "unknown stage", item.stage);
+        for (const requirement of item.requirements)
+            if (!requirementById.has(requirement) || requirementById.get(requirement).stage !== item.stage)
+                throw new ProtocolError(`analysis.scenarios.${item.id}.requirements`, "unknown or cross-stage requirement", requirement);
+    }
+    for (const stage of stages) {
+        sameMembers(stage.requirements, requirements.filter((item) => item.stage === stage.id).map((item) => item.id), `analysis.stages.${stage.id}.requirements`);
+        sameMembers(stage.nfrs, nfrs.filter((item) => item.stage === stage.id).map((item) => item.id), `analysis.stages.${stage.id}.nfrs`);
+        for (const id of stage.requirements)
+            if (!requirementById.has(id))
+                throw new ProtocolError(`analysis.stages.${stage.id}.requirements`, "unknown requirement", id);
+        for (const id of stage.nfrs)
+            if (!nfrById.has(id))
+                throw new ProtocolError(`analysis.stages.${stage.id}.nfrs`, "unknown NFR", id);
+    }
+    const closure = dependencyClosure(stages);
+    for (const contract of contracts) {
+        if (contract.producer !== null && !stageById.has(contract.producer))
+            throw new ProtocolError(`analysis.contracts.${contract.id}.producer`, "unknown stage", contract.producer);
+        for (const consumer of contract.consumers)
+            if (!stageById.has(consumer))
+                throw new ProtocolError(`analysis.contracts.${contract.id}.consumers`, "unknown stage", consumer);
+        if (!contract.external && contract.producer === null)
+            throw new ProtocolError(`analysis.contracts.${contract.id}.producer`, "internal contract requires a producer");
+        if (contract.terminal && contract.consumers.length)
+            throw new ProtocolError(`analysis.contracts.${contract.id}.consumers`, "terminal contract cannot have consumers");
+        if (!contract.terminal && !contract.consumers.length)
+            throw new ProtocolError(`analysis.contracts.${contract.id}.consumers`, "non-terminal contract requires consumers");
+        if (contract.producer && !stageById.get(contract.producer).contracts_produced.includes(contract.id))
+            throw new ProtocolError(`analysis.contracts.${contract.id}`, "producer stage must list the contract");
+        for (const consumer of contract.consumers) {
+            if (!stageById.get(consumer).contracts_consumed.includes(contract.id))
+                throw new ProtocolError(`analysis.contracts.${contract.id}`, "consumer stage must list the contract", consumer);
+            if (contract.producer && contract.producer !== consumer && !(closure.get(consumer)?.has(contract.producer)))
+                throw new ProtocolError(`analysis.contracts.${contract.id}`, "consumer must depend on producer", { producer: contract.producer, consumer });
+        }
+    }
+    for (const stage of stages) {
+        for (const id of stage.contracts_produced) {
+            const contract = contractById.get(id);
+            if (!contract || contract.producer !== stage.id)
+                throw new ProtocolError(`analysis.stages.${stage.id}.contracts_produced`, "contract producer mismatch", id);
+        }
+        for (const id of stage.contracts_consumed) {
+            const contract = contractById.get(id);
+            if (!contract || !contract.consumers.includes(stage.id))
+                throw new ProtocolError(`analysis.stages.${stage.id}.contracts_consumed`, "contract consumer mismatch", id);
+        }
+    }
+    const requiredSurfaceCategories = new Set(changeSurfaces.flatMap((surface) => SURFACE_NFR[surface] ?? []));
+    const seenApplicability = new Map();
+    for (const [index, item] of applicability.entries()) {
+        const previous = seenApplicability.get(item.category);
+        if (previous !== undefined)
+            throw new ProtocolError(`analysis.nfr_applicability[${index}].category`, previous === item.status ? "duplicate applicability category" : "contradictory applicability category", { category: item.category, first_status: previous, duplicate_status: item.status });
+        seenApplicability.set(item.category, item.status);
+        if (item.status === "not_applicable" && (item.owner !== null || item.acceptance.length))
+            throw new ProtocolError(`analysis.nfr_applicability[${index}]`, "not_applicable category must not claim an owner or acceptance");
+        if (item.status === "required") {
+            if (!item.owner || !stageById.has(item.owner))
+                throw new ProtocolError(`analysis.nfr_applicability[${index}].owner`, "required category must have a real owner stage");
+            const matching = nfrs.filter((nfr) => nfr.category === item.category && nfr.stage === item.owner);
+            if (!matching.length)
+                throw new ProtocolError(`analysis.nfr_applicability[${index}]`, "required category must have a real NFR with the same category and owner stage");
+            const linkedAcceptance = new Set(matching.flatMap((nfr) => nfr.acceptance));
+            if (!item.acceptance.length)
+                throw new ProtocolError(`analysis.nfr_applicability[${index}].acceptance`, "required category must have linked acceptance");
+            for (const acceptanceId of item.acceptance) {
+                const linked = acceptanceById.get(acceptanceId);
+                if (!linkedAcceptance.has(acceptanceId))
+                    throw new ProtocolError(`analysis.nfr_applicability[${index}].acceptance`, "acceptance must be linked by an NFR of this category and owner", acceptanceId);
+                if (!linked || linked.stage !== item.owner)
+                    throw new ProtocolError(`analysis.nfr_applicability[${index}].acceptance`, "acceptance must belong to owner stage", acceptanceId);
             }
         }
     }
-    return analysis.stages.filter((item) => affected.has(item.id)).map((item) => item.id);
+    for (const category of requiredSurfaceCategories)
+        if (!seenApplicability.has(category))
+            throw new ProtocolError("analysis.nfr_applicability", "change surface requires an explicit applicability decision", category);
+    return analysis;
 }
 function canonicalFingerprintJson(value) {
     if (value === null || typeof value !== "object")
         return JSON.stringify(value);
     if (Array.isArray(value))
         return `[${value.map(canonicalFingerprintJson).join(",")}]`;
-    return `{${Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => `${JSON.stringify(key)}:${canonicalFingerprintJson(item)}`)
-        .join(",")}}`;
-}
-function validateNfrApplicabilityTraceability(analysis) {
-    const stageById = new Map(analysis.stages.map((stage) => [stage.id, stage]));
-    const acceptanceById = new Map(analysis.acceptance.map((acceptance) => [acceptance.id, acceptance]));
-    const seen = new Map();
-    for (const [index, applicability] of analysis.nfr_applicability.entries()) {
-        const field = `analysis.nfr_applicability[${index}]`;
-        const previous = seen.get(applicability.category);
-        if (previous !== undefined) {
-            throw new ProtocolError(`${field}.category`, previous === applicability.status ? "duplicate applicability category" : "contradictory applicability category", {
-                category: applicability.category,
-                first_status: previous,
-                duplicate_status: applicability.status,
-            });
-        }
-        seen.set(applicability.category, applicability.status);
-        if (applicability.status !== "required")
-            continue;
-        if (!applicability.owner)
-            throw new ProtocolError(`${field}.owner`, "required category must have an owner stage");
-        const owner = stageById.get(applicability.owner);
-        if (!owner)
-            throw new ProtocolError(`${field}.owner`, "required category owner must be a real stage", applicability.owner);
-        const matching = analysis.nfrs.filter((nfr) => nfr.category === applicability.category && nfr.stage === applicability.owner);
-        if (!matching.length) {
-            throw new ProtocolError(field, "required category must have a real NFR with the same category and owner stage", {
-                category: applicability.category,
-                owner: applicability.owner,
-            });
-        }
-        const matchingIds = new Set(matching.map((nfr) => nfr.id));
-        for (const nfr of matching) {
-            if (!owner.nfrs.includes(nfr.id))
-                throw new ProtocolError(`${field}.owner`, "owner stage must list the matching NFR", nfr.id);
-        }
-        const linkedAcceptance = new Set(matching.flatMap((nfr) => nfr.acceptance));
-        if (!applicability.acceptance.length)
-            throw new ProtocolError(`${field}.acceptance`, "required category must have linked acceptance");
-        for (const acceptanceId of applicability.acceptance) {
-            if (!linkedAcceptance.has(acceptanceId)) {
-                throw new ProtocolError(`${field}.acceptance`, "acceptance must be linked by an NFR of this category and owner", {
-                    acceptance: acceptanceId,
-                    matching_nfrs: [...matchingIds],
-                });
-            }
-            const acceptance = acceptanceById.get(acceptanceId);
-            if (!acceptance || acceptance.stage !== applicability.owner) {
-                throw new ProtocolError(`${field}.acceptance`, "acceptance must belong to the owner stage", acceptanceId);
-            }
-        }
-    }
-}
-export function validateAnalysis(input) {
-    const analysis = validateAnalysisBase(input);
-    validateNfrApplicabilityTraceability(analysis);
-    return analysis;
+    return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${canonicalFingerprintJson(item)}`).join(",")}}`;
 }
 export function semanticStageFingerprint(analysisInput, stageIdValue) {
     const analysis = validateAnalysis(analysisInput);
     const stage = analysis.stages.find((item) => item.id === stageIdValue);
     if (!stage)
         throw new ProtocolError("stage", "unknown stage for semantic fingerprint", stageIdValue);
-    const requirementIds = new Set(stage.requirements);
-    const nfrIds = new Set(stage.nfrs);
-    const requirements = analysis.requirements.filter((item) => item.stage === stage.id || requirementIds.has(item.id));
-    const nfrs = analysis.nfrs.filter((item) => item.stage === stage.id || nfrIds.has(item.id));
-    const contractIds = new Set([...stage.contracts_consumed, ...stage.contracts_produced]);
-    const contracts = analysis.contracts.filter((item) => item.producer === stage.id || item.consumers.includes(stage.id) || contractIds.has(item.id));
+    const requirements = analysis.requirements.filter((item) => item.stage === stage.id);
+    const nfrs = analysis.nfrs.filter((item) => item.stage === stage.id);
+    const contracts = analysis.contracts.filter((item) => item.producer === stage.id || item.consumers.includes(stage.id) || stage.contracts_consumed.includes(item.id) || stage.contracts_produced.includes(item.id));
     const acceptanceIds = new Set([...requirements.flatMap((item) => item.acceptance), ...nfrs.flatMap((item) => item.acceptance)]);
     const scenarioIds = new Set([...requirements.flatMap((item) => item.scenarios), ...nfrs.flatMap((item) => item.scenarios)]);
-    const applicability = analysis.nfr_applicability.filter((item) => item.owner === stage.id || nfrs.some((nfr) => nfr.category === item.category));
     const semantic = {
-        stage: {
-            id: stage.id,
-            title: stage.title,
-            slug: stage.slug,
-            depends_on: stage.depends_on,
-            affected_area: stage.affected_area,
-            risks: stage.risks,
-        },
+        stage: { id: stage.id, title: stage.title, slug: stage.slug, depends_on: stage.depends_on, affected_area: stage.affected_area, risks: stage.risks },
         requirements,
         nfrs,
         contracts,
         acceptance: analysis.acceptance.filter((item) => item.stage === stage.id || acceptanceIds.has(item.id)),
         scenarios: analysis.scenarios.filter((item) => item.stage === stage.id || scenarioIds.has(item.id)),
-        applicability,
+        applicability: analysis.nfr_applicability.filter((item) => item.owner === stage.id || nfrs.some((nfr) => nfr.category === item.category)),
         decisions: analysis.decisions,
     };
     return createHash("sha256").update(canonicalFingerprintJson(semantic)).digest("hex");

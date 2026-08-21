@@ -1,53 +1,70 @@
+
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 
-import {
-  ProtocolError,
-  WorkflowStore,
-  affectedStageClosure,
-  applyEvent,
-  newState,
-  parseJsonStrict,
-  reserveNext,
-  validateAnalysis,
-} from "../runtime/orchestrator.js"
+import { WorkflowStore } from "../runtime/orchestrator.js"
+import { analysisFixture, event, writeArtifact } from "./helpers.mjs"
 
-import { analysisFixture, event, advanceToPlanning } from "./helpers.mjs"
+test("complete store journey creates and validates real artifacts", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "orchestrator-real-journey-"))
+  const root = path.join(base, "1_orchestrator", "journey")
+  await mkdir(root, { recursive: true })
+  const store = new WorkflowStore(base, "journey")
+  const analysis = analysisFixture()
 
-test("deterministic uninterrupted workflow reaches COMPLETE", async () => {
-  const base = await mkdtemp(path.join(os.tmpdir(), "orchestrator-complete-"))
-  let { state, analysis } = await advanceToPlanning(base)
+  let step = await store.reserve()
+  await writeFile(path.join(root, "analysis.json"), JSON.stringify(analysis, null, 2) + "\n")
+  await writeArtifact(root, "discovery.md", { artifact: "discovery", revision: 1, source_revision: 0, status: "READY_FOR_REVIEW" })
+  let applied = await store.apply(event(step.action, "discovery_result", { revision: 1, status: "READY_FOR_REVIEW" }), step.state.state_revision)
+  assert.equal(applied.state.status, "discovery_review")
 
-  for (const stageId of ["S01", "S02"]) {
-    let reserved = reserveNext(state, analysis)
-    assert.equal(reserved.action.action, "PLAN_STAGE")
-    assert.equal(reserved.action.stage, stageId)
-    state = (await applyEvent(base, reserved.state, event(reserved.action, "stage_plan_result", { revision: 1, status: "REVIEW" }), analysis)).state
-    reserved = reserveNext(state, analysis)
-    assert.equal(reserved.action.action, "REVIEW_STAGE")
-    state = (await applyEvent(base, reserved.state, event(reserved.action, "stage_review_result", { revision: 1, status: "PASS" }), analysis)).state
+  step = await store.reserve(applied.state.state_revision)
+  await writeArtifact(root, "reviews/discovery.md", { artifact: "discovery-review", revision: 1, source_revision: 1, status: "PASS" })
+  applied = await store.apply(event(step.action, "discovery_review_result", { revision: 1, status: "PASS", findings: [], evidence: ["analysis schema", "discovery evidence"] }), step.state.state_revision)
+  assert.equal(applied.state.status, "waiting_map_approval")
+
+  step = await store.reserve(applied.state.state_revision)
+  applied = await store.apply(event(step.action, "map_decision", { decision: "APPROVE" }), step.state.state_revision)
+  assert.equal(applied.state.status, "planning")
+
+  for (const expectedStage of ["S01", "S02"]) {
+    step = await store.reserve(applied.state.state_revision)
+    assert.equal(step.action.action, "PLAN_STAGE")
+    assert.equal(step.action.stage, expectedStage)
+    await writeArtifact(root, step.action.output, { artifact: "technical-stage", stage: expectedStage, revision: step.action.revision, source_revision: step.action.source_revision, status: "REVIEW" })
+    applied = await store.apply(event(step.action, "stage_plan_result", { revision: step.action.revision, status: "REVIEW" }), step.state.state_revision)
+
+    step = await store.reserve(applied.state.state_revision)
+    assert.equal(step.action.action, "REVIEW_STAGE")
+    await writeArtifact(root, step.action.output, { artifact: "technical-review", stage: expectedStage, revision: step.action.revision, source_revision: step.action.source_revision, status: "PASS" })
+    applied = await store.apply(event(step.action, "stage_review_result", { revision: step.action.revision, status: "PASS", findings: [], evidence: ["technical artifact"] }), step.state.state_revision)
   }
-  assert.equal(state.status, "human_reviewing")
+  assert.equal(applied.state.status, "human_reviewing")
 
-  for (const stageId of ["S01", "S02"]) {
-    let reserved = reserveNext(state, analysis)
-    assert.equal(reserved.action.action, "PLAN_HUMAN_REVIEW")
-    assert.equal(reserved.action.stage, stageId)
-    state = (await applyEvent(base, reserved.state, event(reserved.action, "human_plan_result", { revision: 1, status: "REVIEW" }), analysis)).state
-    reserved = reserveNext(state, analysis)
-    assert.equal(reserved.action.action, "REVIEW_HUMAN_REVIEW")
-    state = (await applyEvent(base, reserved.state, event(reserved.action, "human_review_result", { revision: 1, status: "PASS" }), analysis)).state
+  for (const expectedStage of ["S01", "S02"]) {
+    step = await store.reserve(applied.state.state_revision)
+    assert.equal(step.action.action, "PLAN_HUMAN_REVIEW")
+    await writeArtifact(root, step.action.output, { artifact: "human-review", stage: expectedStage, revision: step.action.revision, source_revision: step.action.source_revision, status: "REVIEW" })
+    applied = await store.apply(event(step.action, "human_plan_result", { revision: step.action.revision, status: "REVIEW" }), step.state.state_revision)
+
+    step = await store.reserve(applied.state.state_revision)
+    assert.equal(step.action.action, "REVIEW_HUMAN_REVIEW")
+    await writeArtifact(root, step.action.output, { artifact: "human-review-review", stage: expectedStage, revision: step.action.revision, source_revision: step.action.source_revision, status: "PASS" })
+    applied = await store.apply(event(step.action, "human_review_result", { revision: step.action.revision, status: "PASS", findings: [], evidence: ["human artifact"] }), step.state.state_revision)
   }
-  assert.equal(state.status, "waiting_plan_approval")
+  assert.equal(applied.state.status, "waiting_plan_approval")
 
-  let reserved = reserveNext(state, analysis)
-  assert.equal(reserved.action.action, "APPROVE_PLAN")
-  state = (await applyEvent(base, reserved.state, event(reserved.action, "plan_decision", { decision: "APPROVE" }), analysis)).state
-  assert.equal(state.status, "ready")
-  reserved = reserveNext(state, analysis)
-  assert.equal(reserved.action.action, "COMPLETE")
-  assert.equal(reserved.action.transition_id, null)
+  step = await store.reserve(applied.state.state_revision)
+  assert.equal(step.action.action, "APPROVE_PLAN")
+  assert.ok(step.action.inputs.includes("reviews/discovery.md"))
+  assert.ok(step.action.inputs.includes("reviews/02-human-review.md"))
+  applied = await store.apply(event(step.action, "plan_decision", { decision: "APPROVE" }), step.state.state_revision)
+  assert.equal(applied.state.status, "ready")
+
+  const complete = await store.reserve(applied.state.state_revision)
+  assert.equal(complete.action.action, "COMPLETE")
+  assert.equal((await store.validate()).valid, true)
 })

@@ -210,6 +210,9 @@ export async function assertPendingOutputContracts(root: string, state: State, e
     if (status !== "READY_FOR_REVIEW") return
     if (!analysis) throw new ProtocolError("analysis.json", "READY_FOR_REVIEW requires a valid analysis artifact")
     await assertFreshPrimaryOutput(root, pending)
+    const discoveryBaseline = pending.input_snapshot.find((snapshot) => snapshot.path === "discovery.md")
+    const discoveryCurrent = await captureSnapshot(root, "discovery.md")
+    if (!discoveryCurrent.exists || (discoveryBaseline && snapshotEqual(discoveryBaseline, discoveryCurrent))) throw new ProtocolError("discovery.md", "discovery artifact is missing or stale")
     await assertArtifact(root, "discovery.md", {
       artifact: "discovery",
       stage: null,
@@ -255,6 +258,7 @@ export async function assertCompleteArtifactGraph(root: string, state: State, an
     status: "PASS",
   })
   for (const stage of state.stages) {
+    if (stage.status !== "pass" || stage.human_status !== "pass") throw new ProtocolError("state.stages", "complete artifact graph requires technical and human PASS statuses", stage.id)
     await assertArtifact(root, stage.details, {
       artifact: "technical-stage",
       stage: stage.id,
