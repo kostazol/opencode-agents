@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 from final_common import BASE_SHA, MESSAGES, assert_expected_head, clean, commit_stage, common, configure, history, prepare, write_json, write_output
+import controller_patch  # noqa: F401
 
 
 def main() -> int:
