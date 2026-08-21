@@ -36,7 +36,7 @@ export function reserveNext(input, analysisInput, expectedStateRevision) {
         next.analysis_revision += 1;
         next.analysis_status = "draft";
         action = pendingAction(next, "DISCOVER", "orchestrator-discovery", correction ? "correct-discovery-from-independent-review" : "collect-and-structure-evidence", {
-            mode: correction ? "CORRECTION" : next.analysis_revision === 1 ? "INITIAL" : next.legacy_migrated ? "LEGACY_MIGRATION" : "FOLLOW_UP",
+            mode: correction ? "CORRECTION" : next.legacy_migrated ? "LEGACY_MIGRATION" : next.analysis_revision === 1 ? "INITIAL" : "FOLLOW_UP",
             revision: next.analysis_revision,
             inputs: uniqueInputs([
                 ...(correction ? ["analysis.json", "discovery.md", "reviews/discovery.md"] : ["discovery.md"]),

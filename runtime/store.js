@@ -3,12 +3,12 @@ import { access, mkdir, open, readFile, rename, rm, stat } from "node:fs/promise
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ProtocolError, clone, parseJsonStrict, record } from "./schema.js";
-import { validateAnalysis } from "./analysis.js";
-import { assertCompleteArtifactGraph, assertInputSnapshotsCurrent, assertPendingOutputContracts, capturePendingSnapshots } from "./artifacts.js";
+import { semanticStageFingerprint, validateAnalysis } from "./analysis.js";
+import { assertArtifact, assertCompleteArtifactGraph, assertInputSnapshotsCurrent, assertPendingOutputContracts, capturePendingSnapshots } from "./artifacts.js";
 import { applyEvent } from "./events.js";
-import { parseLegacyPlan, renderPlan } from "./render.js";
+import { parseLegacyPlan, parseLegacySnapshot, renderPlan } from "./render.js";
 import { reserveNext } from "./routing.js";
-import { migrateState, newState, validateState } from "./state.js";
+import { migrateState, newState, normalizeProgress, validateState } from "./state.js";
 async function exists(candidate) {
     try {
         await access(candidate, fsConstants.F_OK);
@@ -88,6 +88,8 @@ export class WorkflowStore {
     transactionPath;
     lockPath;
     stateV1BackupPath;
+    legacyBackupPath;
+    legacySnapshotPath;
     request;
     constructor(directory, request) {
         newState(request);
@@ -105,6 +107,8 @@ export class WorkflowStore {
         this.transactionPath = path.join(this.internal, "transaction.json");
         this.lockPath = path.join(this.internal, "lock");
         this.stateV1BackupPath = path.join(this.internal, "state-v1.json");
+        this.legacyBackupPath = path.join(this.internal, "legacy-plan.md");
+        this.legacySnapshotPath = path.join(this.internal, "legacy-state.json");
     }
     async ensureRoot() {
         await mkdir(this.internal, { recursive: true });
@@ -182,9 +186,85 @@ export class WorkflowStore {
             }
             return state;
         }
-        if (await exists(this.planPath))
-            return parseLegacyPlan(await readFile(this.planPath, "utf8"), this.request);
+        if (await exists(this.planPath)) {
+            const content = await readFile(this.planPath, "utf8");
+            if (!(await exists(this.legacyBackupPath)))
+                await atomicWrite(this.legacyBackupPath, content);
+            const snapshot = parseLegacySnapshot(content, this.request);
+            await atomicWrite(this.legacySnapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+            return parseLegacyPlan(content, this.request);
+        }
         return newState(this.request);
+    }
+    async loadLegacySnapshot() {
+        return await exists(this.legacySnapshotPath) ? await parseJsonFile(this.legacySnapshotPath) : undefined;
+    }
+    async restoreLegacyPasses(state, analysis) {
+        const snapshot = await this.loadLegacySnapshot();
+        if (!snapshot) {
+            state.legacy_migrated = false;
+            return;
+        }
+        for (const stage of state.stages) {
+            const legacy = snapshot.stages.find((item) => item.id === stage.id);
+            if (!legacy || legacy.status !== "pass" || !legacy.semantic_fingerprint)
+                continue;
+            if (legacy.semantic_fingerprint !== semanticStageFingerprint(analysis, stage.id))
+                continue;
+            const revision = Math.max(1, legacy.revision);
+            try {
+                await assertArtifact(this.root, stage.details, {
+                    artifact: "technical-stage",
+                    stage: stage.id,
+                    revision,
+                    source_revision: state.analysis_revision,
+                    status: "REVIEW",
+                });
+                await assertArtifact(this.root, stage.review, {
+                    artifact: "technical-review",
+                    stage: stage.id,
+                    revision,
+                    source_revision: revision,
+                    status: "PASS",
+                });
+            }
+            catch {
+                continue;
+            }
+            stage.status = "pass";
+            stage.revision = revision;
+            if (legacy.human_status === "pass") {
+                const humanRevision = Math.max(1, legacy.human_revision);
+                try {
+                    await assertArtifact(this.root, stage.human_review, {
+                        artifact: "human-review",
+                        stage: stage.id,
+                        revision: humanRevision,
+                        source_revision: revision,
+                        status: "REVIEW",
+                    });
+                    await assertArtifact(this.root, stage.human_review_review, {
+                        artifact: "human-review-review",
+                        stage: stage.id,
+                        revision: humanRevision,
+                        source_revision: revision,
+                        status: "PASS",
+                    });
+                    stage.human_status = "pass";
+                    stage.human_revision = humanRevision;
+                }
+                catch {
+                    stage.human_status = "pending";
+                    stage.human_revision = 0;
+                }
+            }
+        }
+        state.legacy_migrated = false;
+        normalizeProgress(state);
+        if (state.status === "planning")
+            state.current_stage = state.stages.find((stage) => stage.status !== "pass")?.id ?? state.current_stage;
+        if (state.status === "human_reviewing")
+            state.current_stage = state.stages.find((stage) => stage.human_status !== "pass")?.id ?? state.current_stage;
     }
     async loadAnalysis() {
         return await exists(this.analysisPath) ? validateAnalysis(await parseJsonFile(this.analysisPath)) : undefined;
@@ -239,6 +319,8 @@ export class WorkflowStore {
             if (state.pending.action === "APPROVE_PLAN" && payload.decision === "APPROVE")
                 await assertCompleteArtifactGraph(this.root, state, analysis);
             const result = await applyEvent(this.base, state, event, analysis, expectedStateRevision);
+            if (event.type === "map_decision" && payload.decision === "APPROVE" && result.state.legacy_migrated && analysis)
+                await this.restoreLegacyPasses(result.state, analysis);
             if (JSON.stringify(result.state) !== JSON.stringify(state))
                 await this.commit(result.state, analysis, this.journal("apply", result.state, { transition_id: event.transition_id, event_type: event.type, result: result.result }));
             return result;
