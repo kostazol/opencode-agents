@@ -1,0 +1,31 @@
+name: Independent 6.0 blocker baseline
+
+on:
+  push:
+    branches:
+      - agent/6.0.1-independent-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controller-release-blockers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run controller blocker regressions
+        run: node --test tests-ts/release-blockers.test.mjs
+
+  installer-release-blockers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run installer blocker regressions
+        run: python -m unittest tests/test_installer_hardening.py -v

@@ -1,698 +1,250 @@
 #!/usr/bin/env python3
-"""Install and update OpenCode agents."""
+"""Install, update, and inspect the OpenCode Agents package."""
 
 from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import contextmanager
 from datetime import datetime
-import hashlib
 import json
 import os
+from pathlib import Path, PurePosixPath
 import shutil
-import stat
-import sys
 import tempfile
-from contextlib import contextmanager
-import uuid
-from pathlib import Path
-from typing import Optional
+from typing import Iterator
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import Request, urlopen
 
-
-VERSION = "5.1.1"
-DEFAULT_REPOSITORY = "https://github.com/kostazol/opencode-agents"
-DEFAULT_GITHUB_API = "https://api.github.com"
-SOURCE_GROUP_PATTERNS = {"agents": "*.md"}
-TARGET_GROUPS = ("agents", "plugins")
-MAX_SOURCE_FILE_BYTES = 1_000_000
-MAX_GITHUB_RESPONSE_BYTES = 2_000_000
-MAX_SOURCE_FILES = 100
-MAX_SOURCE_TOTAL_BYTES = 5_000_000
-RETIRED_FILE_HASHES = {
-    Path("plugins/analyst-workflow-guard.js"): frozenset({
-        "2a4c3223c4283526105123f3661881a455b9b57b15a6290aae479d839ab66bc1",
-        "4f635a0921441e87098d61f2d18c6f2eab408489fad345e907a2e37a70b4f55f",
-        "d333fe9c8f57dbe7a9c0a0a65d9589daec8f7857f97f120fa3fe7818d27a9b90",
-        "f170158806b988411e3cd875e64a48207752e0f564f72f8474ccbead4aad798b",
-        "e63eb3089e48f1f481f8065d6d660270408945c8a2c49276398303b9e8e60bec",
-        "77bdc5e407d176d73d1532bc5dfb2c2c11c28b0ceeee5d4eec793c6f128731f4",
-    }),
-    Path("agents/orchestrator-analyst-single-model.md"): frozenset({
-        "0f5dda6a9eee577d28cc36b74e5c722e714c58a05a2105c5050c52651721ca59",
-        "4d28f4e61e8133b33826cf4c0349d169d6aece9fbeccee94ec64ace5a6ccb360",
-        "538560e732eaa37e461eb9b083ffb284fd8ab8c499a180d3b4081f28d7d14da4",
-        "61b1abe0be8709e0975a114f2bc3e7fa7fc964a646552e4417a9a22bc87b9481",
-        "652d5faddf8ef14e01411d7b1c75dff37673fb6a8d22c9c756bc873d5269074c",
-        "690bd299802f93313a03836192943aaa5d1e93d7ed81151670926cb92c57bd5e",
-        "8c01980229e8c387a6b64f283a80583107042a2661a83ac009a306fb39ccf8f3",
-        "c9127f93a2d48c91c636da88faef862ee6fc24d373925cada41870d5cd683e2b",
-        "d25b7d7da00a23ca70c3755fd104f163643fa6f053c504cf1d00f880b1d2a98a",
-        "d723659883e56e1de39edab54d29fb2e72ea67f9e15daaa8507bc8de885c7dbe",
-        "d8f260b764661fb8d55af37929b0615b9c8eaeeebd7772b9b24818f5977798c2",
-        "e7bd3a2adcc4522a0ced8c0d305d6143a6238592d356cab61fb40659045d04ca",
-        "f0b40517a374b23b5b0a072041cb5a1f16eb98feecfb4338edcc90c4772a2df2",
-        "f542dd6a4c4acc3b16b1abd4f3d66c01df2be63f1c2c6ae8266d47f57fa6ce63",
-    }),
-    Path("agents/orchestrator-executor-single-model.md"): frozenset({
-        "0f12a7731fc097b7d5e5960e1a0b20c3467c20eb1a987e823bf0fdba791b9d05",
-        "12bdc6390ece9117e7710d7225c258f35d0a79e8edb79d7807d2024f984bf3ac",
-        "1e3777d055fdc9a3985b076de44d00c241bb540f7d7d912309fd96b3242977e4",
-        "1f8b77c37347f803f61c734d19d010b6baa0e8569d5ff31dab464a209ac5b45d",
-        "2f27be237a111396a8ce9e4a456e46213824a0c0c98cfac2abf88465aff8c531",
-        "7855950b7b855d72cec29b19317b0aa5985a227c2ec127f8183216dcf91be15e",
-        "99b39d171fb4ae52a9118a003f5a4a1bd33ac23f2d3445a824d70edf46a24575",
-        "b9afc2c0af9474cfd120d85b55d6accef54cdea84830b2d2407fb6c519b48c99",
-        "cbec0dfb2c0570f87c00f907c39828b7ded5dee10678dde3d61ce27bb5ac9917",
-        "cf6ea98c03d8309a2ae5d516f34a6365a32be7f3e41fb175a226d1ae7023ada8",
-        "e02798b6d1c7cdd7051c5d0644e2e11240421c66312d12a2215244955deb9749",
-        "ed5ccf4d1b2a9bd1ed2578100ce00e3c86db15ef08e1758db4816e73c19df0d0",
-        "f71126b4b1cdb6f1012231bb62280b5ea39456cc4eb577540217cb30b384ed17",
-        "f8dbb80cca5ec4f0d70f49ea5bb15b349c1c317e8da501ba0e2cdb2ad498e622",
-    }),
-    Path("agents/orchestrator-task-reviewer-single-model.md"): frozenset({
-        "1fa558a2fdcb3b436daaf5c13c1f67020c3c202d3df2bee86124d50923935b75",
-        "21770278f39e34432d095a8ab49c5f54f90e76e28cabe27b6f232821644c84d9",
-        "3f6a1078281c44f6db4b5d04483e43d3d69acd9581269e0c104a048f55b44dd0",
-        "4b0012d0c3a5a4e0395e6b1a5267d316e8786cc89711d5ce07d1a071752d606e",
-        "5d1e0d930ca819b2fd2e32bfc52957e5bd4b9920a29a215899cb5a9e847bf78d",
-        "5e3be933cf3909696fb157e066ff1634394c94dfac920c23b21612afab74a489",
-        "6683a5750a2f630a375ace4499b41ed7347ffbe99e5139bca6bdf9878d795d72",
-        "74047cee6caf6d6e8c1f72a8c6dc076777a1e219dc3cafeb5b39697ee823c673",
-        "74ab4870868501ef154620e55a1703c26e0768c363b2bb19c9bb5af6f30fac41",
-        "abf01b140fc324fb6b50376bee198bf7156fd965ff0c96da9213b74ce67321bf",
-        "b133d261ad77b48688936e31d1f6d19522682790ed4782f59c624414a0a7ad12",
-        "d1547bb3796a7a1c06ec26affa45d026daf5b449910d0c014061c89eb1f318d8",
-        "d23980b2fdab70d9a175c785973baf1058c7da1584d925395dcb16231f54a96b",
-        "e30a83d339c8b059d1c106fda4a4a36c0edbf15029ed51018f6a32479a1e6ddf",
-    }),
-    Path("agents/orchestrator-recon.md"): frozenset({
-        "18cbce96483f8b1ef7d2a90b2184853cd82af1f1bcd6158a457409f41742dd83",
-        "6fdfc984f4e23ab587ebe859214e0c7ecac26bf330009f8faf9cd29c72d65625",
-        "7264840d5622061486cc39275b14f9bcda96febbaa4009a7ae49ac28a336ae3a",
-        "cb79e48a24d199614e6f45e232630a59b17e43738f91ef792ec496f5887cb4e6",
-        "d3ced39fa05b99203950ae2bf48aee8abaaecf2971df73e332973a4e8240f900",
-        "1a0b6c87512fbf79ea77cd139ba6fd7d55d75227159259396980670cf7792e57",
-        "b7f55885c03cdbc268556b4911c3b53fd3815da0e1e55107e67e98afdd3ea41e",
-        "65b7ca216b9890b276e756c2e48a1ac052f9c4e495bcf56b528adeca2b07ae33",
-    }),
-    Path("agents/orchestrator-executor.md"): frozenset({
-        "e773069705c3066ceac653a95090b25418a4fa1e69f6d237c704f4a7b90fa60a",
-    }),
-    Path("agents/orchestrator-final-reviewer.md"): frozenset({
-        "4b3cb64790aca6c36acb66e98da9b29a372e18cec91b09b41d12ddfe9999541d",
-    }),
-    Path("agents/orchestrator-plan-reviewer.md"): frozenset({
-        "2de24a6f24acae8bab50b9594450085adabeaa6b651ccf3d89ebe1e801df64db",
-    }),
-    Path("agents/orchestrator-plan-ultra-reviewer.md"): frozenset({
-        "a737435905707491e23216de10292f626fa61e201c357c574e483a27e675fd28",
-    }),
-    Path("agents/orchestrator-stage-decomposer.md"): frozenset({
-        "d8f2c7c1b74c9796aa87f7cba0d566cf35fbf8f3618c41a9a2d5b64d9f592449",
-    }),
-    Path("agents/orchestrator-stage-pair-reviewer.md"): frozenset({
-        "95fa89c69f395181c9d1bb58534d7e3546edf764dd0ea816a01268c6d58a63ef",
-    }),
-    Path("agents/orchestrator-stage-question-reviewer.md"): frozenset({
-        "cad48ccb65bf2e8334e0830d758839714ffd1e3b740f0ab31607361b38d05795",
-    }),
-    Path("agents/orchestrator-task-adjuster.md"): frozenset({
-        "f4817a1e96a8ff19e1d749cd5816bfb96919c7d9992cae80690b296de17a4870",
-    }),
-    Path("agents/orchestrator-task-executor.md"): frozenset({
-        "3a0f3e59c8084f72bf2d1737845e8b988c4e0d3dc7005ac85eedb5d05c9a131b",
-    }),
-    Path("agents/orchestrator-task-planner.md"): frozenset({
-        "9ddf675f7712b1ecc674b079f76748eed70a122413480564a0467b7e394c9f93",
-    }),
-    Path("agents/orchestrator-task-reviewer.md"): frozenset({
-        "99ac59d2bf7063e4cfb513cf08985ff218ee71c8eaf36ee2a26b46b365973e4c",
-    }),
+VERSION = "6.0.0"
+DEFAULT_REPOSITORY = "kostazol/opencode-agents"
+DEFAULT_API = "https://api.github.com"
+PATTERNS = {
+    "agents": ("*.md",),
+    "tools": ("*.ts", "*.js"),
+    "runtime": ("**/*.py", "**/*.js", "**/*.json"),
 }
-GLOBAL_INSTRUCTIONS_FILE = "AGENTS.md"
-GLOBAL_INSTRUCTIONS_START = "<!-- opencode-agents: caveman:start -->"
-GLOBAL_INSTRUCTIONS_END = "<!-- opencode-agents: caveman:end -->"
-
-
-def global_instructions(newline: str = "\n") -> bytes:
-    return f"{GLOBAL_INSTRUCTIONS_START}{newline}When `caveman` skill is installed, load it and use it for concise technically complete responses. If skill is unavailable, continue normally.{newline}{GLOBAL_INSTRUCTIONS_END}{newline}".encode()
+MANAGED_START = "<!-- opencode-agents:managed:start -->"
+MANAGED_END = "<!-- opencode-agents:managed:end -->"
+MAX_FILE = 1_000_000
+MAX_TOTAL = 8_000_000
 
 
 def default_target() -> Path:
     configured = os.environ.get("OPENCODE_CONFIG_DIR")
     if configured:
         return Path(configured).expanduser()
-    if os.name == "nt":
-        app_data = os.environ.get("APPDATA")
-        if app_data:
-            return Path(app_data) / "opencode"
+    if os.name == "nt" and os.environ.get("APPDATA"):
+        return Path(os.environ["APPDATA"]) / "opencode"
     return Path.home() / ".config" / "opencode"
 
 
-def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Install and update OpenCode agents.")
-    result.add_argument("command", choices=("install", "update", "status"))
-    result.add_argument("--source", type=Path, help="Use a local source directory instead of GitHub API.")
-    result.add_argument("--repository", default=None, help="GitHub repository URL or owner/name.")
-    result.add_argument("--ref", default=None, help="Git branch, tag, or commit to fetch from GitHub.")
-    result.add_argument("--github-api", default=DEFAULT_GITHUB_API, help=argparse.SUPPRESS)
-    result.add_argument("--target", type=Path, default=default_target())
-    result.add_argument("--backup-dir", type=Path)
-    result.add_argument("--dry-run", action="store_true")
-    return result
+def arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=f"OpenCode Agents {VERSION}")
+    parser.add_argument("command", choices=("install", "update", "status"))
+    parser.add_argument("--source", type=Path)
+    parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
+    parser.add_argument("--ref")
+    parser.add_argument("--target", type=Path, default=default_target())
+    parser.add_argument("--backup-dir", type=Path)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
 
 
-def source_files(source: Path, target: Path):
-    files = []
-    for group in SOURCE_GROUP_PATTERNS:
-        source_group = source / group
-        if not source_group.is_dir():
-            raise RuntimeError(f"source missing {group}/: {source}")
-        for source_file in sorted(source_group.glob(SOURCE_GROUP_PATTERNS[group])):
-            files.append((source_file, target / group / source_file.relative_to(source_group)))
-    yield from sorted(files, key=lambda item: str(item[1]))
-
-
-def repository_name(repository: str) -> str:
-    value = repository.strip()
+def repository_name(value: str) -> str:
     if "://" not in value:
         value = f"https://github.com/{value}"
     parsed = urlparse(value)
-    if parsed.scheme.lower() != "https" or parsed.netloc.lower() != "github.com":
-        raise RuntimeError(f"unsupported repository URL: {repository}")
+    if parsed.scheme != "https" or parsed.netloc.lower() != "github.com":
+        raise RuntimeError(f"unsupported repository URL: {value}")
     parts = [part for part in parsed.path.split("/") if part]
     if len(parts) != 2:
-        raise RuntimeError(f"invalid GitHub repository: {repository}")
+        raise RuntimeError(f"invalid repository: {value}")
     return f"{parts[0]}/{parts[1].removesuffix('.git')}"
 
 
-def installable_repository_path(value: str) -> bool:
-    if value == "AGENTS.md":
-        return True
-    relative = Path(value)
-    if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 2:
-        return False
-    group, name = relative.parts
-    return group in SOURCE_GROUP_PATTERNS and Path(name).match(SOURCE_GROUP_PATTERNS[group])
-
-
-class SameHostRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        current = urlparse(req.full_url)
-        destination = urlparse(newurl)
-        if current.netloc.lower() != destination.netloc.lower() or destination.scheme.lower() != "https":
-            raise URLError("refusing unsafe GitHub API redirect")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def github_json(url: str, token: Optional[str]) -> dict:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() != "https":
-        raise RuntimeError("GitHub API URL must use HTTPS")
-    if token and parsed.netloc.lower() != "api.github.com":
-        raise RuntimeError("GITHUB_TOKEN may only be sent to api.github.com")
+def api_json(url: str) -> dict:
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "opencode-agents"}
+    token = os.environ.get("GITHUB_TOKEN")
     if token:
+        if urlparse(url).netloc.lower() != "api.github.com":
+            raise RuntimeError("GITHUB_TOKEN can only be sent to api.github.com")
         headers["Authorization"] = f"Bearer {token}"
     try:
-        opener = build_opener(SameHostRedirectHandler)
-        with opener.open(Request(url, headers=headers), timeout=30) as response:
-            content = response.read(MAX_GITHUB_RESPONSE_BYTES + 1)
-            if len(content) > MAX_GITHUB_RESPONSE_BYTES:
-                raise RuntimeError(f"GitHub API response is too large: {url}")
-            return json.loads(content)
-    except HTTPError as error:
-        raise RuntimeError(f"GitHub API request failed ({error.code}): {url}") from error
-    except (URLError, TimeoutError) as error:
-        raise RuntimeError(f"GitHub API request failed: {url}: {error}") from error
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise RuntimeError(f"GitHub API returned invalid JSON: {url}") from error
+        with urlopen(Request(url, headers=headers), timeout=30) as response:
+            return json.loads(response.read(MAX_FILE * 2).decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"GitHub request failed: {url}: {error}") from error
+
+
+def installable(path_text: str) -> bool:
+    path = PurePosixPath(path_text)
+    if path.is_absolute() or ".." in path.parts or len(path.parts) < 2:
+        return False
+    group = path.parts[0]
+    if group not in PATTERNS:
+        return False
+    relative = Path(*path.parts[1:])
+    if group in {"agents", "tools"} and len(relative.parts) != 1:
+        return False
+    return any(relative.match(pattern) for pattern in PATTERNS[group])
 
 
 @contextmanager
-def prepared_source(source: Optional[Path], repository: Optional[str], ref: str, api_url: str):
+def prepared_source(source: Path | None, repository: str, ref: str | None) -> Iterator[Path]:
     if source is not None:
-        yield source.expanduser().resolve()
+        root = source.expanduser().resolve()
+        if not root.is_dir():
+            raise RuntimeError(f"source is not a directory: {root}")
+        yield root
         return
-    script_path = globals().get("__file__")
-    local_source = Path(script_path).resolve().parent if repository is None and ref is None and script_path and Path(script_path).is_file() else None
-    if local_source is not None:
-        yield local_source
-        return
-    remote = repository or DEFAULT_REPOSITORY
-    repo = repository_name(remote)
-    token = os.environ.get("GITHUB_TOKEN")
-    selected_ref = ref or github_json(f"{api_url.rstrip('/')}/repos/{repo}", token).get("default_branch")
-    if not selected_ref:
-        raise RuntimeError(f"GitHub repository has no default branch: {repo}")
-    tree_url = f"{api_url.rstrip('/')}/repos/{repo}/git/trees/{quote(selected_ref, safe='')}?recursive=1"
-    tree = github_json(tree_url, token)
+    repo = repository_name(repository)
+    api = DEFAULT_API.rstrip("/")
+    selected = ref or api_json(f"{api}/repos/{repo}").get("default_branch")
+    if not selected:
+        raise RuntimeError("repository has no default branch")
+    tree = api_json(f"{api}/repos/{repo}/git/trees/{quote(selected, safe='')}?recursive=1")
     if tree.get("truncated"):
-        raise RuntimeError("GitHub repository tree is truncated; use a narrower ref")
+        raise RuntimeError("GitHub tree is truncated; use a commit or tag")
+    entries = [entry for entry in tree.get("tree", []) if entry.get("type") == "blob" and installable(entry.get("path", ""))]
+    if not entries:
+        raise RuntimeError(f"no installable files in {repo}@{selected}")
+    if sum(int(entry.get("size", 0)) for entry in entries) > MAX_TOTAL:
+        raise RuntimeError("installable package is too large")
     with tempfile.TemporaryDirectory(prefix="opencode-agents-") as temporary:
         root = Path(temporary)
-        entries = []
-        seen_paths = set()
-        for entry in tree.get("tree", []):
-            path = entry.get("path", "")
-            if entry.get("type") != "blob" or not installable_repository_path(path):
-                continue
-            if path in seen_paths:
-                raise RuntimeError(f"duplicate path from GitHub API: {path}")
-            if isinstance(entry.get("size"), int) and entry["size"] > MAX_SOURCE_FILE_BYTES:
-                raise RuntimeError(f"GitHub source file is too large: {path}")
-            seen_paths.add(path)
-            entries.append(entry)
-        if len(entries) > MAX_SOURCE_FILES:
-            raise RuntimeError(f"GitHub source contains too many installable files: {len(entries)}")
-        declared_total = sum(entry.get("size", 0) for entry in entries if isinstance(entry.get("size"), int))
-        if declared_total > MAX_SOURCE_TOTAL_BYTES:
-            raise RuntimeError(f"GitHub source is too large: {declared_total} bytes")
-        if not entries:
-            raise RuntimeError(f"GitHub repository contains no installable files: {repo}@{selected_ref}")
-        decoded_total = 0
         for entry in entries:
-            relative = Path(entry["path"])
-            if relative.is_absolute() or ".." in relative.parts:
-                raise RuntimeError(f"unsafe path from GitHub API: {entry['path']}")
-            content = github_json(f"{api_url.rstrip('/')}/repos/{repo}/git/blobs/{entry['sha']}", token)
-            try:
-                encoded = content["content"]
-                if len(encoded) > MAX_SOURCE_FILE_BYTES * 2:
-                    raise RuntimeError(f"GitHub source file is too large: {entry['path']}")
-                decoded = base64.b64decode(encoded, validate=False)
-            except (KeyError, ValueError) as error:
-                raise RuntimeError(f"invalid blob response for {entry['path']}") from error
-            if len(decoded) > MAX_SOURCE_FILE_BYTES:
-                raise RuntimeError(f"GitHub source file is too large: {entry['path']}")
-            decoded_total += len(decoded)
-            if decoded_total > MAX_SOURCE_TOTAL_BYTES:
-                raise RuntimeError(f"GitHub source is too large: {decoded_total} bytes")
-            destination = root / relative
+            path = PurePosixPath(entry["path"])
+            response = api_json(f"{api}/repos/{repo}/git/blobs/{entry['sha']}")
+            content = base64.b64decode(response["content"])
+            if len(content) > MAX_FILE:
+                raise RuntimeError(f"source file is too large: {path}")
+            destination = root.joinpath(*path.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(decoded)
+            destination.write_bytes(content)
         yield root
 
 
-def global_instructions_path(target: Path) -> Path:
-    return target / GLOBAL_INSTRUCTIONS_FILE
+def source_files(source: Path) -> list[tuple[Path, Path]]:
+    result: list[tuple[Path, Path]] = []
+    for group, patterns in PATTERNS.items():
+        root = source / group
+        if not root.is_dir():
+            continue
+        seen: set[Path] = set()
+        for pattern in patterns:
+            for path in root.glob(pattern):
+                if path.is_file() and path not in seen:
+                    seen.add(path)
+                    result.append((path, Path(group) / path.relative_to(root)))
+    if not result:
+        raise RuntimeError(f"source contains no installable files: {source}")
+    return sorted(result, key=lambda item: item[1].as_posix())
 
 
-def source_metadata_file(source: Path) -> Path:
-    instructions = source / GLOBAL_INSTRUCTIONS_FILE
-    if instructions.exists():
-        return instructions
-    for group in SOURCE_GROUP_PATTERNS:
-        files = sorted((source / group).glob(SOURCE_GROUP_PATTERNS[group]))
-        if files:
-            return files[0]
-    raise RuntimeError(f"source contains no files for metadata: {source}")
+def reject_links(path: Path) -> None:
+    current = Path(path.anchor)
+    for part in path.absolute().parts[1:]:
+        current /= part
+        if current.is_symlink():
+            raise RuntimeError(f"refusing symlink path: {current}")
 
 
-def print_caveman_next_step() -> None:
-    print("next: install official Caveman integration")
-    print("npx -y github:JuliusBrussee/caveman -- --only opencode")
-    print("https://github.com/JuliusBrussee/caveman")
-
-
-def rendered_global_instructions(target: Path) -> bytes:
-    path = global_instructions_path(target)
-    if not path.exists():
-        return global_instructions()
-    content = path.read_bytes()
-    newline = "\r\n" if b"\r\n" in content else "\n"
-    guidance = global_instructions(newline)
-    start = content.find(GLOBAL_INSTRUCTIONS_START.encode())
-    end_marker = GLOBAL_INSTRUCTIONS_END.encode()
-    if start < 0:
-        separator = b"" if not content or content.endswith((b"\n", b"\r")) else b"\n"
-        if separator and newline == "\r\n":
-            separator = b"\r\n"
-        return content + separator + guidance
-    end = content.find(end_marker, start)
-    if end < 0:
-        raise RuntimeError(f"global instructions contain incomplete caveman block: {path}")
-    end += len(end_marker)
-    if end < len(content) and content[end:end + 2] == b"\r\n":
-        end += 2
-    elif end < len(content) and content[end:end + 1] == b"\n":
-        end += 1
-    prefix = content[:start]
-    suffix = content[end:]
-    return prefix + guidance + suffix
-
-
-def rendered_content(source: Path, target: Path, target_file: Path) -> bytes:
-    return source.read_bytes()
-
-
-def validate_target_group(path: Path) -> None:
-    if is_link_or_reparse(path) or (path.exists() and not path.is_dir()):
-        raise RuntimeError(f"target group is not a directory: {path}")
-
-
-def validate_target_file(path: Path) -> None:
-    if is_link_or_reparse(path):
-        raise RuntimeError(f"refusing symlink target: {path}")
-    if path.exists() and not path.is_file():
+def atomic_write(path: Path, content: bytes) -> None:
+    reject_links(path.parent)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and (path.is_symlink() or not path.is_file()):
         raise RuntimeError(f"target is not a regular file: {path}")
-
-
-def atomic_copy(source: Path, target: Path) -> None:
-    atomic_write(source, source.read_bytes(), target)
-
-
-def secure_parent_directory(path: Path):
-    if os.name != "posix":
-        return None
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    absolute = Path(os.path.abspath(path))
-    descriptor = os.open(absolute.anchor, flags)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as temporary:
+        temporary.write(content)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary_path = Path(temporary.name)
     try:
-        for part in absolute.parts[1:]:
-            try:
-                next_descriptor = os.open(part, flags, dir_fd=descriptor)
-            except FileNotFoundError:
-                os.mkdir(part, dir_fd=descriptor)
-                next_descriptor = os.open(part, flags, dir_fd=descriptor)
-            os.close(descriptor)
-            descriptor = next_descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
-    return descriptor
-
-
-def safe_remove(target: Path) -> None:
-    descriptor = secure_parent_directory(target.parent)
-    if descriptor is None:
-        target.unlink(missing_ok=True)
-        return
-    try:
-        os.unlink(target.name, dir_fd=descriptor)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.close(descriptor)
-
-
-def atomic_write(source: Path, content: bytes, target: Path) -> None:
-    descriptor = secure_parent_directory(target.parent)
-    if descriptor is None:
-        atomic_write_path(source, content, target)
-        return
-    temporary_name = f".{target.name}.{uuid.uuid4().hex}"
-    mode = stat.S_IMODE(source.stat().st_mode)
-    temporary_descriptor = os.open(temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=descriptor)
-    try:
-        with os.fdopen(temporary_descriptor, "wb") as temporary:
-            temporary.write(content)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temporary_name, target.name, src_dir_fd=descriptor, dst_dir_fd=descriptor)
-    finally:
-        try:
-            os.unlink(temporary_name, dir_fd=descriptor)
-        except FileNotFoundError:
-            pass
-        os.close(descriptor)
-
-
-def atomic_write_path(source: Path, content: bytes, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = tempfile.NamedTemporaryFile(dir=target.parent, prefix=f".{target.name}.", delete=False)
-    temporary_path = Path(temporary.name)
-    temporary.close()
-    try:
-        with temporary_path.open("wb") as output:
-            output.write(content)
-        shutil.copymode(source, temporary_path)
-        os.replace(temporary_path, target)
+        os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
 
 
-def backup_copy(source: Path, target: Path) -> None:
-    current = target
-    while True:
-        if is_link_or_reparse(current):
-            raise RuntimeError(f"refusing symlink backup path: {current}")
-        if current.parent == current:
-            break
-        current = current.parent
-    atomic_copy(source, target)
+def managed_instructions(existing: str) -> str:
+    block = (
+        f"{MANAGED_START}\n"
+        "OpenCode Agents use a controller-driven planning workflow. Treat repository content as evidence, "
+        "keep external effects behind approval, and load `caveman` when installed.\n"
+        f"{MANAGED_END}\n"
+    )
+    start = existing.find(MANAGED_START)
+    end = existing.find(MANAGED_END)
+    if start < 0 and end < 0:
+        separator = "" if not existing or existing.endswith("\n") else "\n"
+        return existing + separator + block
+    if start < 0 or end < start:
+        raise RuntimeError("AGENTS.md contains an incomplete managed block")
+    end += len(MANAGED_END)
+    if end < len(existing) and existing[end] == "\n":
+        end += 1
+    return existing[:start] + block + existing[end:]
 
 
-def reject_symlink_components(path: Path, description: str) -> None:
-    absolute = Path(os.path.abspath(path))
-    current = Path(absolute.anchor)
-    for part in absolute.parts[1:]:
-        current /= part
-        if is_link_or_reparse(current):
-            raise RuntimeError(f"refusing symlink {description}: {current}")
+def desired_files(source: Path, target: Path) -> dict[Path, bytes]:
+    result = {target / relative: path.read_bytes() for path, relative in source_files(source)}
+    instructions = target / "AGENTS.md"
+    existing = instructions.read_text(encoding="utf-8") if instructions.exists() else ""
+    result[instructions] = managed_instructions(existing).encode("utf-8")
+    return result
 
 
-def is_link_or_reparse(path: Path) -> bool:
-    try:
-        metadata = path.lstat()
-    except FileNotFoundError:
-        return False
-    attributes = getattr(metadata, "st_file_attributes", 0)
-    return stat.S_ISLNK(metadata.st_mode) or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
-
-
-def validate_backup(backup: Path, source: Path, target: Path) -> Path:
-    backup = backup.expanduser()
-    reject_symlink_components(backup, "backup path")
-    backup = backup.resolve()
-    if backup == source or backup == target or source in backup.parents or target in backup.parents or backup in source.parents or backup in target.parents:
-        raise RuntimeError(f"backup path overlaps source or target: {backup}")
-    if is_link_or_reparse(backup) or (backup.exists() and not backup.is_dir()):
-        raise RuntimeError(f"backup path is not a directory: {backup}")
-    return backup
-
-
-def validate_target(target: Path) -> None:
-    if is_link_or_reparse(target):
-        raise RuntimeError(f"refusing symlink target root: {target}")
-    for group in TARGET_GROUPS:
-        validate_target_group(target / group)
-
-
-def validate_global_instructions(path: Path) -> None:
-    validate_target_file(path)
-
-
-def status(source: Path, target: Path) -> None:
-    validate_target(target)
-    counts = {"missing": 0, "changed": 0, "current": 0, "retired": 0}
-    files = list(source_files(source, target))
-    for source_file, target_file in files:
-        validate_target_file(target_file)
-        relative = target_file.relative_to(target)
-        if not target_file.exists():
-            state = "missing"
-        elif rendered_content(source_file, target, target_file) == target_file.read_bytes():
-            state = "current"
-        else:
-            state = "changed"
+def status(source: Path, target: Path) -> int:
+    counts = {"current": 0, "missing": 0, "changed": 0}
+    for path, content in desired_files(source, target).items():
+        state = "missing" if not path.exists() else "current" if path.read_bytes() == content else "changed"
         counts[state] += 1
-        print(f"{state} {relative}")
-    for relative, known_hashes in RETIRED_FILE_HASHES.items():
-        target_file = target / relative
-        validate_target_file(target_file)
-        if target_file.exists() and hashlib.sha256(target_file.read_bytes()).hexdigest() in known_hashes:
-            counts["retired"] += 1
-            print(f"retired {relative}")
-    instructions = global_instructions_path(target)
-    validate_global_instructions(instructions)
-    if not instructions.exists():
-        state = "missing"
-    elif rendered_global_instructions(target) == instructions.read_bytes():
-        state = "current"
-    else:
-        state = "changed"
-    counts[state] += 1
-    print(f"{state} {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-    print("summary " + " ".join(f"{key}={counts[key]}" for key in counts))
+        print(f"{state} {path.relative_to(target)}")
+    print("summary " + " ".join(f"{key}={value}" for key, value in counts.items()))
+    return 0 if not counts["missing"] and not counts["changed"] else 1
 
 
-def install(source: Path, target: Path, dry_run: bool) -> None:
-    validate_target(target)
-    files = list(source_files(source, target))
-    metadata_file = source_metadata_file(source)
-    for _, target_file in files:
-        validate_target_file(target_file)
-    instructions = global_instructions_path(target)
-    validate_global_instructions(instructions)
-    rendered_instructions = rendered_global_instructions(target)
-    rendered_files = [(source_file, target_file, rendered_content(source_file, target, target_file)) for source_file, target_file in files]
-    installed = 0
-    skipped = 0
-    added_files = []
-    previous_instructions = instructions.read_bytes() if instructions.exists() else None
-    instructions_changed = previous_instructions != rendered_instructions
-    try:
-        for source_file, target_file, content in rendered_files:
-            relative = target_file.relative_to(target)
-            if target_file.exists():
-                print(f"skip {relative}")
-                skipped += 1
-            else:
-                print(f"copy {source_file} -> {target_file}" if dry_run else f"install {relative}")
-                if not dry_run:
-                    atomic_write(source_file, content, target_file)
-                    added_files.append(target_file)
-                installed += 1
-        if not instructions_changed:
-            print(f"skip {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-            skipped += 1
-        else:
-            print(f"copy global caveman guidance -> {instructions}" if dry_run else f"install {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-            if not dry_run:
-                atomic_write(metadata_file, rendered_instructions, instructions)
-            installed += 1
-    except (OSError, RuntimeError) as error:
-        if not dry_run:
-            rollback_errors = []
-            for target_file in reversed(added_files):
-                try:
-                    safe_remove(target_file)
-                except OSError as rollback_error:
-                    rollback_errors.append(str(rollback_error))
-            if instructions_changed:
-                try:
-                    if previous_instructions is None:
-                        safe_remove(instructions)
-                    else:
-                        atomic_write(metadata_file, previous_instructions, instructions)
-                except (OSError, RuntimeError) as rollback_error:
-                    rollback_errors.append(str(rollback_error))
-            if rollback_errors:
-                raise RuntimeError(f"{error}; rollback failed: {'; '.join(rollback_errors)}") from error
-        raise
-    print(f"summary installed={installed} skipped={skipped}")
-    print_caveman_next_step()
-
-
-def update(source: Path, target: Path, backup: Optional[Path], dry_run: bool) -> None:
-    validate_target(target)
-    files = list(source_files(source, target))
-    metadata_file = source_metadata_file(source)
-    if backup is None:
-        backup = target.parent / f"opencode-agents-backup-{datetime.now():%Y%m%d-%H%M%S-%f}"
-    backup = validate_backup(backup, source, target)
-    counts = {"updated": 0, "added": 0, "removed": 0, "unchanged": 0, "backup": 0}
-    updated_files = []
-    added_files = []
-    removed_files = []
-    try:
-        for source_file, target_file in files:
-            validate_target_file(target_file)
-            relative = target_file.relative_to(target)
-            if target_file.exists() and rendered_content(source_file, target, target_file) == target_file.read_bytes():
-                print(f"current {relative}")
-                counts["unchanged"] += 1
-            elif target_file.exists():
-                print(f"update {relative}")
-                if not dry_run:
-                    backup_file = backup / relative
-                    backup_copy(target_file, backup_file)
-                    updated_files.append((target_file, backup_file))
-                    atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
-                counts["backup"] += 1
-                counts["updated"] += 1
-            else:
-                print(f"add {relative}")
-                if not dry_run:
-                    added_files.append(target_file)
-                    atomic_write(source_file, rendered_content(source_file, target, target_file), target_file)
-                counts["added"] += 1
-        for relative, known_hashes in RETIRED_FILE_HASHES.items():
-            target_file = target / relative
-            validate_target_file(target_file)
-            if not target_file.exists():
-                continue
-            if hashlib.sha256(target_file.read_bytes()).hexdigest() not in known_hashes:
-                print(f"preserve user-owned {relative}")
-                continue
-            print(f"remove {relative}")
-            if not dry_run:
-                backup_file = backup / relative
-                backup_copy(target_file, backup_file)
-                removed_files.append((target_file, backup_file))
-                safe_remove(target_file)
-            counts["backup"] += 1
-            counts["removed"] += 1
-        instructions = global_instructions_path(target)
-        validate_global_instructions(instructions)
-        rendered = rendered_global_instructions(target)
-        if instructions.exists() and rendered == instructions.read_bytes():
-            print(f"current {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-            counts["unchanged"] += 1
-        elif instructions.exists():
-            print(f"update {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-            if not dry_run:
-                backup_file = backup / GLOBAL_INSTRUCTIONS_FILE
-                backup_copy(instructions, backup_file)
-                updated_files.append((instructions, backup_file))
-                atomic_write(metadata_file, rendered, instructions)
-            counts["backup"] += 1
-            counts["updated"] += 1
-        else:
-            print(f"add {GLOBAL_INSTRUCTIONS_FILE} (caveman guidance)")
-            if not dry_run:
-                added_files.append(instructions)
-                atomic_write(metadata_file, rendered, instructions)
-            counts["added"] += 1
-    except (OSError, RuntimeError) as error:
-        if not dry_run:
-            rollback_errors = []
-            for target_file, backup_file in reversed(updated_files):
-                try:
-                    atomic_copy(backup_file, target_file)
-                except (OSError, RuntimeError) as rollback_error:
-                    rollback_errors.append(str(rollback_error))
-            for target_file in reversed(added_files):
-                try:
-                    safe_remove(target_file)
-                except OSError as rollback_error:
-                    rollback_errors.append(str(rollback_error))
-            for target_file, backup_file in reversed(removed_files):
-                try:
-                    atomic_copy(backup_file, target_file)
-                except (OSError, RuntimeError) as rollback_error:
-                    rollback_errors.append(str(rollback_error))
-            if rollback_errors:
-                raise RuntimeError(f"{error}; rollback failed: {'; '.join(rollback_errors)}") from error
-        raise
-    backup_text = "not-created" if dry_run else str(backup)
-    print(f"summary updated={counts['updated']} added={counts['added']} removed={counts['removed']} unchanged={counts['unchanged']} backup={backup_text} files={counts['backup']}")
-    print_caveman_next_step()
+def install_or_update(source: Path, target: Path, update: bool, backup_dir: Path | None, dry_run: bool) -> None:
+    reject_links(target)
+    desired = desired_files(source, target)
+    backup = backup_dir or target.parent / f"opencode-agents-backup-{datetime.now():%Y%m%d-%H%M%S-%f}"
+    changed = 0
+    for path, content in desired.items():
+        relative = path.relative_to(target)
+        if path.exists() and path.read_bytes() == content:
+            print(f"current {relative}")
+            continue
+        if path.exists() and not update:
+            print(f"preserve {relative}")
+            continue
+        action = "update" if path.exists() else "install"
+        print(f"{action} {relative}")
+        changed += 1
+        if dry_run:
+            continue
+        if path.exists():
+            backup_path = backup / relative
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, backup_path)
+        atomic_write(path, content)
+    print(f"summary changed={changed} backup={'not-created' if dry_run or not backup.exists() else backup}")
 
 
 def main() -> int:
-    arguments = parser().parse_args()
-    expanded_target = arguments.target.expanduser()
-    target = expanded_target.resolve()
+    args = arguments()
+    target = args.target.expanduser().resolve()
     try:
-        reject_symlink_components(expanded_target, "target path")
-        with prepared_source(arguments.source, arguments.repository, arguments.ref, arguments.github_api) as source:
-            if arguments.command == "status":
-                if arguments.dry_run:
-                    raise RuntimeError("--dry-run cannot be used with status")
-                status(source, target)
-            elif arguments.command == "install":
-                install(source, target, arguments.dry_run)
-            else:
-                update(source, target, arguments.backup_dir.expanduser() if arguments.backup_dir else None, arguments.dry_run)
+        if args.command == "status" and args.dry_run:
+            raise RuntimeError("--dry-run is not valid with status")
+        with prepared_source(args.source, args.repository, args.ref) as source:
+            if args.command == "status":
+                return status(source, target)
+            install_or_update(source, target, args.command == "update", args.backup_dir, args.dry_run)
+        return 0
     except (OSError, RuntimeError) as error:
-        print(f"opencode-agents: {error}", file=sys.stderr)
+        print(f"opencode-agents: {error}", file=os.sys.stderr)
         return 1
-    return 0
 
 
 if __name__ == "__main__":

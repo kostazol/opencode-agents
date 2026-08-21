@@ -1,0 +1,11 @@
+import { Analysis, JsonRecord, PendingAction, StageState, State } from "./orchestrator.js";
+export declare function newState(requestId: string): State;
+export declare function stagesFromAnalysis(analysis: Analysis): StageState[];
+export declare function stageMap(state: State): Map<string, StageState>;
+export declare function validateState(input: unknown, analysisInput?: unknown): State;
+export declare function stableJson(value: unknown): string;
+export declare function sha(value: unknown): string;
+export declare function transitionId(state: State, action: string, stage: string | null, revision: number | null): string;
+export declare function pendingAction(state: State, action: string, actor: string, reason: string, options?: Partial<PendingAction>): PendingAction;
+export declare function normalizeProgress(state: State): void;
+export declare function completeAction(state: State): JsonRecord;

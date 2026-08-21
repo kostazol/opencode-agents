@@ -2,83 +2,100 @@
 
 ## Product contract
 
-Repository versions four planning-only OpenCode agents:
+Репозиторий поставляет четыре planning-only OpenCode agents и один нативный TypeScript controller:
 
-- `orchestrator-analyst` is the sole primary and workflow router.
-- `orchestrator-discovery` researches repository evidence, records material questions, and creates the stage map.
-- `orchestrator-stage-planner` plans one approved stage.
-- `orchestrator-stage-reviewer` reviews one current stage revision.
+- `orchestrator-analyst` — sole primary и клиент controller loop;
+- `orchestrator-discovery` — repository evidence, traceability, material questions и stage map;
+- `orchestrator-stage-planner` — один technical/human-review stage;
+- `orchestrator-stage-reviewer` — independent discovery/stage/human-review gate;
+- `src/*.ts` — единственный production source of workflow mechanics;
+- `runtime/*.js` — compiled installable modules;
+- `tools/orchestrator.ts` — thin native OpenCode adapter.
 
-All agent names start with `orchestrator-`. Prompts use short positive instructions, one clear responsibility, readable inputs, a direct method, and one compact result contract.
+Python не является production controller. Он остаётся только у installer и black-box E2E harness.
 
-## Workflow
+## Architecture rules
 
-`plan.md` is the table of contents and durable workflow index. Architecture and risk planning proceeds one stage at a time. A fresh reviewer gates each technical stage. After all technical stages pass, planner creates one sibling Russian `.human-review.md` plan per stage and fresh reviewer gates its fidelity. All human reviews at `PASS` wait for user `APPROVE PLAN`; only that approval produces `READY`. User remarks persist in `feedback.md` and restart discovery for affected stages.
+1. Prompts не вычисляют routing, revisions, convergence или reopening closure.
+2. `tools/orchestrator.ts` остаётся тонким adapter; не добавляйте вторую state machine.
+3. `plan.md` генерируется controller и не является authoritative machine state.
+4. Semantic agents пишут только controller-selected output и возвращают typed payload.
+5. Каждый material REQ/NFR связан с owning stage, reciprocal scenario и acceptance.
+6. Каждый internal contract имеет producer; каждый non-terminal contract имеет consumer и dependency path.
+7. Convergence использует содержимое существующих evidence paths, а не hash от модели.
+8. Reopening затрагивает минимальный transitive dependency/contract subgraph.
+9. Не добавляйте artifact/status/tool, когда существующий typed contract выражает тот же инвариант.
+10. Используйте Node-compatible standard APIs; Bun-only APIs в controller не допускаются.
 
-Stage `PASS` certifies a future implementation plan, not completed product work. Planning keeps product and Git state unchanged. Reviewers inspect current repository state and distinguish existing partial outputs from paths planned for later creation.
-
-Human-readable questions, options, recommendations, stage-map prose, stage files, reviews, assumptions, decisions, and summaries use Russian. Protocol tokens, required section headings, paths, commands, and code identifiers remain exact.
-
-The primary continues through transitions until user input, approval, blocker, or completion. Resume derives the next action from artifacts and remains safe after interruption between an artifact write and index update. Test-only transition checkpoints live in the E2E harness, outside production prompts.
-
-Artifacts are limited to:
+## Durable artifacts
 
 ```text
-1_orchestrator/<request>/discovery.md
-1_orchestrator/<request>/questions.md
-1_orchestrator/<request>/feedback.md
-1_orchestrator/<request>/plan.md
-1_orchestrator/<request>/stages/<NN>-<slug>.md
-1_orchestrator/<request>/stages/<NN>-<slug>.human-review.md
-1_orchestrator/<request>/reviews/<NN>.md
-1_orchestrator/<request>/reviews/<NN>-human-review.md
+1_orchestrator/<request>/
+├── plan.md
+├── discovery.md
+├── analysis.json
+├── questions.md
+├── feedback.md
+├── stages/*.md
+├── reviews/*.md
+└── .orchestrator/{state.json,journal.jsonl,transaction.json}
 ```
 
-## Questions and approval
+`PASS` сертифицирует план будущей реализации, а не выполненную реализацию.
 
-Discovery resolves technical facts from repository evidence and official version-sensitive sources. One current batch contains at most five material user decisions. Options explain consequences and put the evidence-supported recommendation first. Answers are persisted before follow-up discovery.
+## Permission profile
 
-The user approves the complete stage map with exact `APPROVE`. Detailed stage files appear after approval.
+Сохраняйте compact capability-first policy:
 
-## Stage planning and review
+```yaml
+"*": ask
+read: allow
+edit: allow
+glob: allow
+grep: allow
+list: allow
+lsp: allow
+bash: allow
+todowrite: allow
+"context7_*": allow
+```
 
-Planner reads the index, discovery, direct dependency stages, current stage, and current review. It writes one concise stage file with outcome, architecture, reference patterns, evidence- or risk-backed mandatory constraints, key external, integration, and dependency contracts, material risks, coarse implementation actions, and mandatory business test scenarios and validations. Every mandatory case gives preconditions or input, action, expected observable output, error, state, or side effect, and contract-significant values or equivalence classes. Acceptance signals and verification direction remain explicit. Test names, files, fixtures, mocks, framework structure, assertion mechanics, and additional implementation-discovered tests stay open.
+Не возвращайте command/path catalogs. `bash` — доверенная whole-tool capability, а не sandbox; remote/shared effects контролируются user approval и окружением.
 
-Reviewer reads the same approved boundary and writes one review file. It gates decision sufficiency, repository fit, risks, key contracts, mandatory business-scenario and validation coverage, observable acceptance, and appropriate detail rather than document volume. In human-review mode it gates fidelity, completeness of user-visible expectations, and understandable Russian language. `REVISE` returns actionable current-stage findings and always continues through a new planner revision plus fresh review. `MAP_CHANGE_REQUIRED` presents the smallest evidence-backed delta for user approval.
+## Source and release layout
 
-## Permissions
+- `src/*.ts` — authoritative TypeScript source modules; `src/orchestrator.ts` is the public barrel.
+- `runtime/*.js` и `.d.ts` — generated release modules; `runtime/orchestrator.js` is the public entrypoint.
+- `tools/orchestrator.ts` — exports `next`, `apply`, `validate`; OpenCode exposes them как `orchestrator_next`, `orchestrator_apply`, `orchestrator_validate`.
+- `opencode-agents.py` installs agents, tools и runtime.
+- `tests-ts/` — deterministic controller tests.
+- `tests/e2e_system/` — black-box OpenCode harness.
 
-Primary reads and updates workflow state and delegates only the current workflow transition to the three planning subagents. Discovery writes top-level discovery artifacts. Planner writes one current technical stage or human-review file. Reviewer writes one current technical or human-review review file. Product evidence access is read-only. Git mutation is denied. Secret-bearing paths remain denied.
-
-## Tests
-
-Fast tests cover inventory, permissions, installer retirement, prompt contracts, artifact schemas, and routing rules. Small system E2E tests load the real user OpenCode config directory read-only while using temporary HOME, session database, state, cache, and product workspace. External plugins stay disabled in micro-E2E so their installation and cache cannot mutate the working environment. Each micro-E2E seeds one durable state, adds a harness-only checkpoint, and checks one transition. Together the seeded snapshots cover continuation from every durable state.
-
-Main transition cases:
-
-1. Discovery writes a question batch.
-2. Pending questions invoke native `question` and persist answers.
-3. An approved stage map starts S01 planning.
-4. `PASS` S01 with additional stages starts S02 planning.
-5. `REVIEW` starts fresh stage review.
-6. `REVISE` resumes the same stage at the next revision.
-7. All technical stages at `PASS` start human-review planning and review.
-8. All human reviews at `PASS` wait for `APPROVE PLAN` or feedback.
-9. `APPROVE PLAN` sets workflow `ready`; feedback restarts discovery for affected stages.
-10. Every durable intermediate state resumes correctly.
+Generated runtime должен быть rebuilt перед commit и совпадать с source.
 
 ## Change process
 
-1. Read README, this guide, and every affected producer/consumer.
-2. Keep prompts, permissions, installer behavior, tests, and docs aligned.
-3. Preserve unknown and customized installed files during retirement.
-4. For releases, update `VERSION`, installer `VERSION`, every agent marker, tests, and `CHANGELOG.md` together.
-5. Run fast tests, syntax checks, `git diff --check`, temporary install/update tests, `opencode debug config`, and all micro-E2E tests.
+1. Прочитайте README, SECURITY, ROADMAP и всех affected producers/consumers.
+2. Меняйте pure controller до tools/prompts, когда изменяется семантика.
+3. Добавляйте deterministic tests для каждого legal/illegal transition и migration.
+4. Держите `agents/orchestrator-*.md` и `docs/orchestrator-*.md` byte-identical.
+5. Сохраняйте unknown/customized installed files при update.
+6. Для release обновляйте `VERSION`, package version, installer version, agent markers и CHANGELOG вместе.
+7. Не объявляйте release завершённым до fresh install/status и archive verification.
 
-## Russian agent documentation
+## Required checks
 
-`docs/orchestrator-*.md` are Russian documentation copies of matching authoritative `agents/orchestrator-*.md` prompts. At the end of every task that changes an agent prompt, update its Russian copy and verify both files remain semantically synchronized. Preserve protocol tokens, statuses, required headings, paths, commands, code identifiers, YAML permission structure, and compact result blocks exactly. Finish prompt-changing work only after this synchronization check passes.
+```bash
+npm test
+python3 -m py_compile opencode-agents.py
+python3 tests/test_cli.py
+python3 tests/test_routing.py
+bash tests/test-cli.sh
+git diff --check
+```
+
+Run `opencode debug config` и live E2E, когда binary/auth/provider доступны. Иначе укажите точный environment blocker; не выдавайте static tests за live provider journey.
 
 ## Repository exclusions
 
-Keep credentials, provider auth, session databases, MCP tokens, `.env`, user source, generated target-repository `1_orchestrator/` artifacts, logs, patches, and test workspaces outside version control.
+Не коммитьте credentials, provider auth, session databases, MCP tokens, `.env`, пользовательский source, generated target-repository `1_orchestrator/`, `.tmp`, `node_modules`, logs или test workspaces.
