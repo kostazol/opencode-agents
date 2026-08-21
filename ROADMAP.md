@@ -62,11 +62,11 @@ Primary сведён к controller loop. Discovery формирует machine-re
 - Финальный ZIP строится из того же дерева, которое опубликовано в GitHub.
 
 <!-- 6.0.1-hardening:start -->
-## 6.0.1 independent hardening
+## ROADMAP DONE: 6.0.1 independent hardening
 
-- Architecture preserved: four semantic agents, one TypeScript controller, three native tools.
-- Runtime/code commit: `62b370be2456515f42e43555581bd7101ffaeeb2`.
-- Controller, routing, NFR protocol, legacy migration, installer, build, and regression gates are executable and documented in `docs/RELEASE_GATES.md`.
-- Cross-platform matrix has passed for the runtime commit.
-- Final-tree packaging, final matrix confirmation, and draft PR publication are release-finalization gates; this section intentionally does not claim ROADMAP DONE before they run.
+All executable local gates and the Linux/Windows/macOS × Node 22/24 matrix completed before this release commit. The machine-readable evidence is `release/6.0.1-gates.json`; the exact final-tree ZIP and SHA-256 are generated after the commit and attached through the artifact branch.
+
+- Runtime/code ref: `62b370be2456515f42e43555581bd7101ffaeeb2`.
+- Documentation ref: `be156bd707ab76ba0a8db1d18ddcda28610251ef`.
+- Architecture: four semantic agents, one TypeScript controller, three native tools.
 <!-- 6.0.1-hardening:end -->

@@ -1,0 +1,83 @@
+{
+  "architecture": {
+    "external_service_or_database": false,
+    "generic_workflow_framework": false,
+    "native_tools": 3,
+    "python_controller": 0,
+    "semantic_agents": 4,
+    "typescript_controllers": 1
+  },
+  "base_commit": "7b43e411bc87da8182fa1c0c7a972b005831a573",
+  "branch": "agent/6.0.1-independent-hardening",
+  "documentation_ref": "be156bd707ab76ba0a8db1d18ddcda28610251ef",
+  "gates": {
+    "commands": [
+      "npm ci",
+      "npm test",
+      "npm run typecheck",
+      "npm run check:generated"
+    ],
+    "complete_store_journey": true,
+    "cross_platform_matrix": true,
+    "fresh_install_status_update": true,
+    "guarded_update": true,
+    "immutable_remote_install": true,
+    "impossible_states": true,
+    "journal_conflict_recovery": true,
+    "legacy_validate_next": true,
+    "local_executable_gates": true,
+    "matrix_runs": [
+      {
+        "commit": "62b370be2456515f42e43555581bd7101ffaeeb2",
+        "node": [
+          22,
+          24
+        ],
+        "phase": "implementation",
+        "platforms": [
+          "ubuntu-latest",
+          "windows-latest",
+          "macos-latest"
+        ],
+        "run_attempt": "1",
+        "run_id": "32445239800",
+        "status": "passed",
+        "url": "https://github.com/kostazol/opencode-agents/actions/runs/32445239800"
+      },
+      {
+        "commit": "be156bd707ab76ba0a8db1d18ddcda28610251ef",
+        "node": [
+          22,
+          24
+        ],
+        "phase": "release-candidate",
+        "platforms": [
+          "ubuntu-latest",
+          "windows-latest",
+          "macos-latest"
+        ],
+        "run_attempt": "1",
+        "run_id": "32445714201",
+        "status": "passed",
+        "url": "https://github.com/kostazol/opencode-agents/actions/runs/32445714201"
+      }
+    ],
+    "nfr_adversarial": true,
+    "stale_input_output": true,
+    "symlink_containment": true
+  },
+  "immutable_installer_ref": "62b370be2456515f42e43555581bd7101ffaeeb2",
+  "python_6_0_snapshot": "0570ed9521c67eb21669479805f4c7bfdd1db743",
+  "release": "6.0.1",
+  "required_commits": [
+    "12970141888a9c13fc174fdfa50c9808ef3b73f1",
+    "5d9c3bfbdbfaea6658de54b7833b2f153ffcd393",
+    "d62a7a6cd99c0e38f077354dc1836cb2e40233f9",
+    "0c86d78730a8f6062dacffc439101bd85badbf91",
+    "128ff2471f78da7978b38351caf2e47cd12db0a0",
+    "70aaf60082ed2ddbbb17985ba2cd096ee216b7e3",
+    "62b370be2456515f42e43555581bd7101ffaeeb2",
+    "be156bd707ab76ba0a8db1d18ddcda28610251ef"
+  ],
+  "schema_version": 1
+}
