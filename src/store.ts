@@ -1,17 +1,16 @@
+
 import { constants as fsConstants } from "node:fs"
-import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
+import { access, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
-import { Analysis, EventInput, JsonRecord, ProtocolError, State, clone, parseJsonStrict, record, validateAnalysis } from "./orchestrator.js"
+import type { Analysis, EventInput, JsonRecord, State } from "./schema.js"
+import { ProtocolError, clone, parseJsonStrict, record } from "./schema.js"
+import { validateAnalysis } from "./analysis.js"
+import { assertCompleteArtifactGraph, assertInputSnapshotsCurrent, assertPendingOutputContracts, capturePendingSnapshots } from "./artifacts.js"
 import { applyEvent } from "./events.js"
 import { parseLegacyPlan, renderPlan } from "./render.js"
 import { reserveNext } from "./routing.js"
-import { newState, validateState } from "./state.js"
-
-function isWithin(base: string, candidate: string): boolean {
-  const relative = path.relative(path.resolve(base), path.resolve(candidate))
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
-}
+import { migrateState, newState, validateState } from "./state.js"
 
 async function exists(candidate: string): Promise<boolean> {
   try {
@@ -85,6 +84,7 @@ export class WorkflowStore {
   readonly journalPath: string
   readonly transactionPath: string
   readonly lockPath: string
+  readonly stateV1BackupPath: string
   readonly request: string
 
   constructor(directory: string, request: string) {
@@ -101,6 +101,7 @@ export class WorkflowStore {
     this.journalPath = path.join(this.internal, "journal.jsonl")
     this.transactionPath = path.join(this.internal, "transaction.json")
     this.lockPath = path.join(this.internal, "lock")
+    this.stateV1BackupPath = path.join(this.internal, "state-v1.json")
   }
 
   private async ensureRoot(): Promise<void> {
@@ -154,7 +155,24 @@ export class WorkflowStore {
   private async loadState(): Promise<State> {
     await this.ensureRoot()
     await this.recover()
-    if (await exists(this.statePath)) return validateState(await parseJsonFile(this.statePath))
+    if (await exists(this.statePath)) {
+      const raw = await parseJsonFile(this.statePath)
+      const migration = migrateState(raw)
+      const state = validateState(migration.state)
+      if (migration.migrated) {
+        if (!(await exists(this.stateV1BackupPath))) await atomicWrite(this.stateV1BackupPath, `${JSON.stringify(raw, null, 2)}\n`)
+        await atomicWrite(this.statePath, `${JSON.stringify(state, null, 2)}\n`)
+        await appendJournal(this.journalPath, {
+          entry_id: `state-schema:${migration.from_version}-${migration.to_version}:${state.state_revision}`,
+          timestamp: new Date().toISOString(),
+          action: "state_schema_migration",
+          state_revision: state.state_revision,
+          transition_id: migration.invalidated_transition,
+          detail: clone(migration as unknown as JsonRecord),
+        })
+      }
+      return state
+    }
     if (await exists(this.planPath)) return parseLegacyPlan(await readFile(this.planPath, "utf8"), this.request)
     return newState(this.request)
   }
@@ -190,7 +208,13 @@ export class WorkflowStore {
     return this.withLock(async () => {
       const state = await this.loadState()
       const analysis = await this.loadAnalysis()
+      if (state.status === "waiting_plan_approval" || state.status === "ready") await assertCompleteArtifactGraph(this.root, state, analysis)
       const result = reserveNext(state, analysis, expectedStateRevision)
+      if (result.state.pending && !result.state.pending.snapshots_captured) {
+        const projectedPlan = renderPlan(result.state, analysis)
+        await capturePendingSnapshots(this.root, result.state.pending, { "plan.md": projectedPlan })
+        result.action = clone(result.state.pending) as unknown as JsonRecord
+      }
       if (JSON.stringify(result.state) !== JSON.stringify(state)) await this.commit(result.state, analysis, this.journal("reserve", result.state, result.action))
       return result
     })
@@ -200,6 +224,11 @@ export class WorkflowStore {
     return this.withLock(async () => {
       const state = await this.loadState()
       const analysis = await this.loadAnalysis()
+      if (!state.pending) throw new ProtocolError("state.pending", "event cannot be applied without a pending transition")
+      await assertInputSnapshotsCurrent(this.root, state.pending)
+      await assertPendingOutputContracts(this.root, state, event, analysis)
+      const payload = record(event.payload, "event.payload")
+      if (state.pending.action === "APPROVE_PLAN" && payload.decision === "APPROVE") await assertCompleteArtifactGraph(this.root, state, analysis)
       const result = await applyEvent(this.base, state, event, analysis, expectedStateRevision)
       if (JSON.stringify(result.state) !== JSON.stringify(state)) await this.commit(result.state, analysis, this.journal("apply", result.state, { transition_id: event.transition_id, event_type: event.type, result: result.result }))
       return result
@@ -211,13 +240,18 @@ export class WorkflowStore {
       const state = await this.loadState()
       const analysis = await this.loadAnalysis()
       validateState(state, analysis && state.stages.length && !state.legacy_migrated ? analysis : undefined)
-      if (state.legacy_migrated && !(await exists(this.statePath))) {
-        await this.commit(state, analysis, this.journal("migrate", state, { transition_id: null, source: "legacy-plan.md" }))
-      }
+      if (state.legacy_migrated && !(await exists(this.statePath))) await this.commit(state, analysis, this.journal("migrate", state, { transition_id: null, source: "legacy-plan.md" }))
       const issues: string[] = []
       const expected = renderPlan(state, analysis)
       if (await exists(this.planPath) && await readFile(this.planPath, "utf8") !== expected) issues.push("plan.md differs from deterministic rendering")
       if (["review", "reviewed", "approved"].includes(state.analysis_status) && !analysis) issues.push("analysis.json is required by current state")
+      if (state.status === "waiting_plan_approval" || state.status === "ready") {
+        try {
+          await assertCompleteArtifactGraph(this.root, state, analysis)
+        } catch (error) {
+          issues.push(error instanceof Error ? error.message : String(error))
+        }
+      }
       return { valid: !issues.length, state_revision: state.state_revision, status: state.status, pending: state.pending, issues }
     })
   }

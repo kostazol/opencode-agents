@@ -1,4 +1,3 @@
-import path from "node:path"
 import { ANALYSIS_SCHEMA_VERSION, CHANGE_SURFACES, NFR_CATEGORIES, SURFACE_NFR, Analysis, AnalysisStage, JsonRecord, ProtocolError, array, boolean, clone, exactFields, identifier, record, stageId, strings, text } from "./schema.js"
 
 function mapById<T extends { id: string }>(items: T[], field: string): Map<string, T> {
@@ -227,12 +226,6 @@ export function validateAnalysis(input: unknown): Analysis {
   }
 }
 
-export function canonicalRelative(value: unknown, field: string, prefix?: string): string {
-  const result = text(value, field)
-  if (result.includes("\\") || path.posix.isAbsolute(result) || result.split("/").some((part) => !part || part === "." || part === "..")) throw new ProtocolError(field, "must be a canonical relative POSIX path", result)
-  if (prefix && !result.startsWith(prefix)) throw new ProtocolError(field, `must start with ${prefix}`, result)
-  return result
-}
 
 export function affectedStageClosure(analysisInput: unknown, seedsInput: string[]): string[] {
   const analysis = validateAnalysis(analysisInput)

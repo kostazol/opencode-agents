@@ -1,5 +1,5 @@
 export declare const ANALYSIS_SCHEMA_VERSION = 1;
-export declare const STATE_SCHEMA_VERSION = 1;
+export declare const STATE_SCHEMA_VERSION = 2;
 export declare const REPEAT_LIMIT = 2;
 export declare const CHANGE_SURFACES: Set<string>;
 export declare const NFR_CATEGORIES: Set<string>;
@@ -95,6 +95,20 @@ export interface StageState {
     human_review: string;
     human_review_review: string;
 }
+export interface RevisionMetadata {
+    schema_version: number | null;
+    artifact: string | null;
+    stage: string | null;
+    revision: number | null;
+    source_revision: number | null;
+    status: string | null;
+}
+export interface ArtifactSnapshot {
+    path: string;
+    exists: boolean;
+    digest: string | null;
+    metadata: RevisionMetadata | null;
+}
 export interface PendingAction {
     transition_id: string;
     action: string;
@@ -104,7 +118,10 @@ export interface PendingAction {
     revision: number | null;
     source_revision: number | null;
     inputs: string[];
+    input_snapshot: ArtifactSnapshot[];
     output: string | null;
+    output_snapshot: ArtifactSnapshot | null;
+    snapshots_captured: boolean;
     reason: string;
     issued_state_revision: number;
 }
@@ -169,3 +186,4 @@ export declare function strings(value: unknown, field: string, allowEmpty?: bool
 export declare function exactFields(value: JsonRecord, expected: string[], field: string): void;
 export declare function identifier(value: unknown, family: string, field: string): string;
 export declare function stageId(value: unknown, field: string): string;
+export declare function canonicalRelative(value: unknown, field: string, prefix?: string): string;

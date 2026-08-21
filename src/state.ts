@@ -1,5 +1,67 @@
+
 import { createHash } from "node:crypto"
-import { Analysis, EVENT_BY_ACTION, HUMAN_STATUSES, JsonRecord, PendingAction, ProtocolError, STAGE_STATUSES, STATE_SCHEMA_VERSION, StageState, State, WORKFLOW_STATUSES, canonicalRelative, clone, exactFields, integer, record, stageId, strings, text, validateAnalysis, boolean } from "./orchestrator.js"
+import type { Analysis, ArtifactSnapshot, JsonRecord, PendingAction, RevisionMetadata, StageState, State, WorkflowStatus } from "./schema.js"
+import { EVENT_BY_ACTION, HUMAN_STATUSES, ProtocolError, STAGE_STATUSES, STATE_SCHEMA_VERSION, WORKFLOW_STATUSES, boolean, canonicalRelative, clone, exactFields, integer, record, stageId, strings, text } from "./schema.js"
+import { validateAnalysis } from "./analysis.js"
+
+export interface StateMigrationResult {
+  state: JsonRecord
+  migrated: boolean
+  from_version: number
+  to_version: number
+  invalidated_transition: string | null
+}
+
+export function migrateState(input: unknown): StateMigrationResult {
+  const raw = clone(record(input, "state"))
+  const version = integer(raw.schema_version, "state.schema_version", 1)
+  if (version === STATE_SCHEMA_VERSION) return { state: raw, migrated: false, from_version: version, to_version: version, invalidated_transition: null }
+  if (version !== 1 || STATE_SCHEMA_VERSION !== 2) throw new ProtocolError("state.schema_version", `cannot migrate schema ${version} to ${STATE_SCHEMA_VERSION}`)
+  const oldPending = raw.pending && typeof raw.pending === "object" && !Array.isArray(raw.pending) ? raw.pending as JsonRecord : null
+  const invalidated = oldPending && typeof oldPending.transition_id === "string" ? oldPending.transition_id : null
+  raw.schema_version = STATE_SCHEMA_VERSION
+  if (oldPending) {
+    const previousStatus = typeof raw.status === "string" && WORKFLOW_STATUSES.has(raw.status) ? raw.status as WorkflowStatus : "discovery"
+    const resumeStatus: WorkflowStatus = previousStatus === "ready" || previousStatus === "blocked" ? "discovery" : previousStatus
+    raw.pending = null
+    raw.status = "blocked"
+    raw.blocker = {
+      reason: "state_schema_migration_requires_retry",
+      detail: "The v1 pending transition had no immutable input snapshot and was invalidated safely; retry the action.",
+      resume_status: resumeStatus,
+      retryable: true,
+      source_transition: invalidated ?? "schema-v1",
+    }
+  }
+  return { state: raw, migrated: true, from_version: version, to_version: STATE_SCHEMA_VERSION, invalidated_transition: invalidated }
+}
+
+function validateMetadata(input: unknown, field: string): RevisionMetadata {
+  const metadata = record(input, field) as unknown as RevisionMetadata
+  exactFields(metadata as unknown as JsonRecord, ["schema_version", "artifact", "stage", "revision", "source_revision", "status"], field)
+  for (const name of ["schema_version", "revision", "source_revision"] as const) if (metadata[name] !== null) metadata[name] = integer(metadata[name], `${field}.${name}`)
+  if (metadata.artifact !== null) metadata.artifact = text(metadata.artifact, `${field}.artifact`)
+  if (metadata.stage !== null) metadata.stage = stageId(metadata.stage, `${field}.stage`)
+  if (metadata.status !== null) metadata.status = text(metadata.status, `${field}.status`)
+  return metadata
+}
+
+function validateSnapshot(input: unknown, field: string): ArtifactSnapshot {
+  const snapshot = record(input, field) as unknown as ArtifactSnapshot
+  exactFields(snapshot as unknown as JsonRecord, ["path", "exists", "digest", "metadata"], field)
+  snapshot.path = canonicalRelative(snapshot.path, `${field}.path`)
+  snapshot.exists = boolean(snapshot.exists, `${field}.exists`)
+  if (snapshot.exists) {
+    const value = text(snapshot.digest, `${field}.digest`)
+    if (!/^[0-9a-f]{64}$/.test(value)) throw new ProtocolError(`${field}.digest`, "must be a SHA-256 digest", value)
+    snapshot.digest = value
+  } else if (snapshot.digest !== null) {
+    throw new ProtocolError(`${field}.digest`, "must be null when the path did not exist", snapshot.digest)
+  }
+  snapshot.metadata = snapshot.metadata === null ? null : validateMetadata(snapshot.metadata, `${field}.metadata`)
+  if (!snapshot.exists && snapshot.metadata !== null) throw new ProtocolError(`${field}.metadata`, "must be null when the path did not exist")
+  return snapshot
+}
 
 export function newState(requestId: string): State {
   if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(requestId)) throw new ProtocolError("request_id", "must be lower kebab-case and at most 80 characters", requestId)
@@ -90,15 +152,13 @@ export function validateState(input: unknown, analysisInput?: unknown): State {
     state.current_stage = stageId(state.current_stage, "state.current_stage")
     if (!seen.has(state.current_stage)) throw new ProtocolError("state.current_stage", "unknown stage", state.current_stage)
   }
-  if ((state.status === "planning" || state.status === "human_reviewing") && state.stages.length && state.current_stage === null) {
-    throw new ProtocolError("state.current_stage", "active workflow requires a stage")
-  }
+  if ((state.status === "planning" || state.status === "human_reviewing") && state.stages.length && state.current_stage === null) throw new ProtocolError("state.current_stage", "active workflow requires a stage")
 
   if (state.pending !== null) {
     const pending = record(state.pending, "state.pending") as unknown as PendingAction
     exactFields(pending as unknown as JsonRecord, [
       "transition_id", "action", "actor", "mode", "stage", "revision", "source_revision",
-      "inputs", "output", "reason", "issued_state_revision",
+      "inputs", "input_snapshot", "output", "output_snapshot", "snapshots_captured", "reason", "issued_state_revision",
     ], "state.pending")
     pending.transition_id = text(pending.transition_id, "state.pending.transition_id")
     pending.action = text(pending.action, "state.pending.action")
@@ -110,9 +170,23 @@ export function validateState(input: unknown, analysisInput?: unknown): State {
       if (!seen.has(pending.stage)) throw new ProtocolError("state.pending.stage", "unknown stage", pending.stage)
     }
     if (pending.revision !== null) pending.revision = integer(pending.revision, "state.pending.revision", 1)
-    if (pending.source_revision !== null) pending.source_revision = integer(pending.source_revision, "state.pending.source_revision", 1)
+    if (pending.source_revision !== null) pending.source_revision = integer(pending.source_revision, "state.pending.source_revision")
     pending.inputs = strings(pending.inputs, "state.pending.inputs").map((value, index) => canonicalRelative(value, `state.pending.inputs[${index}]`))
+    if (!Array.isArray(pending.input_snapshot)) throw new ProtocolError("state.pending.input_snapshot", "must be an array")
+    pending.input_snapshot = pending.input_snapshot.map((item, index) => validateSnapshot(item, `state.pending.input_snapshot[${index}]`))
     if (pending.output !== null) pending.output = canonicalRelative(pending.output, "state.pending.output")
+    pending.output_snapshot = pending.output_snapshot === null ? null : validateSnapshot(pending.output_snapshot, "state.pending.output_snapshot")
+    pending.snapshots_captured = boolean(pending.snapshots_captured, "state.pending.snapshots_captured")
+    if (pending.snapshots_captured) {
+      if (pending.input_snapshot.length !== pending.inputs.length) throw new ProtocolError("state.pending.input_snapshot", "must contain one immutable snapshot per input")
+      pending.input_snapshot.forEach((snapshot, index) => {
+        if (snapshot.path !== pending.inputs[index]) throw new ProtocolError(`state.pending.input_snapshot[${index}].path`, "must match the corresponding input", snapshot.path)
+      })
+      if ((pending.output === null) !== (pending.output_snapshot === null)) throw new ProtocolError("state.pending.output_snapshot", "must exist exactly when output is reserved")
+      if (pending.output !== null && pending.output_snapshot!.path !== pending.output) throw new ProtocolError("state.pending.output_snapshot.path", "must match reserved output", pending.output_snapshot!.path)
+    } else if (pending.input_snapshot.length || pending.output_snapshot !== null) {
+      throw new ProtocolError("state.pending.snapshots_captured", "uncaptured transition cannot contain partial snapshots")
+    }
     pending.reason = text(pending.reason, "state.pending.reason")
     pending.issued_state_revision = integer(pending.issued_state_revision, "state.pending.issued_state_revision")
     if (pending.issued_state_revision !== state.state_revision) throw new ProtocolError("state.pending.issued_state_revision", "must equal state revision")
@@ -209,7 +283,10 @@ export function pendingAction(state: State, action: string, actor: string, reaso
     revision: options.revision ?? null,
     source_revision: options.source_revision ?? null,
     inputs: options.inputs ?? [],
+    input_snapshot: [],
     output: options.output ?? null,
+    output_snapshot: null,
+    snapshots_captured: false,
     reason,
     issued_state_revision: state.state_revision,
   }
@@ -231,4 +308,3 @@ export function normalizeProgress(state: State): void {
 export function completeAction(state: State): JsonRecord {
   return { transition_id: null, action: "COMPLETE", actor: "none", mode: null, stage: null, revision: null, source_revision: null, inputs: ["plan.md"], output: null, reason: "workflow-ready", issued_state_revision: state.state_revision }
 }
-

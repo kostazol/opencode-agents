@@ -1,6 +1,7 @@
 export * from "./schema.js";
 export * from "./analysis.js";
 export * from "./state.js";
+export * from "./artifacts.js";
 export * from "./routing.js";
 export * from "./review.js";
 export * from "./events.js";

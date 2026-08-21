@@ -1,4 +1,7 @@
-import { Analysis, JsonRecord, PendingAction, ProtocolError, State, clone, validateAnalysis } from "./orchestrator.js"
+
+import type { Analysis, JsonRecord, PendingAction, State } from "./schema.js"
+import { ProtocolError, clone } from "./schema.js"
+import { validateAnalysis } from "./analysis.js"
 import { completeAction, normalizeProgress, pendingAction, stageMap, validateState } from "./state.js"
 
 export function reserveNext(input: unknown, analysisInput?: unknown, expectedStateRevision?: number): { state: State; action: JsonRecord } {
@@ -41,9 +44,9 @@ export function reserveNext(input: unknown, analysisInput?: unknown, expectedSta
         current.revision += 1
         current.status = "planning"
       }
-      action = pendingAction(next, "PLAN_STAGE", "orchestrator-stage-planner", "create-or-correct-current-stage-plan", { mode: "TECHNICAL", stage: current.id, revision: current.revision, inputs: ["analysis.json", "discovery.md", "plan.md", ...dependencies], output: current.details })
+      action = pendingAction(next, "PLAN_STAGE", "orchestrator-stage-planner", "create-or-correct-current-stage-plan", { mode: "TECHNICAL", stage: current.id, revision: current.revision, source_revision: next.analysis_revision, inputs: ["analysis.json", "discovery.md", "plan.md", ...dependencies], output: current.details })
     } else {
-      action = pendingAction(next, "REVIEW_STAGE", "orchestrator-stage-reviewer", "independent-current-stage-review", { mode: "TECHNICAL", stage: current.id, revision: current.revision, inputs: ["analysis.json", "discovery.md", "plan.md", current.details, ...dependencies], output: current.review })
+      action = pendingAction(next, "REVIEW_STAGE", "orchestrator-stage-reviewer", "independent-current-stage-review", { mode: "TECHNICAL", stage: current.id, revision: current.revision, source_revision: current.revision, inputs: ["analysis.json", "discovery.md", "plan.md", current.details, ...dependencies], output: current.review })
     }
   } else if (next.status === "human_reviewing") {
     const current = next.stages.find((item) => item.human_status !== "pass")
@@ -69,4 +72,3 @@ export function reserveNext(input: unknown, analysisInput?: unknown, expectedSta
   }
   return { state: validateState(next, analysisInput !== undefined && next.stages.length && !next.legacy_migrated ? analysisInput : undefined), action: clone(action) as unknown as JsonRecord }
 }
-

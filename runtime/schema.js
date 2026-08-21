@@ -1,5 +1,6 @@
+import path from "node:path";
 export const ANALYSIS_SCHEMA_VERSION = 1;
-export const STATE_SCHEMA_VERSION = 1;
+export const STATE_SCHEMA_VERSION = 2;
 export const REPEAT_LIMIT = 2;
 export const CHANGE_SURFACES = new Set(["api", "data", "ui", "infra", "security", "migration", "background", "library"]);
 export const NFR_CATEGORIES = new Set([
@@ -233,4 +234,17 @@ export function stageId(value, field) {
     if (!/^S[0-9]{2}$/.test(result))
         throw new ProtocolError(field, "must match SNN", result);
     return result;
+}
+export function canonicalRelative(value, field, prefix) {
+    const source = text(value, field).replace(/\\/g, "/");
+    if (source.includes("\0") || path.posix.isAbsolute(source) || /^[A-Za-z]:\//.test(source))
+        throw new ProtocolError(field, "must be a relative path", source);
+    const normalized = path.posix.normalize(source);
+    if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.includes("/../"))
+        throw new ProtocolError(field, "path escapes workflow root", source);
+    if (source !== normalized)
+        throw new ProtocolError(field, "path must be canonical", source);
+    if (prefix && !normalized.startsWith(prefix))
+        throw new ProtocolError(field, `must be under ${prefix}`, normalized);
+    return normalized;
 }
