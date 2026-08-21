@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { ANALYSIS_SCHEMA_VERSION, CHANGE_SURFACES, NFR_CATEGORIES, SURFACE_NFR, Analysis, AnalysisStage, JsonRecord, ProtocolError, array, boolean, clone, exactFields, identifier, record, stageId, strings, text } from "./schema.js"
 
 function mapById<T extends { id: string }>(items: T[], field: string): Map<string, T> {
@@ -35,7 +36,7 @@ export function hasDependency(stages: Map<string, AnalysisStage>, consumer: stri
   return false
 }
 
-export function validateAnalysis(input: unknown): Analysis {
+function validateAnalysisBase(input: unknown): Analysis {
   const root = clone(record(input, "analysis"))
   exactFields(root, [
     "schema_version", "request", "change_surfaces", "requirements", "nfrs", "decisions", "contracts",
@@ -250,3 +251,101 @@ export function affectedStageClosure(analysisInput: unknown, seedsInput: string[
   return analysis.stages.filter((item) => affected.has(item.id)).map((item) => item.id)
 }
 
+function canonicalFingerprintJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonicalFingerprintJson).join(",")}]`
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${canonicalFingerprintJson(item)}`)
+    .join(",")}}`
+}
+
+function validateNfrApplicabilityTraceability(analysis: Analysis): void {
+  const stageById = new Map(analysis.stages.map((stage) => [stage.id, stage]))
+  const acceptanceById = new Map(analysis.acceptance.map((acceptance) => [acceptance.id, acceptance]))
+  const seen = new Map<string, string>()
+
+  for (const [index, applicability] of analysis.nfr_applicability.entries()) {
+    const field = `analysis.nfr_applicability[${index}]`
+    const previous = seen.get(applicability.category)
+    if (previous !== undefined) {
+      throw new ProtocolError(`${field}.category`, previous === applicability.status ? "duplicate applicability category" : "contradictory applicability category", {
+        category: applicability.category,
+        first_status: previous,
+        duplicate_status: applicability.status,
+      })
+    }
+    seen.set(applicability.category, applicability.status)
+
+    if (applicability.status !== "required") continue
+    if (!applicability.owner) throw new ProtocolError(`${field}.owner`, "required category must have an owner stage")
+    const owner = stageById.get(applicability.owner)
+    if (!owner) throw new ProtocolError(`${field}.owner`, "required category owner must be a real stage", applicability.owner)
+
+    const matching = analysis.nfrs.filter((nfr) => nfr.category === applicability.category && nfr.stage === applicability.owner)
+    if (!matching.length) {
+      throw new ProtocolError(field, "required category must have a real NFR with the same category and owner stage", {
+        category: applicability.category,
+        owner: applicability.owner,
+      })
+    }
+    const matchingIds = new Set(matching.map((nfr) => nfr.id))
+    for (const nfr of matching) {
+      if (!owner.nfrs.includes(nfr.id)) throw new ProtocolError(`${field}.owner`, "owner stage must list the matching NFR", nfr.id)
+    }
+
+    const linkedAcceptance = new Set(matching.flatMap((nfr) => nfr.acceptance))
+    if (!applicability.acceptance.length) throw new ProtocolError(`${field}.acceptance`, "required category must have linked acceptance")
+    for (const acceptanceId of applicability.acceptance) {
+      if (!linkedAcceptance.has(acceptanceId)) {
+        throw new ProtocolError(`${field}.acceptance`, "acceptance must be linked by an NFR of this category and owner", {
+          acceptance: acceptanceId,
+          matching_nfrs: [...matchingIds],
+        })
+      }
+      const acceptance = acceptanceById.get(acceptanceId)
+      if (!acceptance || acceptance.stage !== applicability.owner) {
+        throw new ProtocolError(`${field}.acceptance`, "acceptance must belong to the owner stage", acceptanceId)
+      }
+    }
+  }
+}
+
+export function validateAnalysis(input: unknown): Analysis {
+  const analysis = validateAnalysisBase(input)
+  validateNfrApplicabilityTraceability(analysis)
+  return analysis
+}
+
+export function semanticStageFingerprint(analysisInput: unknown, stageIdValue: string): string {
+  const analysis = validateAnalysis(analysisInput)
+  const stage = analysis.stages.find((item) => item.id === stageIdValue)
+  if (!stage) throw new ProtocolError("stage", "unknown stage for semantic fingerprint", stageIdValue)
+  const requirementIds = new Set(stage.requirements)
+  const nfrIds = new Set(stage.nfrs)
+  const requirements = analysis.requirements.filter((item) => item.stage === stage.id || requirementIds.has(item.id))
+  const nfrs = analysis.nfrs.filter((item) => item.stage === stage.id || nfrIds.has(item.id))
+  const contractIds = new Set([...stage.contracts_consumed, ...stage.contracts_produced])
+  const contracts = analysis.contracts.filter((item) => item.producer === stage.id || item.consumers.includes(stage.id) || contractIds.has(item.id))
+  const acceptanceIds = new Set([...requirements.flatMap((item) => item.acceptance), ...nfrs.flatMap((item) => item.acceptance)])
+  const scenarioIds = new Set([...requirements.flatMap((item) => item.scenarios), ...nfrs.flatMap((item) => item.scenarios)])
+  const applicability = analysis.nfr_applicability.filter((item) => item.owner === stage.id || nfrs.some((nfr) => nfr.category === item.category))
+  const semantic = {
+    stage: {
+      id: stage.id,
+      title: stage.title,
+      slug: stage.slug,
+      depends_on: stage.depends_on,
+      affected_area: stage.affected_area,
+      risks: stage.risks,
+    },
+    requirements,
+    nfrs,
+    contracts,
+    acceptance: analysis.acceptance.filter((item) => item.stage === stage.id || acceptanceIds.has(item.id)),
+    scenarios: analysis.scenarios.filter((item) => item.stage === stage.id || scenarioIds.has(item.id)),
+    applicability,
+    decisions: analysis.decisions,
+  }
+  return createHash("sha256").update(canonicalFingerprintJson(semantic)).digest("hex")
+}
