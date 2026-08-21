@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import base64
@@ -17,6 +18,27 @@ installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
 
 
+def git_blob_sha(content: bytes) -> str:
+    header = f"blob {len(content)}\0".encode("ascii")
+    return hashlib.sha1(header + content).hexdigest()
+
+
+def complete_source(source: Path) -> None:
+    files = {
+        "agents/orchestrator-discovery.md": "discovery\n",
+        "agents/orchestrator-stage-planner.md": "planner\n",
+        "agents/orchestrator-stage-reviewer.md": "reviewer\n",
+        "agents/orchestrator-controller.md": "controller\n",
+        "runtime/orchestrator.js": "export {}\n",
+        "runtime/orchestrator.d.ts": "export {}\n",
+        "tools/orchestrator.ts": "export const tool = true\n",
+    }
+    for relative, content in files.items():
+        destination = source / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding="utf-8")
+
+
 class InstallerHardeningTests(unittest.TestCase):
     def test_top_level_runtime_javascript_and_declarations_are_installable(self) -> None:
         self.assertTrue(installer.installable("runtime/orchestrator.js"))
@@ -27,8 +49,10 @@ class InstallerHardeningTests(unittest.TestCase):
     def test_remote_tree_and_blobs_are_resolved_from_one_immutable_commit(self) -> None:
         requested_ref = "release-6.0.1"
         commit_sha = "a" * 40
-        js_sha = "b" * 40
-        declaration_sha = "c" * 40
+        js_content = b"export const ok=1\n"
+        declaration_content = b"export declare const ok: 1\n"
+        js_sha = git_blob_sha(js_content)
+        declaration_sha = git_blob_sha(declaration_content)
         calls: list[str] = []
         original = installer.api_json
 
@@ -41,21 +65,21 @@ class InstallerHardeningTests(unittest.TestCase):
                     "sha": commit_sha,
                     "truncated": False,
                     "tree": [
-                        {"path": "runtime/orchestrator.js", "type": "blob", "sha": js_sha, "size": 18},
-                        {"path": "runtime/orchestrator.d.ts", "type": "blob", "sha": declaration_sha, "size": 20},
+                        {"path": "runtime/orchestrator.js", "type": "blob", "sha": js_sha, "size": len(js_content)},
+                        {"path": "runtime/orchestrator.d.ts", "type": "blob", "sha": declaration_sha, "size": len(declaration_content)},
                     ],
                 }
             if url.endswith(f"/repos/kostazol/opencode-agents/git/blobs/{js_sha}"):
-                return {"encoding": "base64", "content": base64.b64encode(b"export const ok=1\n").decode("ascii")}
+                return {"encoding": "base64", "content": base64.b64encode(js_content).decode("ascii")}
             if url.endswith(f"/repos/kostazol/opencode-agents/git/blobs/{declaration_sha}"):
-                return {"encoding": "base64", "content": base64.b64encode(b"export declare const ok: 1\n").decode("ascii")}
+                return {"encoding": "base64", "content": base64.b64encode(declaration_content).decode("ascii")}
             raise AssertionError(f"unexpected mutable or unrelated GitHub request: {url}")
 
         installer.api_json = fake_api_json
         try:
             with installer.prepared_source(None, "kostazol/opencode-agents", requested_ref) as source:
-                self.assertEqual((source / "runtime/orchestrator.js").read_text(encoding="utf-8"), "export const ok=1\n")
-                self.assertEqual((source / "runtime/orchestrator.d.ts").read_text(encoding="utf-8"), "export declare const ok: 1\n")
+                self.assertEqual((source / "runtime/orchestrator.js").read_bytes(), js_content)
+                self.assertEqual((source / "runtime/orchestrator.d.ts").read_bytes(), declaration_content)
         finally:
             installer.api_json = original
 
@@ -81,8 +105,7 @@ class InstallerHardeningTests(unittest.TestCase):
                 source = root / "source"
                 target = root / "target"
                 backup = root / "backup"
-                (source / "runtime").mkdir(parents=True)
-                (source / "runtime/orchestrator.js").write_text("export {}\n", encoding="utf-8")
+                complete_source(source)
                 for relative, content in known.items():
                     destination = target / relative
                     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -112,8 +135,7 @@ class InstallerHardeningTests(unittest.TestCase):
                 source = root / "source"
                 target = root / "target"
                 backup = root / "backup"
-                (source / "runtime").mkdir(parents=True)
-                (source / "runtime/orchestrator.js").write_text("export {}\n", encoding="utf-8")
+                complete_source(source)
                 candidate = target / "runtime/orchestrator.py"
                 candidate.parent.mkdir(parents=True, exist_ok=True)
                 candidate.write_bytes(custom)

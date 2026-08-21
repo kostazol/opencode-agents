@@ -1,4 +1,12 @@
-import { Analysis, JsonRecord, PendingAction, StageState, State } from "./orchestrator.js";
+import type { Analysis, JsonRecord, PendingAction, StageState, State } from "./schema.js";
+export interface StateMigrationResult {
+    state: JsonRecord;
+    migrated: boolean;
+    from_version: number;
+    to_version: number;
+    invalidated_transition: string | null;
+}
+export declare function migrateState(input: unknown): StateMigrationResult;
 export declare function newState(requestId: string): State;
 export declare function stagesFromAnalysis(analysis: Analysis): StageState[];
 export declare function stageMap(state: State): Map<string, StageState>;

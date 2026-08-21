@@ -153,7 +153,7 @@ python3 opencode-agents.py update --source .
 Из конкретного опубликованного commit/tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/main/opencode-agents.py \
+curl -fsSL https://raw.githubusercontent.com/kostazol/opencode-agents/62b370be2456515f42e43555581bd7101ffaeeb2/opencode-agents.py \
   | python3 - install --repository kostazol/opencode-agents --ref <commit-or-tag>
 ```
 
@@ -180,3 +180,37 @@ bash tests/test-cli.sh
 ```
 
 `npm test` выполняет TypeScript build, typecheck custom tool и deterministic runtime tests. Live provider journey запускается отдельно через E2E harness, потому что требует установленный OpenCode, пользовательскую авторизацию и provider quota.
+
+
+## Immutable remote install
+
+Remote installation resolves one `--ref` to a commit SHA and fetches the package tree and every blob from that same SHA. Pin the raw installer and pass the same immutable ref; do not use moving `main`.
+
+```bash
+python opencode-agents.py install --repo kostazol/opencode-agents --ref v6.0.1 --target ~/.config/opencode
+```
+
+<!-- 6.0.1-install:start -->
+## Stable 6.0.1 immutable install
+
+The controller remains four semantic agents, one TypeScript controller, and three native OpenCode tools. The installer and package tree below are both pinned to the same immutable Git commit; `main` is deliberately not used.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/kostazol/opencode-agents/62b370be2456515f42e43555581bd7101ffaeeb2/opencode-agents.py
+python opencode-agents.py install \
+  --repo kostazol/opencode-agents \
+  --ref 62b370be2456515f42e43555581bd7101ffaeeb2 \
+  --target ~/.config/opencode
+python opencode-agents.py status --target ~/.config/opencode
+```
+
+For an update, use the same immutable source and an explicit backup location:
+
+```bash
+python opencode-agents.py update \
+  --repo kostazol/opencode-agents \
+  --ref 62b370be2456515f42e43555581bd7101ffaeeb2 \
+  --target ~/.config/opencode \
+  --backup ~/.config/opencode.backup-6.0.1
+```
+<!-- 6.0.1-install:end -->

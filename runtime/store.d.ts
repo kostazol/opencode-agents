@@ -1,4 +1,4 @@
-import { EventInput, JsonRecord, State } from "./orchestrator.js";
+import type { EventInput, JsonRecord, State } from "./schema.js";
 export declare class WorkflowStore {
     readonly base: string;
     readonly root: string;
@@ -9,12 +9,17 @@ export declare class WorkflowStore {
     readonly journalPath: string;
     readonly transactionPath: string;
     readonly lockPath: string;
+    readonly stateV1BackupPath: string;
+    readonly legacyBackupPath: string;
+    readonly legacySnapshotPath: string;
     readonly request: string;
     constructor(directory: string, request: string);
     private ensureRoot;
     private withLock;
     private recover;
     private loadState;
+    private loadLegacySnapshot;
+    private restoreLegacyPasses;
     private loadAnalysis;
     private journal;
     private commit;

@@ -1,179 +1,124 @@
-import { HUMAN_STATUSES, ProtocolError, STAGE_STATUSES, integer, stageId, text, validateAnalysis } from "./orchestrator.js";
-import { newState, validateState } from "./state.js";
-function items(values) {
-    return values.length ? `[${values.join(", ")}]` : "none";
+import { createHash } from "node:crypto";
+import { ProtocolError } from "./schema.js";
+import { newState } from "./state.js";
+function yaml(value) {
+    return value === null ? "null" : value;
 }
-export function renderPlan(stateInput, analysisInput) {
-    const state = validateState(stateInput, analysisInput !== undefined && stateInput.stages?.length && !stateInput.legacy_migrated ? analysisInput : undefined);
-    const analysis = analysisInput === undefined ? undefined : validateAnalysis(analysisInput);
+export function renderPlan(state, analysis) {
     const lines = [
         "---",
-        "schema_version: 1",
+        `schema_version: ${state.schema_version}`,
+        `request_id: ${state.request_id}`,
         `state_revision: ${state.state_revision}`,
         `status: ${state.status}`,
-        `current_stage: ${state.current_stage ?? "none"}`,
         `analysis_revision: ${state.analysis_revision}`,
+        `analysis_status: ${state.analysis_status}`,
+        `current_stage: ${yaml(state.current_stage)}`,
+        `legacy_migrated: ${state.legacy_migrated}`,
         "---",
-        "# План реализации",
         "",
-        "> Индекс генерируется controller; смысловые детали находятся в discovery, stage и review artifacts.",
+        `# Plan: ${state.request_id}`,
         "",
-        "## Состояние",
+        `Workflow status: **${state.status}**`,
         "",
-        `- Запрос: \`${state.request_id}\``,
-        `- Workflow: \`${state.status}\``,
-        `- Analysis: \`${state.analysis_status}\` revision ${state.analysis_revision}`,
-        `- Feedback revision: ${state.feedback_revision}`,
     ];
-    if (state.pending)
-        lines.push(`- Pending: \`${state.pending.transition_id}\` / \`${state.pending.action}\``, `- Pending reason: ${state.pending.reason}`);
-    if (state.blocker)
-        lines.push("", "## Blocker", "", `- Reason: ${state.blocker.reason}`, `- Detail: ${state.blocker.detail}`);
-    if (state.reopen)
-        lines.push("", "## Reopening proposal", "", `- Requested by: ${state.reopen.requested_by}`, `- Seeds: ${items(state.reopen.seeds)}`, `- Affected: ${items(state.reopen.affected)}`, `- Reason: ${state.reopen.reason}`);
-    lines.push("", "## Stage map", "");
-    const source = new Map(analysis?.stages.map((item) => [item.id, item]) ?? []);
-    for (const stage of state.stages) {
-        const metadata = source.get(stage.id);
-        lines.push(`### ${stage.id} — ${stage.title}`, `- Status: ${stage.status.toUpperCase()}`, `- Revision: ${stage.revision}`, `- Depends on: ${items(stage.depends_on)}`, `- Affected area: ${metadata?.affected_area ?? "unknown"}`, `- Primary risks: ${items(metadata?.risks ?? [])}`, `- Consumes: ${items(metadata?.contracts_consumed ?? [])}`, `- Produces: ${items(metadata?.contracts_produced ?? [])}`, `- Details: ${stage.details}`, `- Review: ${stage.review}`, `- Human review: ${stage.human_review}`, `- Human review revision: ${stage.human_revision}`, `- Human review status: ${stage.human_status.toUpperCase()}`, `- Human review review: ${stage.human_review_review}`, "");
-    }
     if (analysis) {
-        lines.push("## Traceability", "");
-        for (const item of [...analysis.requirements, ...analysis.nfrs])
-            lines.push(`- \`${item.id}\` → \`${item.stage}\` → ${items(item.scenarios)} → ${items(item.acceptance)}: ${item.text}`);
-        lines.push("");
+        lines.push("## Request", "", analysis.request.summary, "");
+        if (analysis.request.outcomes.length) {
+            lines.push("### Outcomes", "", ...analysis.request.outcomes.map((item) => `- ${item}`), "");
+        }
     }
-    return `${lines.join("\n").trimEnd()}\n`;
+    lines.push("## Stage map", "");
+    if (!state.stages.length)
+        lines.push("No approved stage map yet.", "");
+    for (const stage of state.stages) {
+        lines.push(`### ${stage.id}: ${stage.title}`, "", `- Slug: ${stage.slug}`, `- Depends on: ${stage.depends_on.length ? stage.depends_on.join(", ") : "none"}`, `- Technical status: ${stage.status}`, `- Technical revision: ${stage.revision}`, `- Human status: ${stage.human_status}`, `- Human revision: ${stage.human_revision}`, `- Technical artifact: ${stage.details}`, `- Technical review: ${stage.review}`, `- Human artifact: ${stage.human_review}`, `- Human review: ${stage.human_review_review}`, "");
+    }
+    if (state.pending) {
+        lines.push("## Pending transition", "", `- Transition: ${state.pending.transition_id}`, `- Action: ${state.pending.action}`, `- Actor: ${state.pending.actor}`, `- Stage: ${yaml(state.pending.stage)}`, `- Revision: ${state.pending.revision ?? "null"}`, `- Reason: ${state.pending.reason}`, "");
+    }
+    if (state.blocker)
+        lines.push("## Blocker", "", `- Reason: ${state.blocker.reason}`, `- Detail: ${state.blocker.detail}`, "");
+    return lines.join("\n").trimEnd() + "\n";
 }
-export function parseLegacyPlan(content, requestId) {
-    const lines = content.split(/\r?\n/);
-    if (lines[0] !== "---")
-        throw new ProtocolError("legacy.frontmatter", "start delimiter missing");
-    const frontmatterEnd = lines.indexOf("---", 1);
-    if (frontmatterEnd < 0)
-        throw new ProtocolError("legacy.frontmatter", "end delimiter missing");
-    const frontmatter = new Map();
-    for (const [offset, line] of lines.slice(1, frontmatterEnd).entries()) {
-        const separator = line.indexOf(":");
-        if (separator < 1)
-            throw new ProtocolError(`legacy.frontmatter[${offset}]`, "expected key: value", line);
-        const key = line.slice(0, separator).trim();
-        if (frontmatter.has(key))
-            throw new ProtocolError(`legacy.frontmatter.${key}`, "duplicate field");
-        frontmatter.set(key, line.slice(separator + 1).trim());
+function normalizeStatus(value, fallback) {
+    const normalized = value?.trim().toLowerCase().replace(/^pass(?:ed)?$/, "pass");
+    return new Set(["proposed", "planning", "review", "pass"]).has(normalized ?? "") ? normalized : fallback;
+}
+function normalizeHumanStatus(value) {
+    const normalized = value?.trim().toLowerCase().replace(/^pass(?:ed)?$/, "pass");
+    return new Set(["pending", "planning", "review", "pass"]).has(normalized ?? "") ? normalized : "pending";
+}
+function legacyValue(block, names) {
+    for (const name of names) {
+        const match = block.match(new RegExp(`^\\s*(?:[-*]\\s*)?${name}\\s*:\\s*(.+?)\\s*$`, "im"));
+        if (match)
+            return match[1].replace(/^`|`$/g, "").trim();
     }
-    const statusAliases = {
-        discovery: "discovery",
-        "discovery-review": "discovery_review",
-        discovery_review: "discovery_review",
-        "waiting-answers": "waiting_answers",
-        waiting_answers: "waiting_answers",
-        "waiting-approval": "waiting_map_approval",
-        "waiting-map-approval": "waiting_map_approval",
-        waiting_map_approval: "waiting_map_approval",
-        planning: "planning",
-        "human-reviewing": "human_reviewing",
-        human_reviewing: "human_reviewing",
-        "waiting-plan-approval": "waiting_plan_approval",
-        waiting_plan_approval: "waiting_plan_approval",
-        ready: "ready",
-    };
-    const rawStatus = frontmatter.get("status") ?? "discovery";
-    if (rawStatus === "blocked")
-        throw new ProtocolError("legacy.status", "blocked legacy plan cannot be migrated without structured blocker data");
-    const mappedStatus = statusAliases[rawStatus];
-    if (!mappedStatus)
-        throw new ProtocolError("legacy.status", "unsupported legacy workflow status", rawStatus);
-    const currentStage = frontmatter.get("current_stage") ?? "none";
-    if (currentStage !== "none")
-        stageId(currentStage, "legacy.current_stage");
-    const state = newState(requestId);
-    state.legacy_migrated = true;
-    state.analysis_status = "draft";
-    state.status = mappedStatus;
-    state.current_stage = currentStage === "none" ? null : currentStage;
-    const headings = lines.map((line, index) => line === "## Stage map" ? index : -1).filter((index) => index >= 0);
-    if (headings.length > 1)
-        throw new ProtocolError("legacy.Stage map", "expected at most one section");
-    if (!headings.length) {
-        if (state.current_stage !== null)
-            throw new ProtocolError("legacy.current_stage", "cannot reference a stage when stage map is absent", state.current_stage);
-        return validateState(state);
-    }
-    const stageHeading = /^### (S[0-9]{2}) — (.+)$/;
-    const fieldLine = /^- ([^:]+): (.*)$/;
-    let index = headings[0] + 1;
-    const end = lines.findIndex((line, lineIndex) => lineIndex > headings[0] && line.startsWith("## "));
-    const stageEnd = end < 0 ? lines.length : end;
-    while (index < stageEnd) {
-        if (!lines[index]) {
-            index += 1;
-            continue;
-        }
-        const heading = stageHeading.exec(lines[index]);
-        if (!heading)
-            throw new ProtocolError("legacy.Stage map", "expected stage heading", lines[index]);
-        index += 1;
-        const fields = new Map();
-        while (index < stageEnd && !lines[index].startsWith("### ")) {
-            const line = lines[index];
-            index += 1;
-            if (!line)
-                continue;
-            const match = fieldLine.exec(line);
-            if (!match)
-                throw new ProtocolError(`legacy.${heading[1]}`, "expected '- Field: value'", line);
-            if (fields.has(match[1]))
-                throw new ProtocolError(`legacy.${heading[1]}.${match[1]}`, "duplicate field");
-            fields.set(match[1], match[2]);
-        }
-        for (const required of ["Status", "Revision", "Depends on", "Details", "Review"]) {
-            if (!fields.has(required))
-                throw new ProtocolError(`legacy.${heading[1]}`, "missing required field", required);
-        }
-        const id = heading[1];
-        const number = Number(id.slice(1));
-        const details = fields.get("Details");
-        const slugMatch = new RegExp(`^stages/${String(number).padStart(2, "0")}-([a-z0-9]+(?:-[a-z0-9]+)*)\\.md$`).exec(details);
-        if (!slugMatch)
-            throw new ProtocolError(`legacy.${id}.Details`, "non-canonical path", details);
-        const status = fields.get("Status").toLowerCase();
-        if (!STAGE_STATUSES.has(status))
-            throw new ProtocolError(`legacy.${id}.Status`, "unsupported stage status", status);
-        const humanStatus = (fields.get("Human review status") ?? "PENDING").toLowerCase();
-        if (!HUMAN_STATUSES.has(humanStatus))
-            throw new ProtocolError(`legacy.${id}.Human review status`, "unsupported human-review status", humanStatus);
-        const revision = integer(Number(fields.get("Revision")), `legacy.${id}.Revision`);
-        const humanRevision = integer(Number(fields.get("Human review revision") ?? 0), `legacy.${id}.Human review revision`);
-        const dependencyText = fields.get("Depends on");
-        const dependencies = dependencyText === "none" || dependencyText === "[]" || !dependencyText
-            ? []
-            : dependencyText.replace(/^\[|\]$/g, "").split(",").map((item) => stageId(item.trim(), `legacy.${id}.Depends on`));
-        state.stages.push({
+    return undefined;
+}
+function canonicalLegacyPath(value, fallback) {
+    if (!value)
+        return fallback;
+    const normalized = value.replace(/\\\\/g, "/").replace(/^\.\//, "");
+    if (normalized.startsWith("../") || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized))
+        return fallback;
+    return normalized;
+}
+export function parseLegacySnapshot(content, requestId) {
+    if (!content.trim())
+        throw new ProtocolError("legacy-plan.md", "must not be empty");
+    const heading = /^(?:#{2,4})\s+(?:Stage\s+)?(S\d{2})\s*(?::|[-—])?\s*(.*?)\s*$/gim;
+    const matches = [...content.matchAll(heading)];
+    const stages = [];
+    for (const [index, match] of matches.entries()) {
+        const start = match.index ?? 0;
+        const end = index + 1 < matches.length ? matches[index + 1].index ?? content.length : content.length;
+        const block = content.slice(start, end);
+        const id = match[1];
+        const title = match[2]?.trim() || `Legacy ${id}`;
+        const ordinal = Number(id.slice(1));
+        const rawSlug = legacyValue(block, ["Slug"]);
+        const slug = rawSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rawSlug) ? rawSlug : title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `legacy-${id.toLowerCase()}`;
+        const revision = Math.max(0, Number.parseInt(legacyValue(block, ["Technical revision", "Revision"]) ?? "0", 10) || 0);
+        const humanRevision = Math.max(0, Number.parseInt(legacyValue(block, ["Human revision"]) ?? "0", 10) || 0);
+        const status = normalizeStatus(legacyValue(block, ["Technical status", "Status"]), revision > 0 ? "review" : "proposed");
+        const humanStatus = normalizeHumanStatus(legacyValue(block, ["Human status"]));
+        const prefix = String(ordinal).padStart(2, "0");
+        const fingerprint = legacyValue(block, ["Semantic fingerprint", "Fingerprint"]);
+        stages.push({
             id,
-            title: text(heading[2], `legacy.${id}.title`),
-            slug: slugMatch[1],
-            depends_on: dependencies,
-            status: status,
-            revision,
+            title,
+            slug,
+            status,
+            revision: status === "pass" ? Math.max(1, revision) : revision,
             human_status: humanStatus,
-            human_revision: humanRevision,
-            details,
-            review: fields.get("Review"),
-            human_review: fields.get("Human review") ?? `stages/${String(number).padStart(2, "0")}-${slugMatch[1]}.human-review.md`,
-            human_review_review: fields.get("Human review review") ?? `reviews/${String(number).padStart(2, "0")}-human-review.md`,
+            human_revision: humanStatus === "pass" ? Math.max(1, humanRevision) : humanRevision,
+            details: canonicalLegacyPath(legacyValue(block, ["Technical artifact", "Details"]), `stages/${prefix}-${slug}.md`),
+            review: canonicalLegacyPath(legacyValue(block, ["Technical review", "Review"]), `reviews/${prefix}.md`),
+            human_review: canonicalLegacyPath(legacyValue(block, ["Human artifact"]), `stages/${prefix}-${slug}.human-review.md`),
+            human_review_review: canonicalLegacyPath(legacyValue(block, ["Human review"]), `reviews/${prefix}-human-review.md`),
+            semantic_fingerprint: fingerprint && /^[0-9a-f]{64}$/i.test(fingerprint) ? fingerprint.toLowerCase() : null,
         });
     }
-    if (state.status === "ready" && state.stages.some((stage) => stage.human_status !== "pass")) {
-        state.status = "human_reviewing";
-        state.current_stage = state.stages.find((stage) => stage.human_status !== "pass").id;
-    }
-    if ((state.status === "planning" || state.status === "human_reviewing") && state.current_stage === null) {
-        const field = state.status === "planning" ? "status" : "human_status";
-        state.current_stage = state.stages.find((stage) => stage[field] !== "pass")?.id ?? null;
-    }
-    if (state.current_stage !== null && !state.stages.some((stage) => stage.id === state.current_stage)) {
-        throw new ProtocolError("legacy.current_stage", "unknown stage", state.current_stage);
-    }
-    return validateState(state);
+    return {
+        schema_version: 1,
+        request_id: requestId,
+        source_sha256: createHash("sha256").update(content).digest("hex"),
+        stages,
+    };
+}
+export function parseLegacyPlan(content, requestId) {
+    parseLegacySnapshot(content, requestId);
+    const state = newState(requestId);
+    state.legacy_migrated = true;
+    state.status = "discovery";
+    state.analysis_status = "missing";
+    state.stages = [];
+    state.current_stage = null;
+    return state;
+}
+export function legacyFingerprintMatches(snapshot, analysis, stageId, fingerprint) {
+    const legacy = snapshot.stages.find((stage) => stage.id === stageId);
+    return Boolean(legacy?.status === "pass" && legacy.semantic_fingerprint && legacy.semantic_fingerprint === fingerprint(analysis, stageId));
 }

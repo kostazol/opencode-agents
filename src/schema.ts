@@ -1,8 +1,8 @@
+
 import path from "node:path"
 
-
 export const ANALYSIS_SCHEMA_VERSION = 1
-export const STATE_SCHEMA_VERSION = 1
+export const STATE_SCHEMA_VERSION = 2
 export const REPEAT_LIMIT = 2
 
 export const CHANGE_SURFACES = new Set(["api", "data", "ui", "infra", "security", "migration", "background", "library"])
@@ -114,6 +114,22 @@ export interface StageState {
   human_review_review: string
 }
 
+export interface RevisionMetadata {
+  schema_version: number | null
+  artifact: string | null
+  stage: string | null
+  revision: number | null
+  source_revision: number | null
+  status: string | null
+}
+
+export interface ArtifactSnapshot {
+  path: string
+  exists: boolean
+  digest: string | null
+  metadata: RevisionMetadata | null
+}
+
 export interface PendingAction {
   transition_id: string
   action: string
@@ -123,7 +139,10 @@ export interface PendingAction {
   revision: number | null
   source_revision: number | null
   inputs: string[]
+  input_snapshot: ArtifactSnapshot[]
   output: string | null
+  output_snapshot: ArtifactSnapshot | null
+  snapshots_captured: boolean
   reason: string
   issued_state_revision: number
 }
@@ -334,3 +353,12 @@ export function stageId(value: unknown, field: string): string {
   return result
 }
 
+export function canonicalRelative(value: unknown, field: string, prefix?: string): string {
+  const source = text(value, field).replace(/\\/g, "/")
+  if (source.includes("\0") || path.posix.isAbsolute(source) || /^[A-Za-z]:\//.test(source)) throw new ProtocolError(field, "must be a relative path", source)
+  const normalized = path.posix.normalize(source)
+  if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) throw new ProtocolError(field, "path escapes workflow root", source)
+  if (source !== normalized) throw new ProtocolError(field, "path must be canonical", source)
+  if (prefix && !normalized.startsWith(prefix)) throw new ProtocolError(field, `must be under ${prefix}`, normalized)
+  return normalized
+}

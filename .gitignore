@@ -30,3 +30,4 @@ node_modules/
 *.tsbuildinfo
 runtime/*.map
 coverage/
+dist-tools/

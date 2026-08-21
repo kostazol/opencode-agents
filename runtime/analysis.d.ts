@@ -1,6 +1,3 @@
-import { Analysis, AnalysisStage } from "./schema.js";
-export declare function requiredNfrCategories(surfaces: string[]): Set<string>;
-export declare function hasDependency(stages: Map<string, AnalysisStage>, consumer: string, producer: string): boolean;
+import type { Analysis } from "./schema.js";
 export declare function validateAnalysis(input: unknown): Analysis;
-export declare function canonicalRelative(value: unknown, field: string, prefix?: string): string;
-export declare function affectedStageClosure(analysisInput: unknown, seedsInput: string[]): string[];
+export declare function semanticStageFingerprint(analysisInput: unknown, stageIdValue: string): string;
