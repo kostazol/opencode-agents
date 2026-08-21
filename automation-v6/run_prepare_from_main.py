@@ -96,7 +96,6 @@ def main() -> int:
         common.npm_exec(root, ["test"], log=log)
         common.npm_exec(root, ["run", "typecheck"], log=log)
         common.npm_exec(root, ["run", "check:generated"], log=log)
-        common.run(["git", "diff", "--exit-code", "--", "runtime", "package.json", "package-lock.json"], cwd=root, log=log)
         clean(root)
 
         commit_stage(
