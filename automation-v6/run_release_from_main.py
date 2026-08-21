@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 
-from final_common import BASELINE_TEST_SHA, MESSAGES, assert_expected_head, clean, commit_stage, common, configure, history, matrix_evidence, write_json, write_output
+from final_common import MESSAGES, assert_expected_head, clean, commit_stage, common, configure, history, matrix_evidence, write_json, write_output
 import step9_release
 
 
@@ -14,24 +14,10 @@ def fresh_install_status_update(root: Path, log: Path) -> None:
         base = Path(temporary)
         target = base / "target"
         backup = base / "backup"
-        common.run(
-            [sys.executable, "opencode-agents.py", "install", "--source", str(root), "--target", str(target)],
-            cwd=root,
-            log=log,
-        )
+        common.run([sys.executable, "opencode-agents.py", "install", "--source", str(root), "--target", str(target)], cwd=root, log=log)
         common.run([sys.executable, "opencode-agents.py", "status", "--target", str(target)], cwd=root, log=log)
         common.run(
-            [
-                sys.executable,
-                "opencode-agents.py",
-                "update",
-                "--source",
-                str(root),
-                "--target",
-                str(target),
-                "--backup",
-                str(backup),
-            ],
+            [sys.executable, "opencode-agents.py", "update", "--source", str(root), "--target", str(target), "--backup", str(backup)],
             cwd=root,
             log=log,
         )
@@ -56,6 +42,19 @@ def full_gates(root: Path, log: Path) -> None:
     clean(root)
 
 
+def align_release_text(root: Path) -> None:
+    for relative in ["RELEASE.md", "ROADMAP.md"]:
+        candidate = root / relative
+        content = candidate.read_text(encoding="utf-8")
+        content = (
+            content
+            .replace("Node 20 and 22", "Node 22 and 24")
+            .replace("Node 20/22", "Node 22/24")
+            .replace("Node 20, 22", "Node 22, 24")
+        )
+        candidate.write_text(content, encoding="utf-8", newline="\n")
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         raise SystemExit("usage: run_release_from_main.py <target-checkout> <docs-json> <result-dir>")
@@ -63,21 +62,19 @@ def main() -> int:
     docs_path = Path(sys.argv[2]).resolve()
     result_dir = Path(sys.argv[3]).resolve()
     result_dir.mkdir(parents=True, exist_ok=True)
-    log = result_dir / "08-release.log"
+    log = result_dir / "09-release.log"
     docs = json.loads(docs_path.read_text(encoding="utf-8"))
     sha_docs = docs["sha_docs"]
 
     configure(root)
     assert_expected_head(root, sha_docs)
     commits = history(root)
-    if len(commits) != 7:
-        raise RuntimeError(f"release stage requires exactly seven missing commits before release, got {commits}")
+    if len(commits) != 8:
+        raise RuntimeError(f"release stage requires exactly eight branch commits before release, got {commits}")
 
     full_gates(root, log)
     matrix_candidate = matrix_evidence(sha_docs, "release-candidate")
-    required_commits = [BASELINE_TEST_SHA, *[item["sha"] for item in commits]]
-    if len(required_commits) != 8:
-        raise RuntimeError(f"release manifest requires the baseline plus seven missing commits: {required_commits}")
+    required_commits = [item["sha"] for item in commits]
     metadata = {
         "required_commits": required_commits,
         "code_ref": docs["sha_build"],
@@ -87,17 +84,18 @@ def main() -> int:
     metadata_path = result_dir / "release-input.json"
     write_json(metadata_path, metadata)
     step9_release.apply(root, log, metadata_path)
+    align_release_text(root)
     full_gates(root, log)
 
     sha_release = commit_stage(
         root,
-        MESSAGES[7],
+        MESSAGES[8],
         ["VERSION", "RELEASE.md", "ROADMAP.md", "release/6.0.1-gates.json", "tests/test_release_metadata.py"],
         log,
     )
     result = {
         "schema_version": 1,
-        "commits": history(root)[:8],
+        "commits": history(root)[:9],
         "sha_build": docs["sha_build"],
         "sha_docs": sha_docs,
         "sha_release": sha_release,
