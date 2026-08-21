@@ -60,3 +60,13 @@ Primary сведён к controller loop. Discovery формирует machine-re
 - Нет silent stale acceptance, double advance, unbounded `REVISE` или полного reset при локальном upstream defect.
 - `VERSION`, package, installer, prompts, docs и generated runtime согласованы.
 - Финальный ZIP строится из того же дерева, которое опубликовано в GitHub.
+
+<!-- 6.0.1-hardening:start -->
+## 6.0.1 independent hardening
+
+- Architecture preserved: four semantic agents, one TypeScript controller, three native tools.
+- Runtime/code commit: `62b370be2456515f42e43555581bd7101ffaeeb2`.
+- Controller, routing, NFR protocol, legacy migration, installer, build, and regression gates are executable and documented in `docs/RELEASE_GATES.md`.
+- Cross-platform matrix has passed for the runtime commit.
+- Final-tree packaging, final matrix confirmation, and draft PR publication are release-finalization gates; this section intentionally does not claim ROADMAP DONE before they run.
+<!-- 6.0.1-hardening:end -->
