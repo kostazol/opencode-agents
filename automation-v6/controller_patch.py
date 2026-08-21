@@ -29,3 +29,4 @@ import legacy_patch  # noqa: E402,F401
 import installer_test_patch  # noqa: E402,F401
 import installer_scope_patch  # noqa: E402,F401
 import build_contract_patch  # noqa: E402,F401
+import staging_scope_patch  # noqa: E402,F401
