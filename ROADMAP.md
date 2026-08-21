@@ -2,7 +2,7 @@
 
 ## Статус
 
-**DONE.** Все запланированные production-фазы реализованы. Предыдущий Python controller сохранён отдельным родительским commit как проверяемый промежуточный снимок; текущий commit заменяет его одним Node-compatible TypeScript runtime, разделённым на небольшие source modules без дублирования state machine.
+**DONE.** Все запланированные production-фазы реализованы. Предыдущий Python controller сохранён отдельным родительским commit как проверяемый промежуточный снимок; текущая ветка заменяет его одним Node-compatible TypeScript runtime, разделённым на небольшие source modules без дублирования state machine.
 
 ## Цель
 
@@ -42,7 +42,7 @@ OpenCode native custom tools
 
 ### 5. Native OpenCode adapter — DONE
 
-Один `tools/orchestrator.ts` экспортирует `next`, `apply`, `validate` и напрямую вызывает TypeScript runtime без subprocess или shell interpolation.
+Один `tools/orchestrator.ts` экспортирует `next`, `apply`, `validate`, которые OpenCode публикует как `orchestrator_next`, `orchestrator_apply`, `orchestrator_validate`, и напрямую вызывает TypeScript runtime без subprocess или shell interpolation.
 
 ### 6. Prompt integration — DONE
 
@@ -50,7 +50,7 @@ Primary сведён к controller loop. Discovery формирует machine-re
 
 ### 7. Release verification — DONE
 
-Есть TypeScript build/typecheck, deterministic runtime tests, installer install/status/update checks, prompt contracts и downloadable source archive. Provider-dependent E2E остаётся отдельным environment-dependent release check.
+Есть TypeScript build/typecheck, deterministic runtime tests, installer install/status/update checks, prompt contracts, permanent CI и GitHub source archives для точных commit SHA. Provider-dependent E2E остаётся отдельным environment-dependent release check.
 
 ## Definition of Done
 
@@ -59,14 +59,19 @@ Primary сведён к controller loop. Discovery формирует machine-re
 - Primary не вычисляет routing и revisions вручную.
 - Нет silent stale acceptance, double advance, unbounded `REVISE` или полного reset при локальном upstream defect.
 - `VERSION`, package, installer, prompts, docs и generated runtime согласованы.
-- Финальный ZIP строится из того же дерева, которое опубликовано в GitHub.
+- Любой публикуемый source archive должен строиться из того же точного Git tree, который прошёл release gates.
 
 <!-- 6.0.1-hardening:start -->
 ## ROADMAP DONE: 6.0.1 independent hardening
 
-All executable local gates and the Linux/Windows/macOS × Node 22/24 matrix completed before this release commit. The machine-readable evidence is `release/6.0.1-gates.json`; the exact final-tree ZIP and SHA-256 are generated after the commit and attached through the artifact branch.
+Все исполняемые local gates и три последовательных матрицы Linux/Windows/macOS × Node 22/24 завершены успешно. Machine-readable evidence находится в `release/6.0.1-gates.json`.
 
+- Фактическая ветка: `agent/6.0.1-final-complete`.
+- Base из `main`: `5c897d5b3afba74940fcd188d2a2e13b21ebcc0b`.
 - Runtime/code ref: `62b370be2456515f42e43555581bd7101ffaeeb2`.
 - Documentation ref: `be156bd707ab76ba0a8db1d18ddcda28610251ef`.
-- Architecture: four semantic agents, one TypeScript controller, three native tools.
+- Release ref: `6faaa57c637712059b89e2e2ca62b196c3a361aa`.
+- Permanent CI ref: `efdee043ddf792c52f90454b1224f375d2e84389`.
+- Архитектура: четыре semantic agents, один TypeScript controller, три native tools.
+- Отдельная artifact-ветка или ZIP не заявляются; точный GitHub source archive доступен для любого указанного commit SHA.
 <!-- 6.0.1-hardening:end -->
