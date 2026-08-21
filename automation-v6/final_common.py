@@ -39,6 +39,7 @@ MESSAGES = [
     "fix(migration): make legacy resume lossless and actionable",
     "fix(installer): support immutable remote installs and guarded retirement",
     "build: make TypeScript runtime reproducible and add cross-platform CI",
+    "fix(build): align Node support with current OpenCode SDK",
     "docs: align roadmap and release claims with executable gates",
     "release: finalize stable 6.0.1",
 ]
@@ -118,5 +119,5 @@ def matrix_evidence(commit: str, phase: str) -> dict[str, Any]:
         "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "url": f"https://github.com/{REPOSITORY}/actions/runs/{run_id}",
         "platforms": ["ubuntu-latest", "windows-latest", "macos-latest"],
-        "node": [20, 22],
+        "node": [22, 24],
     }
